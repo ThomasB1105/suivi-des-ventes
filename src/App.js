@@ -239,6 +239,29 @@ export default function App() {
   };
   const flash = (m) => { setToast(m); setTimeout(() => setToast(null), 3800); };
 
+  const [syncing, setSyncing] = useState(false);
+  // Synchro systeme.io : la fonction serverless /api/systeme aspire les ventes
+  // (systeme.io = source de vérité des paiements). On remplace les ventes issues
+  // de systeme.io (id "sio-…") et on conserve les ventes saisies à la main.
+  const syncSio = async () => {
+    setSyncing(true);
+    try {
+      const r = await fetch("/api/systeme");
+      const data = await r.json();
+      if (!r.ok) throw new Error(data && data.error ? data.error : `Erreur ${r.status}`);
+      const incoming = normalize(data.sales || []);
+      const manual = sales.filter((s) => !String(s.id).startsWith("sio-"));
+      persist([...manual, ...incoming]);
+      flash(incoming.length
+        ? `${incoming.length} vente(s) synchronisée(s) depuis systeme.io.`
+        : "Synchro OK, aucune vente trouvée pour le moment.");
+    } catch (e) {
+      flash(`Synchro impossible : ${e.message}. Vérifie SYSTEME_API_KEY dans Vercel.`);
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   const allInst = useMemo(
     () => sales.flatMap((s) => s.schedule.map((i) => ({ ...i, saleId: s.id, st: statusOf(i) }))),
     [sales]
@@ -354,8 +377,8 @@ export default function App() {
           <div className="melo-sub">Clients iClosed + plans Systeme.io · cohortes, impayés, acquisition</div>
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-          <span className="chip"><span className="dot" /> Source : iClosed + Systeme.io · démo
-            <button onClick={() => flash("En prod : iClosed remplit les fiches (closer, contact, source du lead), Systeme.io / Stripe pousse les paiements via Make, et un prélèvement échoué bascule l'échéance en impayé automatiquement.")}>Activer la synchro</button>
+          <span className="chip"><span className="dot" /> Source : systeme.io
+            <button onClick={syncSio} disabled={syncing}>{syncing ? "Synchro…" : "Synchroniser"}</button>
           </span>
           <button className="btn-primary" onClick={() => setShowAdd(true)}><Plus size={17} /> Ajouter une vente</button>
         </div>

@@ -39,3 +39,33 @@ La v1 fonctionne en saisie manuelle + données démo. Pour brancher les ventes r
 3. **Import CSV** des ventes systeme.io.
 
 L'attribution « d'où viennent les ventes » peut venir des **tags / UTM** de la commande systeme.io ou rester en **saisie manuelle** (champ source + canal, déjà en place).
+
+## Synchro systeme.io (API + serverless) — en place
+
+Une fonction serverless `api/systeme.js` (déployée automatiquement par Vercel) interroge
+l'**API publique systeme.io** côté serveur et renvoie les ventes à l'app. La clé API n'est
+**jamais** exposée au navigateur. Dans l'app, le bouton **« Synchroniser »** (en-tête)
+appelle cet endpoint et remplace les ventes issues de systeme.io (les ventes saisies à la
+main sont conservées). systeme.io reste la **source de vérité** des paiements/impayés.
+
+### Mise en route
+
+1. Dans systeme.io : **Profil → « Public API keys » → créer une clé** (copie-la tout de suite,
+   elle n'est plus affichée ensuite).
+2. Dans Vercel : **Project → Settings → Environment Variables**, ajoute `SYSTEME_API_KEY`
+   (et, en option, `SYSTEME_PAID_TAGS` / `SYSTEME_ORGANIC_TAGS` pour l'attribution — voir
+   `.env.example`). **Redéploie** pour que la variable soit prise en compte.
+3. Ouvre l'app → clique **« Synchroniser »**.
+
+### Calibration du mapping (une fois)
+
+Les noms de champs de l'API systeme.io peuvent varier d'un compte à l'autre. Pour vérifier le
+format réel de tes commandes, ouvre dans le navigateur :
+
+```
+https://<ton-app>.vercel.app/api/systeme?debug=1
+```
+
+Cela renvoie un échantillon brut (`orders`, `contacts`, `tags`). Si un champ ne tombe pas au
+bon endroit (montant, plan de paiement, statut payé), on ajuste le mapping dans
+`api/systeme.js` (fonction `normalizeOrder`) à partir de ce qu'on y voit.
