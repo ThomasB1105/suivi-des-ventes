@@ -1,0 +1,7 @@
+html, body, #root {
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+  background: #0A1220;
+}
+* { -webkit-font-smoothing: antialiased; }

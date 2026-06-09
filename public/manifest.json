@@ -1,0 +1,9 @@
+{
+  "short_name": "Ventes",
+  "name": "Suivi des ventes & impayés",
+  "icons": [],
+  "start_url": ".",
+  "display": "standalone",
+  "theme_color": "#0A1220",
+  "background_color": "#0A1220"
+}
