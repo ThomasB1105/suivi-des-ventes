@@ -179,14 +179,37 @@ module.exports = async (req, res) => {
   }
 
   try {
-    // Mode calibration : on renvoie le format brut pour caler le mapping.
+    // Mode calibration : on sonde plusieurs endpoints candidats pour découvrir
+    // lesquels existent (les chemins exacts de l'API systeme.io ne sont pas publics).
     if (req.query && (req.query.debug === "1" || req.query.debug === "true")) {
-      const [orders, contacts, tags] = await Promise.all([
-        sioGet("/orders", key, { limit: 3 }).catch((e) => ({ _error: e.status, _body: e.body })),
-        sioGet("/contacts", key, { limit: 3 }).catch((e) => ({ _error: e.status, _body: e.body })),
-        sioGet("/tags", key, { limit: 50 }).catch((e) => ({ _error: e.status, _body: e.body })),
-      ]);
-      res.status(200).json({ debug: true, orders, contacts, tags });
+      const candidates = [
+        "/contacts", "/tags",
+        "/orders", "/order_items", "/sales", "/sales_orders",
+        "/payments", "/subscriptions", "/invoices",
+        "/funnel_purchases", "/purchases", "/store/orders", "/ecommerce/orders",
+        "/payment_plans", "/transactions",
+      ];
+      const probe = async (path) => {
+        try {
+          const body = await sioGet(path, key, { limit: 2 });
+          const items = Array.isArray(body) ? body : (body.items || body.data || []);
+          const sample = items[0] || (Array.isArray(body) ? null : body);
+          return {
+            path, status: 200, ok: true,
+            count: items.length,
+            sampleKeys: sample && typeof sample === "object" ? Object.keys(sample) : null,
+            sample, // 1 exemple brut pour caler le mapping
+          };
+        } catch (e) {
+          return { path, status: e.status || 0, ok: false, error: e.body || String(e.message || e) };
+        }
+      };
+      const results = await Promise.all(candidates.map(probe));
+      res.status(200).json({
+        debug: true,
+        hint: "Repère les lignes ok:true. Le bon endpoint des ventes est celui dont 'sample' contient montant + contact + (idéalement) un plan de paiement.",
+        results,
+      });
       return;
     }
 
@@ -201,7 +224,8 @@ module.exports = async (req, res) => {
       });
     } catch { /* tags optionnels */ }
 
-    const orders = await sioList("/orders", key, { limit: 100, max: 2000 });
+    const ordersPath = process.env.SYSTEME_ORDERS_PATH || "/orders";
+    const orders = await sioList(ordersPath, key, { limit: 100, max: 2000 });
     const sales = orders.map((o) => normalizeOrder(o, tagsById));
 
     res.setHeader("Cache-Control", "s-maxage=60, stale-while-revalidate=300");
