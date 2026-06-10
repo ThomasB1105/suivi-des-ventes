@@ -13,6 +13,13 @@
 const { cmd, isConfigured } = require("../lib/kv");
 
 const slug = (s) => String(s || "").replace(/[^a-z0-9]/gi, "").slice(0, 40).toLowerCase();
+const pad = (n) => String(n).padStart(2, "0");
+const addMonthsISO = (iso, n) => {
+  const [y, m, d] = String(iso || "").split("-").map(Number);
+  if (!y) return iso;
+  const dt = new Date(y, (m - 1) + n, d || 1);
+  return `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}`;
+};
 
 function groupIntoSales(events) {
   const byClient = {};
@@ -28,13 +35,35 @@ function groupIntoSales(events) {
       .filter((e) => e.status !== "cancelled")
       .sort((a, b) => String(a.date).localeCompare(String(b.date)));
 
+    // 1) échéances réellement encaissées (une par transaction)
     const schedule = evs.map((e) => ({
       id: `inst-${e.id}`,
       dueDate: e.date,
       amount: e.amount,
-      paid: e.status === "paid",
-      method: "auto",
+      paid: true,
+      method: e.processor === "stripe" ? "auto" : "auto",
     }));
+
+    // 2) projection des échéances restantes d'un plan échelonné (limitOfPayments).
+    //    On se base sur l'échéance la plus "plan" (planCount le plus élevé).
+    const plan = evs
+      .filter((e) => e.planCount > 1 && e.planAmount > 0)
+      .sort((a, b) => b.planCount - a.planCount)[0];
+    if (plan) {
+      const planPaid = evs.filter((e) => Math.abs(e.amount - plan.planAmount) < 0.5);
+      const remaining = Math.max(0, plan.planCount - planPaid.length);
+      const lastDate = (planPaid.map((e) => e.date).sort().pop()) || plan.date;
+      const interval = plan.planInterval === "year" ? 12 : 1; // mensuel par défaut
+      for (let i = 1; i <= remaining; i++) {
+        schedule.push({
+          id: `inst-${plan.id}-f${i}`,
+          dueDate: addMonthsISO(lastDate, i * interval),
+          amount: plan.planAmount,
+          paid: false,
+          method: null,
+        });
+      }
+    }
 
     const total = schedule.reduce((a, s) => a + s.amount, 0);
     return {

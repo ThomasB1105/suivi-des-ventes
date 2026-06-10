@@ -44,6 +44,36 @@ function normalize(row, i) {
   return { id, email, name, amount, date, offer, type: "import", status: "paid", receivedAt: new Date().toISOString() };
 }
 
+// Mapping du format de l'API interne systeme.io (objet transaction imbriqué).
+function mapSioTransaction(t, i) {
+  const inv = t.invoice || {};
+  const cust = inv.customer || {};
+  const pay = t.payment || inv.payment || {};
+  const item = (pay.paymentItems && pay.paymentItems[0]) || {};
+  const plan = (item.orderItem && item.orderItem.pricePlan) || {};
+  const rec = plan.recurringOptions || {};
+  const email = String(cust.email || (cust.contact && cust.contact.email) || "").toLowerCase();
+  const refund = !!t.refund || /refund|rembours/i.test(String(t.transactionType || ""));
+  return {
+    id: "tx-" + (t.id || pay.id || `${email}-${i}`),
+    email,
+    name: cust.fullName || email || "Client",
+    amount: (pay.total || 0) / 100,                 // centimes → euros
+    date: toISODate(t.transactionDate || pay.paidAt) || toISODate(Date.now()),
+    offer: plan.innerName || plan.name || "",
+    type: t.transactionType || "sale",
+    status: refund ? "cancelled" : "paid",
+    planAmount: plan.amount != null ? plan.amount / 100 : null,
+    planCount: rec.limitOfPayments || null,         // nb total d'échéances du plan
+    planInterval: rec.interval || null,
+    invoiceNum: inv.invoiceNum || null,
+    processor: pay.paymentProcessorName || null,
+    receivedAt: new Date().toISOString(),
+  };
+}
+
+const isSioTransaction = (r) => r && (r.invoice || r.payment || r.transactionType !== undefined);
+
 module.exports = async (req, res) => {
   // CORS : ce endpoint est appelé depuis le navigateur (dashboard systeme.io).
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -62,7 +92,7 @@ module.exports = async (req, res) => {
   const rows = Array.isArray(body) ? body : (body && (body.records || body.transactions || body.data)) || [];
   if (!Array.isArray(rows) || !rows.length) { res.status(400).json({ error: "Aucun enregistrement (envoie { records: [...] })." }); return; }
 
-  const records = rows.map(normalize);
+  const records = rows.map((r, i) => (isSioTransaction(r) ? mapSioTransaction(r, i) : normalize(r, i)));
   try {
     // par lots de 50 commandes HSET
     for (let i = 0; i < records.length; i += 50) {
