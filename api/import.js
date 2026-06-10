@@ -10,7 +10,7 @@
 // Tolérant sur les noms de champs (la source vient du dashboard systeme.io).
 // ---------------------------------------------------------------------------
 
-const { pipeline, isConfigured } = require("../lib/kv");
+const { pipeline, cmd, isConfigured } = require("../lib/kv");
 
 const pick = (o, ...keys) => {
   for (const k of keys) if (o && o[k] !== undefined && o[k] !== null && o[k] !== "") return o[k];
@@ -93,13 +93,16 @@ module.exports = async (req, res) => {
   if (!Array.isArray(rows) || !rows.length) { res.status(400).json({ error: "Aucun enregistrement (envoie { records: [...] })." }); return; }
 
   const records = rows.map((r, i) => (isSioTransaction(r) ? mapSioTransaction(r, i) : normalize(r, i)));
+  const reset = req.query && (req.query.reset === "1" || req.query.reset === "true");
   try {
+    // purge complète avant import (repart propre)
+    if (reset) await cmd(["DEL", "sales:events"]);
     // par lots de 50 commandes HSET
     for (let i = 0; i < records.length; i += 50) {
       const batch = records.slice(i, i + 50).map((r) => ["HSET", "sales:events", r.id, JSON.stringify(r)]);
       await pipeline(batch);
     }
-    res.status(200).json({ ok: true, imported: records.length });
+    res.status(200).json({ ok: true, imported: records.length, reset: !!reset });
   } catch (e) {
     res.status(500).json({ error: String(e.message || e) });
   }

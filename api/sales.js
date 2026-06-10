@@ -66,9 +66,11 @@ function groupIntoSales(events) {
     }
 
     const total = schedule.reduce((a, s) => a + s.amount, 0);
+    const isBadName = (n) => !n || /^(client|date de la transaction)$/i.test(String(n).trim());
+    const client = evs.map((e) => e.name).find((n) => !isBadName(n)) || c.email || "Client";
     return {
       id: `sio-${slug(c.email || c.name || idx)}`,
-      client: c.name || c.email || "Client",
+      client,
       email: c.email || "",
       phone: "",
       closer: "—",
