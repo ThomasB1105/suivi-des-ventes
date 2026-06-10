@@ -4,7 +4,7 @@ import {
 } from "recharts";
 import {
   AlertTriangle, Check, Plus, X, Calendar, TrendingUp, Trash2, Landmark,
-  RotateCcw, Users, UserCheck, Phone, Mail, Leaf, Megaphone, Grid3x3, Search,
+  RotateCcw, Users, UserCheck, Phone, Mail, Leaf, Megaphone, Grid3x3, Search, Pencil,
 } from "lucide-react";
 
 /* ------------------------------ helpers ------------------------------ */
@@ -182,6 +182,8 @@ export default function App() {
   const [q, setQ] = useState("");
   const [payFor, setPayFor] = useState(null);
   const [payForm, setPayForm] = useState({ amount: "", date: toISO(today), method: "manual" });
+  const [editFor, setEditFor] = useState(null);
+  const [editDraft, setEditDraft] = useState(null);
   const [form, setForm] = useState({
     client: "", email: "", phone: "", closer: "", source: "", channel: "organic",
     offer: "Ecom Ascension", total: "", acompte: "", n: "", start: toISO(today),
@@ -358,6 +360,20 @@ export default function App() {
     flash("Encaissement ajouté.");
   };
   const matchQ = (s) => !q.trim() || `${s.client} ${s.source} ${s.email}`.toLowerCase().includes(q.trim().toLowerCase());
+
+  // Édition complète d'une fiche client (échéances personnalisables).
+  const openEdit = (s) => { setEditFor(s.id); setEditDraft({ client: s.client, schedule: s.schedule.map((i) => ({ ...i })) }); };
+  const closeEdit = () => { setEditFor(null); setEditDraft(null); };
+  const editInst = (idx, patch) => setEditDraft((d) => ({ ...d, schedule: d.schedule.map((i, j) => j === idx ? { ...i, ...patch } : i) }));
+  const addEditInst = () => setEditDraft((d) => ({ ...d, schedule: [...d.schedule, { id: `m-${Date.now()}-${d.schedule.length}`, dueDate: toISO(today), amount: "", paid: false, method: null }] }));
+  const delEditInst = (idx) => setEditDraft((d) => ({ ...d, schedule: d.schedule.filter((_, j) => j !== idx) }));
+  const saveEdit = () => {
+    const sched = editDraft.schedule.map((i) => ({ ...i, amount: parseFloat(String(i.amount).replace(",", ".")) || 0, method: i.paid ? (i.method || "manual") : null }));
+    const total = sched.reduce((a, i) => a + i.amount, 0);
+    persist(sales.map((s) => s.id !== editFor ? s : { ...s, client: editDraft.client.trim() || s.client, schedule: sched, total }));
+    closeEdit();
+    flash("Fiche mise à jour.");
+  };
   // Attribution manuelle organique ⇄ paid (systeme.io ne fournit pas la donnée).
   const toggleChannel = (id) =>
     persist(sales.map((s) => s.id !== id ? s : { ...s, channel: s.channel === "paid" ? "organic" : "paid" }));
@@ -422,6 +438,16 @@ export default function App() {
         .filterbar input::placeholder{color:rgba(234,242,255,.4);}
         .filterbar .clr{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:6px;border:1px solid var(--line);background:transparent;color:var(--text);cursor:pointer;}
         .row-end{display:flex;gap:7px;align-items:center;justify-content:flex-end;}
+        .modal-wide{max-width:660px;width:94%;}
+        .edit-lbl{display:block;font-size:12px;font-weight:600;color:rgba(234,242,255,.6);margin:14px 0 8px;}
+        .edit-head{display:grid;grid-template-columns:1.25fr 1fr 1.05fr .95fr 34px;gap:8px;padding:0 2px 6px;font-size:11px;color:rgba(234,242,255,.4);}
+        .edit-list{display:flex;flex-direction:column;gap:8px;max-height:44vh;overflow:auto;margin-bottom:12px;}
+        .edit-row{display:grid;grid-template-columns:1.25fr 1fr 1.05fr .95fr 34px;gap:8px;align-items:center;}
+        .edit-row input,.edit-row select{background:var(--panel2);border:1px solid var(--line);color:var(--text);border-radius:8px;padding:8px 10px;font:inherit;font-size:13px;width:100%;}
+        .edit-row input.amt{text-align:right;}
+        .edit-row select:disabled{opacity:.4;}
+        .pay-toggle{display:inline-flex;align-items:center;gap:5px;justify-content:center;background:var(--panel2);border:1px solid var(--line);color:rgba(234,242,255,.55);border-radius:8px;padding:8px;font:inherit;font-size:12px;font-weight:600;cursor:pointer;}
+        .pay-toggle.on{color:#2BD9A0;border-color:rgba(43,217,160,.4);background:rgba(43,217,160,.08);}
       `}</style>
 
       <header className="melo-head">
@@ -477,7 +503,7 @@ export default function App() {
             return (
               <div key={s.id} className={`row ${hasOverdue(s) ? "flag" : ""}`}>
                 <div>
-                  <div className="client-name">{s.client}</div>
+                  <div className="client-name" style={{ cursor: "pointer" }} title="Éditer la fiche" onClick={() => openEdit(s)}>{s.client}</div>
                   <div className="client-meta">
                     <span className={`src src-${s.channel === "paid" ? "paid" : "organic"}`} role="button" style={{ cursor: "pointer" }} title="Cliquer pour basculer organique / paid" onClick={(e) => { e.stopPropagation(); toggleChannel(s.id); }}>{s.channel === "paid" ? <Megaphone size={11} /> : <Leaf size={11} />}{s.source}</span>
                     <span className="tag"><UserCheck size={12} /> {s.closer}</span>
@@ -517,6 +543,7 @@ export default function App() {
                   })}
                 </div>
                 <div className="row-end">
+                  <button className="mini" onClick={() => openEdit(s)} title="Éditer la fiche"><Pencil size={15} /></button>
                   <button className="mini ok" onClick={() => { setPayFor(s.id); setPayForm({ amount: "", date: toISO(today), method: "manual" }); }} title="Ajouter un encaissement"><Plus size={15} /></button>
                   <button className="del" onClick={() => removeSale(s.id)} title="Supprimer le client"><Trash2 size={15} /></button>
                 </div>
@@ -667,6 +694,40 @@ export default function App() {
           )}
         </div>
       </>)}
+
+      {/* ÉDITER LA FICHE */}
+      {editFor && editDraft && (
+        <div className="overlay" onClick={(e) => e.target === e.currentTarget && closeEdit()}>
+          <div className="modal modal-wide">
+            <button className="modal-close" onClick={closeEdit}><X size={20} /></button>
+            <h3>Éditer la fiche</h3>
+            <div className="field"><label>Nom du client</label><input value={editDraft.client} onChange={(e) => setEditDraft({ ...editDraft, client: e.target.value })} /></div>
+            <label className="edit-lbl">Échéances</label>
+            <div className="edit-head"><span>Date</span><span>Montant (€)</span><span>Statut</span><span>Moyen</span><span /></div>
+            <div className="edit-list">
+              {editDraft.schedule.map((i, idx) => (
+                <div className="edit-row" key={i.id || idx}>
+                  <input type="date" value={i.dueDate || ""} onChange={(e) => editInst(idx, { dueDate: e.target.value })} />
+                  <input className="amt" value={i.amount} inputMode="decimal" placeholder="0" onChange={(e) => editInst(idx, { amount: e.target.value })} />
+                  <button className={`pay-toggle ${i.paid ? "on" : ""}`} onClick={() => editInst(idx, { paid: !i.paid, method: !i.paid ? (i.method || "manual") : i.method })}>{i.paid ? <><Check size={13} /> Encaissé</> : "À venir"}</button>
+                  <select value={i.method || "manual"} disabled={!i.paid} onChange={(e) => editInst(idx, { method: e.target.value })}>
+                    <option value="auto">Stripe</option>
+                    <option value="manual">Virement</option>
+                  </select>
+                  <button className="mini" title="Supprimer l'échéance" onClick={() => delEditInst(idx)}><Trash2 size={14} /></button>
+                </div>
+              ))}
+              {editDraft.schedule.length === 0 && <div className="empty" style={{ padding: 20 }}>Aucune échéance. Ajoute-en une ci-dessous.</div>}
+            </div>
+            <button className="btn-ghost" onClick={addEditInst}><Plus size={15} /> Ajouter une échéance</button>
+            <div className="preview">Total : <b>{euro(editDraft.schedule.reduce((a, i) => a + (parseFloat(String(i.amount).replace(",", ".")) || 0), 0))}</b> · {editDraft.schedule.filter((i) => i.paid).length} encaissée(s) · {euro(editDraft.schedule.filter((i) => i.paid).reduce((a, i) => a + (parseFloat(String(i.amount).replace(",", ".")) || 0), 0))} reçu</div>
+            <div className="modal-actions">
+              <button className="btn-ghost" onClick={closeEdit}>Annuler</button>
+              <button className="btn-primary" onClick={saveEdit}><Check size={16} /> Enregistrer</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* AJOUTER UN ENCAISSEMENT */}
       {payFor && (
