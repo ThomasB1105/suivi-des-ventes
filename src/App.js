@@ -234,16 +234,37 @@ export default function App() {
   const [syncing, setSyncing] = useState(false);
   // Applique les ventes venues de la base (webhooks systeme.io) en conservant
   // l'attribution manuelle (canal/source/closer) et les ventes saisies à la main.
-  // Synchro NON destructive : on n'ajoute que les NOUVEAUX clients (id absent).
-  // Les clients déjà présents (et tes corrections manuelles) ne sont jamais écrasés.
+  // Synchro : ajoute les nouveaux clients ET rafraîchit les clients existants
+  // (nouveaux paiements) en PRÉSERVANT les corrections manuelles :
+  //  - attribution (canal), nom/téléphone/email édités
+  //  - échéances annulées / remboursées
+  //  - encaissements marqués à la main (virement) ou ajoutés (id "m-…")
   const applyDbSales = (incoming) => {
     setSales((prev) => {
-      const have = new Set(prev.map((s) => s.id));
-      const toAdd = incoming.filter((s) => !have.has(s.id));
-      if (!toAdd.length) return prev;
-      const next = [...prev, ...toAdd];
-      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(next)); } catch (e) { /* quota */ }
-      return next;
+      const prevById = new Map(prev.map((s) => [s.id, s]));
+      const incIds = new Set(incoming.map((s) => s.id));
+      const merged = incoming.map((inc) => {
+        const loc = prevById.get(inc.id);
+        if (!loc) return inc; // nouveau client
+        const locById = new Map(loc.schedule.map((i) => [i.id, i]));
+        const schedule = inc.schedule.map((i) => {
+          const lo = locById.get(i.id);
+          if (lo) {
+            if (lo.cancelled || lo.refunded) return { ...i, paid: false, method: null, cancelled: lo.cancelled, refunded: lo.refunded };
+            if (lo.paid && !i.paid) return { ...i, paid: true, method: lo.method || "manual" }; // virement marqué à la main
+          }
+          return i;
+        });
+        // garder les encaissements ajoutés à la main (absents du serveur)
+        loc.schedule.forEach((i) => { if (String(i.id).startsWith("m-") && !inc.schedule.some((x) => x.id === i.id)) schedule.push(i); });
+        schedule.sort((a, b) => String(a.dueDate).localeCompare(String(b.dueDate)));
+        const total = schedule.reduce((a, i) => a + (i.cancelled || i.refunded ? 0 : i.amount), 0);
+        return { ...inc, client: loc.client, phone: loc.phone || inc.phone, email: loc.email || inc.email, closer: loc.closer, source: loc.source, channel: loc.channel, schedule, total };
+      });
+      // conserver les ventes purement manuelles (ajoutées via "Ajouter une vente")
+      prev.forEach((s) => { if (!incIds.has(s.id)) merged.push(s); });
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(merged)); } catch (e) { /* quota */ }
+      return merged;
     });
   };
 
