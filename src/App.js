@@ -54,7 +54,8 @@ const monthLabel = (key) => {
   return new Date(y, m - 1, 1).toLocaleDateString("fr-FR", { month: "short", year: "2-digit" }).replace(".", "");
 };
 const dateLabel = (iso) => parseLocal(iso).toLocaleDateString("fr-FR", { day: "2-digit", month: "short" });
-const statusOf = (inst) => inst.paid ? "paid" : (parseLocal(inst.dueDate) < today ? "overdue" : "upcoming");
+const statusOf = (inst) => inst.cancelled ? "cancelled" : inst.refunded ? "refunded" : inst.paid ? "paid" : (parseLocal(inst.dueDate) < today ? "overdue" : "upcoming");
+const isActive = (inst) => !inst.cancelled && !inst.refunded; // compte dans les montants attendus
 
 /* ------------------------------ seed (iClosed + Systeme.io demo) ------------------------------ */
 
@@ -305,6 +306,7 @@ export default function App() {
   const months = useMemo(() => {
     const m = {};
     allInst.forEach((i) => {
+      if (i.st === "cancelled" || i.st === "refunded") return;
       const key = monthKey(i.dueDate); if (!m[key]) m[key] = { key, encaisse: 0, aVenir: 0, impaye: 0, total: 0 };
       const g = m[key]; g.total += i.amount;
       if (i.st === "paid") g.encaisse += i.amount; else if (i.st === "overdue") g.impaye += i.amount; else g.aVenir += i.amount;
@@ -314,11 +316,16 @@ export default function App() {
 
   const daysLate = (iso) => Math.max(0, Math.floor((today - parseLocal(iso)) / 86400000));
 
-  const nextDue = (s) => s.schedule.filter((i) => !i.paid).sort((a, b) => a.dueDate.localeCompare(b.dueDate))[0] || null;
+  const nextDue = (s) => s.schedule.filter((i) => !i.paid && isActive(i)).sort((a, b) => a.dueDate.localeCompare(b.dueDate))[0] || null;
   const hasOverdue = (s) => s.schedule.some((i) => statusOf(i) === "overdue");
 
   const setPayment = (saleId, instId, paid, method) => {
-    persist(sales.map((s) => s.id !== saleId ? s : { ...s, schedule: s.schedule.map((i) => i.id === instId ? { ...i, paid, method: paid ? method : null, paidDate: paid ? toISO(today) : null } : i) }));
+    persist(sales.map((s) => s.id !== saleId ? s : { ...s, schedule: s.schedule.map((i) => i.id === instId ? { ...i, paid, method: paid ? method : null, cancelled: false, refunded: false, paidDate: paid ? toISO(today) : null } : i) }));
+    setMenu(null);
+  };
+  // Annuler une échéance (sort des impayés) ou la marquer remboursée.
+  const setInstState = (saleId, instId, patch) => {
+    persist(sales.map((s) => s.id !== saleId ? s : { ...s, schedule: s.schedule.map((i) => i.id === instId ? { ...i, paid: false, method: null, cancelled: false, refunded: false, ...patch } : i) }));
     setMenu(null);
   };
   const removeSale = (id) => persist(sales.filter((s) => s.id !== id));
@@ -340,13 +347,13 @@ export default function App() {
   const matchQ = (s) => !q.trim() || `${s.client} ${s.source} ${s.email}`.toLowerCase().includes(q.trim().toLowerCase());
 
   // Édition complète d'une fiche client (échéances personnalisables).
-  const openEdit = (s) => { setEditFor(s.id); setEditDraft({ client: s.client, phone: s.phone || "", email: s.email || "", schedule: s.schedule.map((i) => ({ ...i })) }); };
+  const openEdit = (s) => { setEditFor(s.id); setEditDraft({ client: s.client, phone: s.phone || "", email: s.email || "", schedule: s.schedule.map((i) => ({ ...i })).sort((a, b) => String(a.dueDate).localeCompare(String(b.dueDate))) }); };
   const closeEdit = () => { setEditFor(null); setEditDraft(null); };
   const editInst = (idx, patch) => setEditDraft((d) => ({ ...d, schedule: d.schedule.map((i, j) => j === idx ? { ...i, ...patch } : i) }));
   const addEditInst = () => setEditDraft((d) => ({ ...d, schedule: [...d.schedule, { id: `m-${Date.now()}-${d.schedule.length}`, dueDate: toISO(today), amount: "", paid: false, method: null }] }));
   const delEditInst = (idx) => setEditDraft((d) => ({ ...d, schedule: d.schedule.filter((_, j) => j !== idx) }));
   const saveEdit = () => {
-    const sched = editDraft.schedule.map((i) => ({ ...i, amount: parseFloat(String(i.amount).replace(",", ".")) || 0, method: i.paid ? (i.method || "manual") : null }));
+    const sched = editDraft.schedule.map((i) => ({ ...i, amount: parseFloat(String(i.amount).replace(",", ".")) || 0, method: i.paid ? (i.method || "manual") : null })).sort((a, b) => String(a.dueDate).localeCompare(String(b.dueDate)));
     const total = sched.reduce((a, i) => a + i.amount, 0);
     persist(sales.map((s) => s.id !== editFor ? s : { ...s, client: editDraft.client.trim() || s.client, phone: editDraft.phone.trim(), email: editDraft.email.trim(), schedule: sched, total }));
     closeEdit();
@@ -407,7 +414,7 @@ export default function App() {
   const metricsFor = (from, to) => {
     let collected = 0, outstanding = 0, overdueAmt = 0, overdueCount = 0, org = 0, paid = 0, expected = 0;
     sales.forEach((s) => s.schedule.forEach((i) => {
-      if (i.dueDate >= from && i.dueDate <= to) {
+      if (i.dueDate >= from && i.dueDate <= to && isActive(i)) {
         expected += i.amount;
         if (i.paid) { collected += i.amount; if (s.channel === "paid") paid += i.amount; else org += i.amount; }
         else { outstanding += i.amount; if (statusOf(i) === "overdue") { overdueAmt += i.amount; overdueCount++; } }
@@ -437,10 +444,10 @@ export default function App() {
     return list.sort((a, b) => a.dueDate.localeCompare(b.dueDate));
   }, [sales, periodRange]); // eslint-disable-line
   const periodTot = {
-    toCollect: periodList.filter((i) => !i.paid).reduce((a, i) => a + i.amount, 0),
+    toCollect: periodList.filter((i) => !i.paid && isActive(i)).reduce((a, i) => a + i.amount, 0),
     collected: periodList.filter((i) => i.paid).reduce((a, i) => a + i.amount, 0),
     overdue: periodList.filter((i) => i.st === "overdue").reduce((a, i) => a + i.amount, 0),
-    count: periodList.filter((i) => !i.paid).length,
+    count: periodList.filter((i) => !i.paid && isActive(i)).length,
   };
 
   // Impayés DE LA PÉRIODE (onglet Impayés + bandeau).
@@ -476,7 +483,7 @@ export default function App() {
   const chartForecast = useMemo(() => {
     const m = {};
     sales.forEach((s) => s.schedule.forEach((i) => {
-      if (i.dueDate >= chartRange.from && i.dueDate <= chartRange.to) {
+      if (i.dueDate >= chartRange.from && i.dueDate <= chartRange.to && isActive(i)) {
         const key = monthKey(i.dueDate);
         if (!m[key]) m[key] = { key, paid: 0, due: 0 };
         if (i.paid) m[key].paid += i.amount; else m[key].due += i.amount;
@@ -549,6 +556,14 @@ export default function App() {
         .chan-sel{background:var(--panel2);border:1px solid var(--line);border-radius:7px;padding:3px 8px;font:inherit;font-size:11px;font-weight:600;cursor:pointer;color-scheme:dark;}
         .chan-sel.src-organic{color:#2BD9A0;border-color:rgba(43,217,160,.4);background:rgba(43,217,160,.08);}
         .chan-sel.src-paid{color:#00D4FF;border-color:rgba(0,212,255,.4);background:rgba(0,212,255,.08);}
+        .client-link{display:inline-flex;align-items:center;gap:6px;cursor:pointer;background:none;border:none;color:inherit;font:inherit;font-weight:inherit;padding:0;}
+        .client-link svg{opacity:.4;transition:.15s;}
+        .client-link:hover{color:var(--cyan);text-decoration:underline;}
+        .client-link:hover svg{opacity:1;}
+        .pill.pill-cancelled{opacity:.5;border-style:dashed;}
+        .pill.pill-cancelled .a{text-decoration:line-through;}
+        .pill.pill-refunded{color:#FFB020;border-color:rgba(255,176,32,.4);background:rgba(255,176,32,.08);}
+        .badge.warn{color:#FFB020;border-color:rgba(255,176,32,.4);background:rgba(255,176,32,.08);}
         .delta{display:inline-block;font-size:11px;font-weight:700;margin-right:8px;}
         .delta.up{color:#2BD9A0;}
         .delta.down{color:#FF4D5E;}
@@ -692,7 +707,7 @@ export default function App() {
             return (
               <div key={s.id} className={`row ${hasOverdue(s) ? "flag" : ""}`}>
                 <div>
-                  <div className="client-name" style={{ cursor: "pointer" }} title="Éditer la fiche" onClick={() => openEdit(s)}>{s.client}</div>
+                  <div className="client-name client-link" title="Voir / éditer la fiche" onClick={() => openEdit(s)}>{s.client} <Pencil size={12} /></div>
                   <div className="client-meta">
                     <select className={`chan-sel src-${s.channel === "paid" ? "paid" : "organic"}`} value={s.channel} onClick={(e) => e.stopPropagation()} onChange={(e) => { e.stopPropagation(); setChannel(s.id, e.target.value); }} title="Attribuer le lead">
                       <option value="organic">🌱 Organique</option>
@@ -709,7 +724,7 @@ export default function App() {
                     {nd ? <>prochaine : {dateLabel(nd.dueDate)} {ndSt === "overdue" ? <span className="late">(en retard)</span> : <>({euro(nd.amount)})</>}</> : <>soldé</>}</div>
                 </div>
                 <div className="pills">
-                  {s.schedule.map((inst) => {
+                  {[...s.schedule].sort((a, b) => a.dueDate.localeCompare(b.dueDate)).map((inst) => {
                     const st = statusOf(inst);
                     const cls = st === "paid" ? (inst.method === "manual" ? "pill-manual" : "pill-paid") : `pill-${st}`;
                     const isNext = nd && inst.id === nd.id;
@@ -719,6 +734,8 @@ export default function App() {
                           <span className="m">{monthLabel(monthKey(inst.dueDate))}</span>
                           {st === "paid" && (inst.method === "manual" ? <Landmark className="ic" size={15} /> : <Check className="ic" size={15} />)}
                           {st === "overdue" && <AlertTriangle className="ic" size={15} />}
+                          {st === "cancelled" && <X className="ic" size={15} />}
+                          {st === "refunded" && <RotateCcw className="ic" size={15} />}
                           <span className="a">{euro(inst.amount)}</span>
                         </div>
                         {menu === inst.id && (<>
@@ -726,7 +743,9 @@ export default function App() {
                           <div className="pill-menu" onClick={(e) => e.stopPropagation()}>
                             <div className="menu-item" onClick={() => setPayment(s.id, inst.id, true, "auto")}><Check size={15} color="#2BD9A0" /> Encaissé (Stripe)</div>
                             <div className="menu-item" onClick={() => setPayment(s.id, inst.id, true, "manual")}><Landmark size={15} color="#FFB020" /> Encaissé en direct (virement)</div>
-                            <div className="menu-item" onClick={() => setPayment(s.id, inst.id, false, null)}><RotateCcw size={15} color="#FF4D5E" /> Remettre en attente</div>
+                            <div className="menu-item" onClick={() => setPayment(s.id, inst.id, false, null)}><RotateCcw size={15} color="#00D4FF" /> Remettre en attente</div>
+                            <div className="menu-item" onClick={() => setInstState(s.id, inst.id, { cancelled: true })}><X size={15} color="#8a93a5" /> Annuler l'échéance</div>
+                            <div className="menu-item" onClick={() => setInstState(s.id, inst.id, { refunded: true })}><RotateCcw size={15} color="#FFB020" /> Marquer remboursé</div>
                             <div className="menu-item" onClick={() => removeInst(s.id, inst.id)}><Trash2 size={15} color="#FF4D5E" /> Supprimer cette échéance</div>
                           </div>
                         </>)}
@@ -806,8 +825,11 @@ export default function App() {
               <tbody>
                 {overduesF.map((i) => (
                   <tr key={i.id}>
-                    <td className="lab">{i.sale.client}{i.sale.phone && <span className="mut" style={{ fontWeight: 400 }}> · {i.sale.phone}</span>}</td>
-                    <td><span className={`src src-${i.sale.channel === "paid" ? "paid" : "organic"}`}>{i.sale.channel === "paid" ? <Megaphone size={11} /> : <Leaf size={11} />}{i.sale.source}</span></td>
+                    <td className="lab">
+                      <button className="client-link" title="Voir la fiche" onClick={() => openEdit(i.sale)}>{i.sale.client} <Pencil size={11} /></button>
+                      {(i.sale.email || i.sale.phone) && <div className="mut" style={{ fontWeight: 400, fontSize: 11, marginTop: 2 }}>{[i.sale.email, i.sale.phone].filter(Boolean).join(" · ")}</div>}
+                    </td>
+                    <td><span className={`src src-${i.sale.channel === "paid" ? "paid" : "organic"}`}>{i.sale.channel === "paid" ? <Megaphone size={11} /> : <Leaf size={11} />}{i.sale.channel === "paid" ? "Ads" : "Organique"}</span></td>
                     <td className="mut">{i.sale.offer}</td>
                     <td className="num">{dateLabel(i.dueDate)}</td>
                     <td className="num red">{daysLate(i.dueDate)} j</td>
@@ -816,7 +838,9 @@ export default function App() {
                       <div className="row-actions">
                         <button className="mini ok" title="Encaissé (Stripe)" onClick={() => setPayment(i.sale.id, i.id, true, "auto")}><Check size={14} /></button>
                         <button className="mini warn" title="Encaissé en direct (virement)" onClick={() => setPayment(i.sale.id, i.id, true, "manual")}><Landmark size={14} /></button>
-                        <button className="mini" title="Supprimer cette échéance (faux impayé)" onClick={() => removeInst(i.sale.id, i.id)}><Trash2 size={14} /></button>
+                        <button className="mini" title="Annuler l'échéance (sort des impayés)" onClick={() => setInstState(i.sale.id, i.id, { cancelled: true })}><X size={14} /></button>
+                        <button className="mini" title="Marquer remboursé" onClick={() => setInstState(i.sale.id, i.id, { refunded: true })}><RotateCcw size={14} /></button>
+                        <button className="mini" title="Supprimer cette échéance" onClick={() => removeInst(i.sale.id, i.id)}><Trash2 size={14} /></button>
                       </div>
                     </td>
                   </tr>
@@ -847,16 +871,17 @@ export default function App() {
               <tbody>
                 {periodListF.map((i) => (
                   <tr key={i.id}>
-                    <td className="lab">{i.sale.client}</td>
-                    <td><span className={`src src-${i.sale.channel === "paid" ? "paid" : "organic"}`}>{i.sale.channel === "paid" ? <Megaphone size={11} /> : <Leaf size={11} />}{i.sale.source}</span></td>
+                    <td className="lab"><button className="client-link" title="Voir la fiche" onClick={() => openEdit(i.sale)}>{i.sale.client} <Pencil size={11} /></button></td>
+                    <td><span className={`src src-${i.sale.channel === "paid" ? "paid" : "organic"}`}>{i.sale.channel === "paid" ? <Megaphone size={11} /> : <Leaf size={11} />}{i.sale.channel === "paid" ? "Ads" : "Organique"}</span></td>
                     <td className="num">{dateLabel(i.dueDate)}</td>
-                    <td>{i.st === "paid" ? <span className="badge green">Encaissé</span> : i.st === "overdue" ? <span className="badge red">En retard</span> : <span className="badge mut">À venir</span>}</td>
+                    <td>{i.st === "paid" ? <span className="badge green">Encaissé</span> : i.st === "overdue" ? <span className="badge red">En retard</span> : i.st === "cancelled" ? <span className="badge mut">Annulé</span> : i.st === "refunded" ? <span className="badge warn">Remboursé</span> : <span className="badge mut">À venir</span>}</td>
                     <td className="num">{euro(i.amount)}</td>
                     <td className="num">
                       <div className="row-actions">
-                        {!i.paid ? (<>
+                        {!i.paid && isActive(i) ? (<>
                           <button className="mini ok" title="Encaissé (Stripe)" onClick={() => setPayment(i.sale.id, i.id, true, "auto")}><Check size={14} /></button>
                           <button className="mini warn" title="Encaissé en direct (virement)" onClick={() => setPayment(i.sale.id, i.id, true, "manual")}><Landmark size={14} /></button>
+                          <button className="mini" title="Annuler l'échéance" onClick={() => setInstState(i.sale.id, i.id, { cancelled: true })}><X size={14} /></button>
                         </>) : (
                           <button className="mini" title="Remettre en attente" onClick={() => setPayment(i.sale.id, i.id, false, null)}><RotateCcw size={14} /></button>
                         )}
@@ -865,7 +890,7 @@ export default function App() {
                     </td>
                   </tr>
                 ))}
-                <tr className="tot-row"><td className="lab">À collecter{q ? " (filtré)" : ""}</td><td /><td /><td /><td className="num">{euro(periodListF.filter((i) => !i.paid).reduce((a, i) => a + i.amount, 0))}</td><td /></tr>
+                <tr className="tot-row"><td className="lab">À collecter{q ? " (filtré)" : ""}</td><td /><td /><td /><td className="num">{euro(periodListF.filter((i) => !i.paid && isActive(i)).reduce((a, i) => a + i.amount, 0))}</td><td /></tr>
               </tbody>
             </table>
           )}
