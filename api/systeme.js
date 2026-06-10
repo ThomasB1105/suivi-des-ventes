@@ -156,8 +156,10 @@ function normalizeOrder(order, tagsById) {
     email: pick(contact, "email") || "",
     phone: pick(contact, "phoneNumber", "phone") || "",
     closer: "—",
-    source: (contactTags[0] && String(contactTags[0])) || "systeme.io",
-    channel: channelFromTags(contactTags),
+    // Attribution organique/paid faite à la main dans l'app (pas dispo dans systeme.io).
+    // La synchro préserve ces champs une fois que tu les as réglés.
+    source: "À attribuer",
+    channel: "organic",
     offer: pick(order, "productName") || pick(order, "name") || "—",
     closeDate: toISODate(pick(order, "createdAt", "date")) || toISODate(Date.now()),
     total,

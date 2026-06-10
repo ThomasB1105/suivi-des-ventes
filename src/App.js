@@ -250,8 +250,18 @@ export default function App() {
       const data = await r.json();
       if (!r.ok) throw new Error(data && data.error ? data.error : `Erreur ${r.status}`);
       const incoming = normalize(data.sales || []);
+      // systeme.io possède les données financières (plan, acompte, paiements).
+      // L'app possède l'attribution manuelle (canal organique/paid, source, closer) :
+      // on la conserve d'une synchro à l'autre quand la vente existe déjà.
+      const prevById = new Map(
+        sales.filter((s) => String(s.id).startsWith("sio-")).map((s) => [s.id, s])
+      );
+      const merged = incoming.map((s) => {
+        const prev = prevById.get(s.id);
+        return prev ? { ...s, channel: prev.channel, source: prev.source, closer: prev.closer } : s;
+      });
       const manual = sales.filter((s) => !String(s.id).startsWith("sio-"));
-      persist([...manual, ...incoming]);
+      persist([...manual, ...merged]);
       flash(incoming.length
         ? `${incoming.length} vente(s) synchronisée(s) depuis systeme.io.`
         : "Synchro OK, aucune vente trouvée pour le moment.");
@@ -330,6 +340,9 @@ export default function App() {
     setMenu(null);
   };
   const removeSale = (id) => persist(sales.filter((s) => s.id !== id));
+  // Attribution manuelle organique ⇄ paid (systeme.io ne fournit pas la donnée).
+  const toggleChannel = (id) =>
+    persist(sales.map((s) => s.id !== id ? s : { ...s, channel: s.channel === "paid" ? "organic" : "paid" }));
 
   const pv = (() => {
     const total = parseFloat(String(form.total).replace(",", ".")) || 0;
@@ -416,7 +429,7 @@ export default function App() {
                 <div>
                   <div className="client-name">{s.client}</div>
                   <div className="client-meta">
-                    <span className={`src src-${s.channel === "paid" ? "paid" : "organic"}`}>{s.channel === "paid" ? <Megaphone size={11} /> : <Leaf size={11} />}{s.source}</span>
+                    <span className={`src src-${s.channel === "paid" ? "paid" : "organic"}`} role="button" style={{ cursor: "pointer" }} title="Cliquer pour basculer organique / paid" onClick={(e) => { e.stopPropagation(); toggleChannel(s.id); }}>{s.channel === "paid" ? <Megaphone size={11} /> : <Leaf size={11} />}{s.source}</span>
                     <span className="tag"><UserCheck size={12} /> {s.closer}</span>
                     {s.email && <span><Mail size={12} /> {s.email}</span>}
                     {s.phone && <span><Phone size={12} /> {s.phone}</span>}
