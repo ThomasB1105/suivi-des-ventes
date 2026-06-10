@@ -289,12 +289,6 @@ export default function App() {
     };
   }, [sales, allInst]);
 
-  const forecast = useMemo(() => {
-    const m = {};
-    allInst.forEach((i) => { const key = monthKey(i.dueDate); if (!m[key]) m[key] = { key, paid: 0, due: 0 }; if (i.paid) m[key].paid += i.amount; else m[key].due += i.amount; });
-    return Object.values(m).sort((a, b) => a.key.localeCompare(b.key)).map((x) => ({ ...x, label: monthLabel(x.key) }));
-  }, [allInst]);
-
   const monthCols = useMemo(() => [...new Set(allInst.map((i) => monthKey(i.dueDate)))].sort(), [allInst]);
 
   const cohortGroups = useMemo(() => {
@@ -346,7 +340,7 @@ export default function App() {
   const matchQ = (s) => !q.trim() || `${s.client} ${s.source} ${s.email}`.toLowerCase().includes(q.trim().toLowerCase());
 
   // Édition complète d'une fiche client (échéances personnalisables).
-  const openEdit = (s) => { setEditFor(s.id); setEditDraft({ client: s.client, schedule: s.schedule.map((i) => ({ ...i })) }); };
+  const openEdit = (s) => { setEditFor(s.id); setEditDraft({ client: s.client, phone: s.phone || "", email: s.email || "", schedule: s.schedule.map((i) => ({ ...i })) }); };
   const closeEdit = () => { setEditFor(null); setEditDraft(null); };
   const editInst = (idx, patch) => setEditDraft((d) => ({ ...d, schedule: d.schedule.map((i, j) => j === idx ? { ...i, ...patch } : i) }));
   const addEditInst = () => setEditDraft((d) => ({ ...d, schedule: [...d.schedule, { id: `m-${Date.now()}-${d.schedule.length}`, dueDate: toISO(today), amount: "", paid: false, method: null }] }));
@@ -354,13 +348,13 @@ export default function App() {
   const saveEdit = () => {
     const sched = editDraft.schedule.map((i) => ({ ...i, amount: parseFloat(String(i.amount).replace(",", ".")) || 0, method: i.paid ? (i.method || "manual") : null }));
     const total = sched.reduce((a, i) => a + i.amount, 0);
-    persist(sales.map((s) => s.id !== editFor ? s : { ...s, client: editDraft.client.trim() || s.client, schedule: sched, total }));
+    persist(sales.map((s) => s.id !== editFor ? s : { ...s, client: editDraft.client.trim() || s.client, phone: editDraft.phone.trim(), email: editDraft.email.trim(), schedule: sched, total }));
     closeEdit();
     flash("Fiche mise à jour.");
   };
-  // Attribution manuelle organique ⇄ paid (systeme.io ne fournit pas la donnée).
-  const toggleChannel = (id) =>
-    persist(sales.map((s) => s.id !== id ? s : { ...s, channel: s.channel === "paid" ? "organic" : "paid" }));
+  // Attribution manuelle du lead (Organique / Ads).
+  const setChannel = (id, channel) =>
+    persist(sales.map((s) => s.id !== id ? s : { ...s, channel }));
 
   const pv = (() => {
     const total = parseFloat(String(form.total).replace(",", ".")) || 0;
@@ -467,6 +461,30 @@ export default function App() {
     else if (sortBy === "overdue") arr.sort((a, b) => (hasOverdue(b) ? 1 : 0) - (hasOverdue(a) ? 1 : 0) || lastDateOf(b).localeCompare(lastDateOf(a)));
     return arr;
   };
+  // Graph "Prévisionnel d'encaissement" sur l'accueil — période indépendante.
+  const [chartPreset, setChartPreset] = useState("year");
+  const chartRange = useMemo(() => {
+    const t = today, Y = t.getFullYear();
+    switch (chartPreset) {
+      case "year": return { from: toISO(new Date(Y, 0, 1)), to: toISO(new Date(Y, 11, 31)) };
+      case "lastyear": return { from: toISO(new Date(Y - 1, 0, 1)), to: toISO(new Date(Y - 1, 11, 31)) };
+      case "12m": return { from: toISO(new Date(Y, t.getMonth() - 11, 1)), to: toISO(new Date(Y, t.getMonth() + 1, 0)) };
+      case "global": return { from: range.from, to: range.to };
+      default: return { from: "2000-01-01", to: toISO(new Date(Y + 2, 11, 31)) };
+    }
+  }, [chartPreset, range]);
+  const chartForecast = useMemo(() => {
+    const m = {};
+    sales.forEach((s) => s.schedule.forEach((i) => {
+      if (i.dueDate >= chartRange.from && i.dueDate <= chartRange.to) {
+        const key = monthKey(i.dueDate);
+        if (!m[key]) m[key] = { key, paid: 0, due: 0 };
+        if (i.paid) m[key].paid += i.amount; else m[key].due += i.amount;
+      }
+    }));
+    return Object.values(m).sort((a, b) => a.key.localeCompare(b.key)).map((x) => ({ ...x, label: monthLabel(x.key) }));
+  }, [sales, chartRange]);
+
   const salesInPeriod = sales.filter((s) => s.schedule.some((i) => inPeriod(i.dueDate)));
   const salesF = sortClients(salesInPeriod.filter(matchQ));
   const overduesF = overdues.filter((i) => matchQ(i.sale));
@@ -525,6 +543,12 @@ export default function App() {
         .dr-hint{margin-top:8px;font-size:11px;color:rgba(234,242,255,.45);text-align:center;}
         .period-lbl{font-size:12px;font-weight:600;color:rgba(234,242,255,.4);margin-left:auto;}
         .sort-sel{background:var(--panel2);border:1px solid var(--line);color:var(--text);border-radius:8px;padding:7px 10px;font:inherit;font-size:13px;font-weight:600;cursor:pointer;color-scheme:dark;}
+        .chart-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:2px 0 8px;font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:rgba(234,242,255,.65);}
+        .chart-head>span{display:inline-flex;align-items:center;gap:8px;}
+        .chart-head .mut{text-transform:none;letter-spacing:0;font-weight:500;}
+        .chan-sel{background:var(--panel2);border:1px solid var(--line);border-radius:7px;padding:3px 8px;font:inherit;font-size:11px;font-weight:600;cursor:pointer;color-scheme:dark;}
+        .chan-sel.src-organic{color:#2BD9A0;border-color:rgba(43,217,160,.4);background:rgba(43,217,160,.08);}
+        .chan-sel.src-paid{color:#00D4FF;border-color:rgba(0,212,255,.4);background:rgba(0,212,255,.08);}
         .delta{display:inline-block;font-size:11px;font-weight:700;margin-right:8px;}
         .delta.up{color:#2BD9A0;}
         .delta.down{color:#FF4D5E;}
@@ -605,6 +629,30 @@ export default function App() {
         <div className="card"><div className="kpi-label" style={{ display: "flex", alignItems: "center", gap: 6 }}><Megaphone size={13} color="#00D4FF" /> Encaissé paid</div><div className="kpi-val" style={{ color: "var(--cyan)" }}>{euro(kp.paid)}</div><div className="kpi-foot">{kp.collected ? Math.round((kp.paid / kp.collected) * 100) : 0}% de l'encaissé<br />{Delta(kp.paid, kpPrev.paid, "MoM")}{Delta(kp.paid, kpYoy.paid, "YoY")}</div></div>
       </div>
 
+      {/* GRAPH PRÉVISIONNEL — toujours visible sous les KPIs */}
+      <div className="chart-head">
+        <span><TrendingUp size={15} /> Prévisionnel d'encaissement (MRR) <span className="mut">· par échéance</span></span>
+        <select className="sort-sel" value={chartPreset} onChange={(e) => setChartPreset(e.target.value)} title="Période du graphique">
+          <option value="year">Année en cours</option>
+          <option value="lastyear">Année dernière</option>
+          <option value="12m">12 derniers mois</option>
+          <option value="all">Tout</option>
+          <option value="global">Période du filtre</option>
+        </select>
+      </div>
+      <div className="card" style={{ paddingLeft: 6, marginBottom: 16 }}>
+        <ResponsiveContainer width="100%" height={230}>
+          <BarChart data={chartForecast} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,.06)" vertical={false} />
+            <XAxis dataKey="label" tick={{ fill: "rgba(234,242,255,.55)", fontSize: 12 }} axisLine={false} tickLine={false} />
+            <YAxis tick={{ fill: "rgba(234,242,255,.4)", fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={(v) => (v >= 1000 ? `${v / 1000}k` : v)} />
+            <Tooltip cursor={{ fill: "rgba(255,255,255,.04)" }} contentStyle={{ background: "#16243d", border: "1px solid rgba(255,255,255,.12)", borderRadius: 10, color: "#EAF2FF" }} formatter={(v, n) => [euro(v), n === "paid" ? "Encaissé" : "À encaisser"]} />
+            <Bar dataKey="paid" stackId="a" fill="#2BD9A0" />
+            <Bar dataKey="due" stackId="a" fill="#00D4FF" radius={[5, 5, 0, 0]} />
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+
       {overdues.length > 0 && (
         <div className="banner"><div className="banner-ic"><AlertTriangle size={20} /></div>
           <div><b>{overdues.length} impayé{overdues.length > 1 ? "s" : ""} à relancer</b> · {euro(overdues.reduce((a, i) => a + i.amount, 0))} dépassé sur la période. <span className="mut">Si tu as reçu un virement, marque l'échéance "encaissé en direct".</span></div>
@@ -646,7 +694,10 @@ export default function App() {
                 <div>
                   <div className="client-name" style={{ cursor: "pointer" }} title="Éditer la fiche" onClick={() => openEdit(s)}>{s.client}</div>
                   <div className="client-meta">
-                    <span className={`src src-${s.channel === "paid" ? "paid" : "organic"}`} role="button" style={{ cursor: "pointer" }} title="Cliquer pour basculer organique / paid" onClick={(e) => { e.stopPropagation(); toggleChannel(s.id); }}>{s.channel === "paid" ? <Megaphone size={11} /> : <Leaf size={11} />}{s.source}</span>
+                    <select className={`chan-sel src-${s.channel === "paid" ? "paid" : "organic"}`} value={s.channel} onClick={(e) => e.stopPropagation()} onChange={(e) => { e.stopPropagation(); setChannel(s.id, e.target.value); }} title="Attribuer le lead">
+                      <option value="organic">🌱 Organique</option>
+                      <option value="paid">📣 Ads</option>
+                    </select>
                     <span className="tag"><UserCheck size={12} /> {s.closer}</span>
                     {s.email && <span><Mail size={12} /> {s.email}</span>}
                     {s.phone && <span><Phone size={12} /> {s.phone}</span>}
@@ -731,20 +782,8 @@ export default function App() {
 
       {/* PAR MOIS */}
       {tab === "mois" && (<>
-        <div className="section-h"><TrendingUp size={15} /> Prévisionnel d'encaissement (par échéance)</div>
-        <div className="card" style={{ paddingLeft: 6 }}>
-          <ResponsiveContainer width="100%" height={210}>
-            <BarChart data={forecast} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,.06)" vertical={false} />
-              <XAxis dataKey="label" tick={{ fill: "rgba(234,242,255,.55)", fontSize: 12 }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fill: "rgba(234,242,255,.4)", fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={(v) => (v >= 1000 ? `${v / 1000}k` : v)} />
-              <Tooltip cursor={{ fill: "rgba(255,255,255,.04)" }} contentStyle={{ background: "#16243d", border: "1px solid rgba(255,255,255,.12)", borderRadius: 10, color: "#EAF2FF" }} formatter={(v, n) => [euro(v), n === "paid" ? "Encaissé" : "À encaisser"]} />
-              <Bar dataKey="paid" stackId="a" fill="#2BD9A0" />
-              <Bar dataKey="due" stackId="a" fill="#00D4FF" radius={[5, 5, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-        <div className="card" style={{ padding: 6, marginTop: 14 }}>
+        <div className="section-h"><Calendar size={15} /> Détail par mois</div>
+        <div className="card" style={{ padding: 6, marginTop: 4 }}>
           <table className="tbl">
             <thead><tr><th>Mois</th><th className="num">Encaissé</th><th className="num">À encaisser</th><th className="num">Impayés</th><th className="num">Total attendu</th></tr></thead>
             <tbody>{months.map((m) => (
@@ -840,6 +879,10 @@ export default function App() {
             <button className="modal-close" onClick={closeEdit}><X size={20} /></button>
             <h3>Éditer la fiche</h3>
             <div className="field"><label>Nom du client</label><input value={editDraft.client} onChange={(e) => setEditDraft({ ...editDraft, client: e.target.value })} /></div>
+            <div className="field-row">
+              <div className="field"><label>Téléphone</label><input value={editDraft.phone} onChange={(e) => setEditDraft({ ...editDraft, phone: e.target.value })} placeholder="+33 6 12 34 56 78" /></div>
+              <div className="field"><label>Email</label><input value={editDraft.email} onChange={(e) => setEditDraft({ ...editDraft, email: e.target.value })} placeholder="email@…" /></div>
+            </div>
             <label className="edit-lbl">Échéances</label>
             <div className="edit-head"><span>Date</span><span>Montant (€)</span><span>Statut</span><span>Moyen</span><span /></div>
             <div className="edit-list">
