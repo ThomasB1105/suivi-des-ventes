@@ -23,7 +23,7 @@ const addMonthsISO = (iso, n) => {
 
 function groupIntoSales(events) {
   const byClient = {};
-  events.forEach((e) => {
+  events.filter((e) => Number(e.amount) > 0).forEach((e) => {
     const key = e.email || e.name || e.id;
     if (!byClient[key]) byClient[key] = { email: e.email, name: e.name, offer: e.offer, events: [] };
     byClient[key].events.push(e);
