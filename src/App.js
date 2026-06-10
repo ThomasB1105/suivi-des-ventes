@@ -34,48 +34,6 @@ const statusOf = (inst) => inst.paid ? "paid" : (parseLocal(inst.dueDate) < toda
 
 /* ------------------------------ seed (iClosed + Systeme.io demo) ------------------------------ */
 
-const RAW_SEED = [
-  { client: "Mehdi T.", email: "mehdi.t@gmail.com", phone: "+33 6 12 44 88 02", closer: "Yanis", source: "YouTube", channel: "organic", offer: "Ecom Ascension", closeDate: "2026-02-25", total: 2190, schedule: [
-    { dueDate: "2026-02-28", amount: 438, paid: true, method: "auto" },
-    { dueDate: "2026-03-28", amount: 438, paid: true, method: "auto" },
-    { dueDate: "2026-04-28", amount: 438, paid: false, method: null },
-    { dueDate: "2026-05-28", amount: 438, paid: false, method: null },
-    { dueDate: "2026-06-28", amount: 438, paid: false, method: null },
-  ]},
-  { client: "Emmanuel R.", email: "emmanuel.r@outlook.fr", phone: "+33 7 81 22 19 40", closer: "Léa", source: "Meta Ads", channel: "paid", offer: "Ecom Ascension", closeDate: "2026-03-12", total: 2390, schedule: [
-    { dueDate: "2026-03-15", amount: 478, paid: true, method: "auto" },
-    { dueDate: "2026-04-15", amount: 478, paid: true, method: "auto" },
-    { dueDate: "2026-05-15", amount: 478, paid: false, method: null },
-    { dueDate: "2026-06-15", amount: 478, paid: false, method: null },
-    { dueDate: "2026-07-15", amount: 478, paid: false, method: null },
-  ]},
-  { client: "Virgil M.", email: "virgil.m@gmail.com", phone: "+33 6 55 03 71 28", closer: "Yanis", source: "Instagram", channel: "organic", offer: "Ecom Ascension", closeDate: "2026-04-08", total: 2390, schedule: [
-    { dueDate: "2026-04-10", amount: 597.5, paid: true, method: "auto" },
-    { dueDate: "2026-05-10", amount: 597.5, paid: true, method: "manual" },
-    { dueDate: "2026-06-10", amount: 597.5, paid: false, method: null },
-    { dueDate: "2026-07-10", amount: 597.5, paid: false, method: null },
-  ]},
-  { client: "Lucie P.", email: "lucie.p@gmail.com", phone: "+33 6 09 88 14 55", closer: "Léa", source: "Google Ads", channel: "paid", offer: "Ecom Ascension", closeDate: "2026-04-03", total: 2000, schedule: [
-    { dueDate: "2026-04-05", amount: 1000, paid: true, method: "auto" },
-    { dueDate: "2026-05-05", amount: 1000, paid: true, method: "auto" },
-  ]},
-  { client: "Thomas D.", email: "thomas.d@proton.me", phone: "+33 7 12 60 33 90", closer: "Yanis", source: "Bouche à oreille", channel: "organic", offer: "Ecom Ascension", closeDate: "2026-05-02", total: 2390, schedule: [
-    { dueDate: "2026-05-05", amount: 2390, paid: true, method: "manual" },
-  ]},
-  { client: "Sarah L.", email: "sarah.l@gmail.com", phone: "+33 6 44 18 77 31", closer: "Léa", source: "Meta Ads", channel: "paid", offer: "Ecom Ascension", closeDate: "2026-05-18", total: 1890, schedule: [
-    { dueDate: "2026-05-20", amount: 472.5, paid: true, method: "auto" },
-    { dueDate: "2026-06-20", amount: 472.5, paid: false, method: null },
-    { dueDate: "2026-07-20", amount: 472.5, paid: false, method: null },
-    { dueDate: "2026-08-20", amount: 472.5, paid: false, method: null },
-  ]},
-  { client: "Karim B.", email: "karim.b@gmail.com", phone: "+33 7 33 90 02 14", closer: "Yanis", source: "YouTube", channel: "organic", offer: "Ecom Ascension", closeDate: "2026-05-28", total: 2290, schedule: [
-    { dueDate: "2026-06-01", amount: 458, paid: true, method: "auto" },
-    { dueDate: "2026-07-01", amount: 458, paid: false, method: null },
-    { dueDate: "2026-08-01", amount: 458, paid: false, method: null },
-    { dueDate: "2026-09-01", amount: 458, paid: false, method: null },
-    { dueDate: "2026-10-01", amount: 458, paid: false, method: null },
-  ]},
-];
 
 const normalize = (list) =>
   list.map((s, i) => ({
@@ -86,7 +44,7 @@ const normalize = (list) =>
     })),
   }));
 
-const STORAGE_KEY = "melo_sales_v4";
+const STORAGE_KEY = "melo_sales_v5";
 
 /* ------------------------------ styles ------------------------------ */
 
@@ -216,7 +174,7 @@ const css = `
 /* ------------------------------ component ------------------------------ */
 
 export default function App() {
-  const [sales, setSales] = useState(() => normalize(RAW_SEED));
+  const [sales, setSales] = useState([]);
   const [tab, setTab] = useState("clients");
   const [showAdd, setShowAdd] = useState(false);
   const [menu, setMenu] = useState(null);
