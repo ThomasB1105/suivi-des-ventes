@@ -184,6 +184,8 @@ export default function App() {
   const [payForm, setPayForm] = useState({ amount: "", date: toISO(today), method: "manual" });
   const [editFor, setEditFor] = useState(null);
   const [editDraft, setEditDraft] = useState(null);
+  const [periodKey, setPeriodKey] = useState("12m");
+  const [pickMonth, setPickMonth] = useState("");
   const [form, setForm] = useState({
     client: "", email: "", phone: "", closer: "", source: "", channel: "organic",
     offer: "Ecom Ascension", total: "", acompte: "", n: "", start: toISO(today),
@@ -260,17 +262,6 @@ export default function App() {
       dueThisMonth: allInst.filter((i) => i.st !== "paid" && i.dueDate.slice(0, 7) === cm).reduce((a, i) => a + i.amount, 0),
     };
   }, [sales, allInst]);
-
-  const attr = useMemo(() => {
-    const g = { organic: { signed: 0, collected: 0, clients: 0 }, paid: { signed: 0, collected: 0, clients: 0 } };
-    sales.forEach((s) => {
-      const c = s.channel === "paid" ? "paid" : "organic";
-      g[c].signed += s.total; g[c].clients += 1;
-      g[c].collected += s.schedule.filter((i) => i.paid).reduce((a, i) => a + i.amount, 0);
-    });
-    const tot = g.organic.signed + g.paid.signed || 1;
-    return { ...g, oShare: g.organic.signed / tot, pShare: g.paid.signed / tot };
-  }, [sales]);
 
   const forecast = useMemo(() => {
     const m = {};
@@ -414,6 +405,55 @@ export default function App() {
     return <td className={`num ${over ? "red" : allPaid ? "green" : ""}`}>{euro(amt)}</td>;
   };
 
+  // ---- Filtre par période + comparaisons MoM / YoY ----
+  const periodRange = useMemo(() => {
+    const t = new Date(today); const iso = (d) => toISO(d);
+    const Y = t.getFullYear(), M = t.getMonth(), D = t.getDate();
+    let from, to, label;
+    if (pickMonth) {
+      const [y, m] = pickMonth.split("-").map(Number);
+      from = new Date(y, m - 1, 1); to = new Date(y, m, 1); label = monthLabel(pickMonth);
+    } else switch (periodKey) {
+      case "30d": to = new Date(Y, M, D + 1); from = new Date(Y, M, D - 29); label = "30 derniers jours"; break;
+      case "mtd": from = new Date(Y, M, 1); to = new Date(Y, M + 1, 1); label = "Mois en cours"; break;
+      case "lastmonth": from = new Date(Y, M - 1, 1); to = new Date(Y, M, 1); label = "Mois dernier"; break;
+      case "ytd": from = new Date(Y, 0, 1); to = new Date(Y, M, D + 1); label = "Depuis janvier"; break;
+      case "lastyear": from = new Date(Y - 1, 0, 1); to = new Date(Y, 0, 1); label = "Année dernière"; break;
+      case "all": from = new Date(2000, 0, 1); to = new Date(Y + 1, 0, 1); label = "Tout l'historique"; break;
+      default: from = new Date(Y, M - 11, 1); to = new Date(Y, M + 1, 1); label = "12 derniers mois"; break;
+    }
+    const dayMs = 86400000;
+    const len = Math.max(1, Math.round((to - from) / dayMs));
+    const prevFrom = new Date(from.getTime() - len * dayMs), prevTo = new Date(from);
+    const yoyFrom = new Date(from.getFullYear() - 1, from.getMonth(), from.getDate());
+    const yoyTo = new Date(to.getFullYear() - 1, to.getMonth(), to.getDate());
+    return { from: iso(from), to: iso(to), label, prevFrom: iso(prevFrom), prevTo: iso(prevTo), yoyFrom: iso(yoyFrom), yoyTo: iso(yoyTo) };
+  }, [periodKey, pickMonth]);
+
+  const metricsFor = (from, to) => {
+    let collected = 0, outstanding = 0, overdueAmt = 0, overdueCount = 0, org = 0, paid = 0, expected = 0;
+    sales.forEach((s) => s.schedule.forEach((i) => {
+      if (i.dueDate >= from && i.dueDate < to) {
+        expected += i.amount;
+        if (i.paid) { collected += i.amount; if (s.channel === "paid") paid += i.amount; else org += i.amount; }
+        else { outstanding += i.amount; if (statusOf(i) === "overdue") { overdueAmt += i.amount; overdueCount++; } }
+      }
+    }));
+    let signed = 0, clients = 0;
+    sales.forEach((s) => { if (s.closeDate >= from && s.closeDate < to) { signed += s.total; clients++; } });
+    return { collected, outstanding, overdueAmt, overdueCount, org, paid, expected, signed, clients };
+  };
+  const kp = useMemo(() => metricsFor(periodRange.from, periodRange.to), [sales, periodRange]); // eslint-disable-line
+  const kpPrev = useMemo(() => metricsFor(periodRange.prevFrom, periodRange.prevTo), [sales, periodRange]); // eslint-disable-line
+  const kpYoy = useMemo(() => metricsFor(periodRange.yoyFrom, periodRange.yoyTo), [sales, periodRange]); // eslint-disable-line
+
+  const Delta = (cur, prev, label) => {
+    if (!prev && !cur) return null;
+    const up = cur >= prev;
+    const pct = prev > 0 ? Math.round(((cur - prev) / prev) * 100) : (cur > 0 ? 100 : 0);
+    return <span className={`delta ${up ? "up" : "down"}`}>{up ? "▲" : "▼"} {Math.abs(pct)}% {label}</span>;
+  };
+
   const salesF = sales.filter(matchQ);
   const overduesF = overdues.filter((i) => matchQ(i.sale));
   const monthListF = monthList.filter((i) => matchQ(i.sale));
@@ -448,6 +488,16 @@ export default function App() {
         .edit-row select:disabled{opacity:.4;}
         .pay-toggle{display:inline-flex;align-items:center;gap:5px;justify-content:center;background:var(--panel2);border:1px solid var(--line);color:rgba(234,242,255,.55);border-radius:8px;padding:8px;font:inherit;font-size:12px;font-weight:600;cursor:pointer;}
         .pay-toggle.on{color:#2BD9A0;border-color:rgba(43,217,160,.4);background:rgba(43,217,160,.08);}
+        .period{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px;color:rgba(234,242,255,.5);}
+        .period-presets{display:flex;gap:6px;flex-wrap:wrap;}
+        .period-presets button{background:var(--panel2);border:1px solid var(--line);color:rgba(234,242,255,.7);border-radius:8px;padding:6px 12px;font:inherit;font-size:12.5px;font-weight:600;cursor:pointer;transition:.15s;}
+        .period-presets button:hover{border-color:rgba(255,255,255,.25);}
+        .period-presets button.on{background:rgba(0,212,255,.12);border-color:var(--cyan);color:var(--cyan);}
+        .month-pick{background:var(--panel2);border:1px solid var(--line);color:var(--text);border-radius:8px;padding:5px 10px;font:inherit;font-size:12.5px;cursor:pointer;color-scheme:dark;}
+        .period-lbl{font-size:12px;font-weight:600;color:rgba(234,242,255,.45);margin-left:auto;}
+        .delta{display:inline-block;font-size:11px;font-weight:700;margin-right:8px;}
+        .delta.up{color:#2BD9A0;}
+        .delta.down{color:#FF4D5E;}
       `}</style>
 
       <header className="melo-head">
@@ -456,20 +506,29 @@ export default function App() {
           <div className="melo-sub">Clients iClosed + plans Systeme.io · cohortes, impayés, acquisition</div>
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-          <span className="chip"><span className="dot" /> Source : systeme.io
-            <button onClick={() => syncSio()} disabled={syncing}>{syncing ? "Synchro…" : "Synchroniser"}</button>
-          </span>
+          <span className="chip"><span className="dot" style={{ background: syncing ? "#FFB020" : "#2BD9A0" }} /> {syncing ? "Synchronisation…" : "Sync auto · systeme.io"}</span>
           <button className="btn-primary" onClick={() => setShowAdd(true)}><Plus size={17} /> Ajouter une vente</button>
         </div>
       </header>
 
+      <div className="period">
+        <Calendar size={15} />
+        <div className="period-presets">
+          {[["30d", "30 j"], ["mtd", "Mois en cours"], ["lastmonth", "Mois dernier"], ["ytd", "Depuis janvier"], ["12m", "12 mois"], ["lastyear", "Année dernière"], ["all", "Tout"]].map(([key, lab]) => (
+            <button key={key} className={!pickMonth && periodKey === key ? "on" : ""} onClick={() => { setPickMonth(""); setPeriodKey(key); }}>{lab}</button>
+          ))}
+        </div>
+        <input type="month" className="month-pick" value={pickMonth} onChange={(e) => setPickMonth(e.target.value)} title="Choisir un mois précis" />
+        <span className="period-lbl">{periodRange.label}</span>
+      </div>
+
       <div className="kpis">
-        <div className="card"><div className="kpi-label">CA signé</div><div className="kpi-val">{euro(k.signed)}</div><div className="kpi-foot">{sales.length} clients</div></div>
-        <div className="card"><div className="kpi-label">Encaissé</div><div className="kpi-val" style={{ color: "var(--green)" }}>{euro(k.collected)}</div><div className="kpi-foot">{k.signed ? Math.round((k.collected / k.signed) * 100) : 0}% du signé · {euro(k.manual)} en direct</div></div>
-        <div className="card"><div className="kpi-label">Reste à encaisser</div><div className="kpi-val">{euro(k.outstanding)}</div><div className="kpi-foot">dont {euro(k.dueThisMonth)} ce mois-ci</div></div>
-        <div className={`card ${k.overdueCount ? "kpi-alert" : ""}`}><div className="kpi-label">Impayés</div><div className="kpi-val">{euro(k.overdueAmt)}</div><div className="kpi-foot">{k.overdueCount} échéance{k.overdueCount > 1 ? "s" : ""} en retard</div></div>
-        <div className="card"><div className="kpi-label" style={{ display: "flex", alignItems: "center", gap: 6 }}><Leaf size={13} color="#2BD9A0" /> Revenu organique</div><div className="kpi-val green">{euro(attr.organic.signed)}</div><div className="kpi-foot">{Math.round(attr.oShare * 100)}% · {euro(attr.organic.collected)} encaissé · {attr.organic.clients} clients</div></div>
-        <div className="card"><div className="kpi-label" style={{ display: "flex", alignItems: "center", gap: 6 }}><Megaphone size={13} color="#00D4FF" /> Revenu paid</div><div className="kpi-val" style={{ color: "var(--cyan)" }}>{euro(attr.paid.signed)}</div><div className="kpi-foot">{Math.round(attr.pShare * 100)}% · {euro(attr.paid.collected)} encaissé · {attr.paid.clients} clients</div></div>
+        <div className="card"><div className="kpi-label">CA signé</div><div className="kpi-val">{euro(kp.signed)}</div><div className="kpi-foot">{kp.clients} vente{kp.clients > 1 ? "s" : ""}<br />{Delta(kp.signed, kpPrev.signed, "MoM")}{Delta(kp.signed, kpYoy.signed, "YoY")}</div></div>
+        <div className="card"><div className="kpi-label">Encaissé</div><div className="kpi-val" style={{ color: "var(--green)" }}>{euro(kp.collected)}</div><div className="kpi-foot">{kp.expected ? Math.round((kp.collected / kp.expected) * 100) : 0}% de l'attendu<br />{Delta(kp.collected, kpPrev.collected, "MoM")}{Delta(kp.collected, kpYoy.collected, "YoY")}</div></div>
+        <div className="card"><div className="kpi-label">Reste à encaisser</div><div className="kpi-val">{euro(kp.outstanding)}</div><div className="kpi-foot">sur la période</div></div>
+        <div className={`card ${kp.overdueCount ? "kpi-alert" : ""}`}><div className="kpi-label">Impayés</div><div className="kpi-val">{euro(kp.overdueAmt)}</div><div className="kpi-foot">{kp.overdueCount} échéance{kp.overdueCount > 1 ? "s" : ""} en retard<br />{Delta(kp.overdueAmt, kpYoy.overdueAmt, "YoY")}</div></div>
+        <div className="card"><div className="kpi-label" style={{ display: "flex", alignItems: "center", gap: 6 }}><Leaf size={13} color="#2BD9A0" /> Encaissé organique</div><div className="kpi-val green">{euro(kp.org)}</div><div className="kpi-foot">{kp.collected ? Math.round((kp.org / kp.collected) * 100) : 0}% de l'encaissé<br />{Delta(kp.org, kpPrev.org, "MoM")}{Delta(kp.org, kpYoy.org, "YoY")}</div></div>
+        <div className="card"><div className="kpi-label" style={{ display: "flex", alignItems: "center", gap: 6 }}><Megaphone size={13} color="#00D4FF" /> Encaissé paid</div><div className="kpi-val" style={{ color: "var(--cyan)" }}>{euro(kp.paid)}</div><div className="kpi-foot">{kp.collected ? Math.round((kp.paid / kp.collected) * 100) : 0}% de l'encaissé<br />{Delta(kp.paid, kpPrev.paid, "MoM")}{Delta(kp.paid, kpYoy.paid, "YoY")}</div></div>
       </div>
 
       {k.overdueCount > 0 && (
