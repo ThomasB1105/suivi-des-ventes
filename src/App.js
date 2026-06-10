@@ -299,6 +299,41 @@ export default function App() {
     return Object.values(m).sort((a, b) => a.key.localeCompare(b.key)).map((x) => ({ ...x, label: monthLabel(x.key) }));
   }, [allInst]);
 
+  const [selMonth, setSelMonth] = useState(toISO(today).slice(0, 7));
+  const daysLate = (iso) => Math.max(0, Math.floor((today - parseLocal(iso)) / 86400000));
+
+  // Toutes les échéances en retard (impayés), tri du plus ancien au plus récent.
+  const overdues = useMemo(() => {
+    const list = [];
+    sales.forEach((s) => s.schedule.forEach((i) => {
+      if (statusOf(i) === "overdue") list.push({ ...i, sale: s });
+    }));
+    return list.sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+  }, [sales]);
+
+  // Mois disponibles pour le filtre "À collecter".
+  const monthOptions = useMemo(() => {
+    const set = new Set(allInst.map((i) => monthKey(i.dueDate)));
+    set.add(toISO(today).slice(0, 7));
+    return [...set].sort();
+  }, [allInst]);
+
+  // Échéances du mois sélectionné (toutes, payées et à venir).
+  const monthList = useMemo(() => {
+    const list = [];
+    sales.forEach((s) => s.schedule.forEach((i) => {
+      if (monthKey(i.dueDate) === selMonth) list.push({ ...i, sale: s, st: statusOf(i) });
+    }));
+    return list.sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+  }, [sales, selMonth]);
+
+  const monthTot = useMemo(() => ({
+    toCollect: monthList.filter((i) => !i.paid).reduce((a, i) => a + i.amount, 0),
+    collected: monthList.filter((i) => i.paid).reduce((a, i) => a + i.amount, 0),
+    overdue: monthList.filter((i) => i.st === "overdue").reduce((a, i) => a + i.amount, 0),
+    count: monthList.filter((i) => !i.paid).length,
+  }), [monthList]);
+
   const nextDue = (s) => s.schedule.filter((i) => !i.paid).sort((a, b) => a.dueDate.localeCompare(b.dueDate))[0] || null;
   const hasOverdue = (s) => s.schedule.some((i) => statusOf(i) === "overdue");
 
@@ -350,6 +385,19 @@ export default function App() {
   return (
     <div className="melo">
       <style>{css}</style>
+      <style>{`
+        .month-sel{background:var(--panel2);border:1px solid var(--line);color:var(--text);border-radius:8px;padding:7px 12px;font:inherit;font-size:13px;font-weight:600;cursor:pointer;}
+        .row-actions{display:inline-flex;gap:6px;justify-content:flex-end;}
+        .mini{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:7px;border:1px solid var(--line);background:var(--panel2);color:var(--text);cursor:pointer;transition:.15s;}
+        .mini:hover{border-color:rgba(255,255,255,.28);}
+        .mini.ok:hover{color:#2BD9A0;border-color:#2BD9A0;}
+        .mini.warn:hover{color:#FFB020;border-color:#FFB020;}
+        .badge{display:inline-block;font-size:11px;font-weight:600;padding:3px 9px;border-radius:20px;border:1px solid var(--line);}
+        .badge.green{color:#2BD9A0;border-color:rgba(43,217,160,.4);background:rgba(43,217,160,.08);}
+        .badge.red{color:#FF4D5E;border-color:rgba(255,77,94,.4);background:rgba(255,77,94,.08);}
+        .badge.mut{color:rgba(234,242,255,.55);}
+        .empty{padding:46px 20px;text-align:center;color:rgba(234,242,255,.55);font-size:14px;}
+      `}</style>
 
       <header className="melo-head">
         <div>
@@ -382,6 +430,8 @@ export default function App() {
       <div className="tabs">
         <button className={`tab ${tab === "clients" ? "active" : ""}`} onClick={() => setTab("clients")}><Users size={15} /> Clients</button>
         <button className={`tab ${tab === "cohortes" ? "active" : ""}`} onClick={() => setTab("cohortes")}><Grid3x3 size={15} /> Cohortes</button>
+        <button className={`tab ${tab === "impayes" ? "active" : ""}`} onClick={() => setTab("impayes")}><AlertTriangle size={15} /> Impayés{k.overdueCount ? ` (${k.overdueCount})` : ""}</button>
+        <button className={`tab ${tab === "collecte" ? "active" : ""}`} onClick={() => setTab("collecte")}><Landmark size={15} /> À collecter</button>
         <button className={`tab ${tab === "mois" ? "active" : ""}`} onClick={() => setTab("mois")}><Calendar size={15} /> Par mois</button>
       </div>
 
@@ -496,6 +546,86 @@ export default function App() {
               <tr key={m.key}><td className="lab">{m.label}</td><td className="num green">{euro(m.encaisse)}</td><td className="num">{euro(m.aVenir)}</td><td className={`num ${m.impaye ? "red" : "mut"}`}>{euro(m.impaye)}</td><td className="num">{euro(m.total)}</td></tr>
             ))}</tbody>
           </table>
+        </div>
+      </>)}
+
+      {/* IMPAYÉS */}
+      {tab === "impayes" && (
+        <div className="card" style={{ padding: 6 }}>
+          {overdues.length === 0 ? (
+            <div className="empty">Aucun impayé 🎉 Toutes les échéances dépassées sont réglées.</div>
+          ) : (
+            <table className="tbl">
+              <thead><tr>
+                <th>Client</th><th>Source</th><th>Offre</th><th className="num">Échéance</th><th className="num">Retard</th><th className="num">Montant</th><th className="num">Relance</th>
+              </tr></thead>
+              <tbody>
+                {overdues.map((i) => (
+                  <tr key={i.id}>
+                    <td className="lab">{i.sale.client}{i.sale.phone && <span className="mut" style={{ fontWeight: 400 }}> · {i.sale.phone}</span>}</td>
+                    <td><span className={`src src-${i.sale.channel === "paid" ? "paid" : "organic"}`}>{i.sale.channel === "paid" ? <Megaphone size={11} /> : <Leaf size={11} />}{i.sale.source}</span></td>
+                    <td className="mut">{i.sale.offer}</td>
+                    <td className="num">{dateLabel(i.dueDate)}</td>
+                    <td className="num red">{daysLate(i.dueDate)} j</td>
+                    <td className="num">{euro(i.amount)}</td>
+                    <td className="num">
+                      <div className="row-actions">
+                        <button className="mini ok" title="Encaissé (Stripe)" onClick={() => setPayment(i.sale.id, i.id, true, "auto")}><Check size={14} /></button>
+                        <button className="mini warn" title="Encaissé en direct (virement)" onClick={() => setPayment(i.sale.id, i.id, true, "manual")}><Landmark size={14} /></button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+                <tr className="tot-row"><td className="lab">Total impayés</td><td /><td /><td /><td className="num mut">{overdues.length} éch.</td><td className="num red">{euro(k.overdueAmt)}</td><td /></tr>
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
+
+      {/* À COLLECTER — filtre par mois */}
+      {tab === "collecte" && (<>
+        <div className="section-h" style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <Landmark size={15} /> Paiements à collecter
+          <select className="month-sel" value={selMonth} onChange={(e) => setSelMonth(e.target.value)}>
+            {monthOptions.map((mk) => <option key={mk} value={mk}>{monthLabel(mk)}</option>)}
+          </select>
+        </div>
+        <div className="kpis" style={{ marginTop: 4 }}>
+          <div className="card"><div className="kpi-label">À collecter · {monthLabel(selMonth)}</div><div className="kpi-val">{euro(monthTot.toCollect)}</div><div className="kpi-foot">{monthTot.count} échéance{monthTot.count > 1 ? "s" : ""}</div></div>
+          <div className="card"><div className="kpi-label">Déjà encaissé ce mois</div><div className="kpi-val green">{euro(monthTot.collected)}</div></div>
+          <div className={`card ${monthTot.overdue ? "kpi-alert" : ""}`}><div className="kpi-label">Dont en retard</div><div className="kpi-val">{euro(monthTot.overdue)}</div></div>
+        </div>
+        <div className="card" style={{ padding: 6, marginTop: 14 }}>
+          {monthList.length === 0 ? (
+            <div className="empty">Aucune échéance sur {monthLabel(selMonth)}.</div>
+          ) : (
+            <table className="tbl">
+              <thead><tr><th>Client</th><th>Source</th><th className="num">Échéance</th><th>Statut</th><th className="num">Montant</th><th className="num">Action</th></tr></thead>
+              <tbody>
+                {monthList.map((i) => (
+                  <tr key={i.id}>
+                    <td className="lab">{i.sale.client}</td>
+                    <td><span className={`src src-${i.sale.channel === "paid" ? "paid" : "organic"}`}>{i.sale.channel === "paid" ? <Megaphone size={11} /> : <Leaf size={11} />}{i.sale.source}</span></td>
+                    <td className="num">{dateLabel(i.dueDate)}</td>
+                    <td>{i.st === "paid" ? <span className="badge green">Encaissé</span> : i.st === "overdue" ? <span className="badge red">En retard</span> : <span className="badge mut">À venir</span>}</td>
+                    <td className="num">{euro(i.amount)}</td>
+                    <td className="num">
+                      <div className="row-actions">
+                        {!i.paid ? (<>
+                          <button className="mini ok" title="Encaissé (Stripe)" onClick={() => setPayment(i.sale.id, i.id, true, "auto")}><Check size={14} /></button>
+                          <button className="mini warn" title="Encaissé en direct (virement)" onClick={() => setPayment(i.sale.id, i.id, true, "manual")}><Landmark size={14} /></button>
+                        </>) : (
+                          <button className="mini" title="Remettre en attente" onClick={() => setPayment(i.sale.id, i.id, false, null)}><RotateCcw size={14} /></button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+                <tr className="tot-row"><td className="lab">À collecter</td><td /><td /><td /><td className="num">{euro(monthTot.toCollect)}</td><td /></tr>
+              </tbody>
+            </table>
+          )}
         </div>
       </>)}
 
