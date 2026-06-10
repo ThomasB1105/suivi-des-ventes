@@ -240,37 +240,46 @@ export default function App() {
   const flash = (m) => { setToast(m); setTimeout(() => setToast(null), 3800); };
 
   const [syncing, setSyncing] = useState(false);
-  // Synchro systeme.io : la fonction serverless /api/systeme aspire les ventes
-  // (systeme.io = source de vérité des paiements). On remplace les ventes issues
-  // de systeme.io (id "sio-…") et on conserve les ventes saisies à la main.
-  const syncSio = async () => {
-    setSyncing(true);
+  // Applique les ventes venues de la base (webhooks systeme.io) en conservant
+  // l'attribution manuelle (canal/source/closer) et les ventes saisies à la main.
+  const applyDbSales = (incoming) => {
+    setSales((prev) => {
+      const prevById = new Map(
+        prev.filter((s) => String(s.id).startsWith("sio-")).map((s) => [s.id, s])
+      );
+      const merged = incoming.map((s) => {
+        const p = prevById.get(s.id);
+        return p ? { ...s, channel: p.channel, source: p.source, closer: p.closer } : s;
+      });
+      const manual = prev.filter((s) => !String(s.id).startsWith("sio-"));
+      const next = [...manual, ...merged];
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(next)); } catch (e) { /* quota */ }
+      return next;
+    });
+  };
+
+  // Synchro depuis notre base (alimentée en continu par les webhooks systeme.io).
+  const syncSio = async ({ silent = false } = {}) => {
+    if (!silent) setSyncing(true);
     try {
-      const r = await fetch("/api/systeme");
+      const r = await fetch("/api/sales");
       const data = await r.json();
       if (!r.ok) throw new Error(data && data.error ? data.error : `Erreur ${r.status}`);
       const incoming = normalize(data.sales || []);
-      // systeme.io possède les données financières (plan, acompte, paiements).
-      // L'app possède l'attribution manuelle (canal organique/paid, source, closer) :
-      // on la conserve d'une synchro à l'autre quand la vente existe déjà.
-      const prevById = new Map(
-        sales.filter((s) => String(s.id).startsWith("sio-")).map((s) => [s.id, s])
-      );
-      const merged = incoming.map((s) => {
-        const prev = prevById.get(s.id);
-        return prev ? { ...s, channel: prev.channel, source: prev.source, closer: prev.closer } : s;
-      });
-      const manual = sales.filter((s) => !String(s.id).startsWith("sio-"));
-      persist([...manual, ...merged]);
-      flash(incoming.length
-        ? `${incoming.length} vente(s) synchronisée(s) depuis systeme.io.`
-        : "Synchro OK, aucune vente trouvée pour le moment.");
+      applyDbSales(incoming);
+      if (!silent) flash(incoming.length
+        ? `${incoming.length} client(s) synchronisé(s) depuis systeme.io.`
+        : "Synchro OK — aucune vente en base pour l'instant (les webhooks alimentent au fil de l'eau).");
     } catch (e) {
-      flash(`Synchro impossible : ${e.message}. Vérifie SYSTEME_API_KEY dans Vercel.`);
+      if (!silent) flash(`Synchro impossible : ${e.message}`);
     } finally {
-      setSyncing(false);
+      if (!silent) setSyncing(false);
     }
   };
+
+  // Chargement automatique au démarrage.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { syncSio({ silent: true }); }, []);
 
   const allInst = useMemo(
     () => sales.flatMap((s) => s.schedule.map((i) => ({ ...i, saleId: s.id, st: statusOf(i) }))),
@@ -391,7 +400,7 @@ export default function App() {
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
           <span className="chip"><span className="dot" /> Source : systeme.io
-            <button onClick={syncSio} disabled={syncing}>{syncing ? "Synchro…" : "Synchroniser"}</button>
+            <button onClick={() => syncSio()} disabled={syncing}>{syncing ? "Synchro…" : "Synchroniser"}</button>
           </span>
           <button className="btn-primary" onClick={() => setShowAdd(true)}><Plus size={17} /> Ajouter une vente</button>
         </div>

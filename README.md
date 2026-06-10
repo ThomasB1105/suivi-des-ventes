@@ -40,32 +40,45 @@ La v1 fonctionne en saisie manuelle + données démo. Pour brancher les ventes r
 
 L'attribution « d'où viennent les ventes » peut venir des **tags / UTM** de la commande systeme.io ou rester en **saisie manuelle** (champ source + canal, déjà en place).
 
-## Synchro systeme.io (API + serverless) — en place
+## Synchro systeme.io (webhooks + base KV) — automatique
 
-Une fonction serverless `api/systeme.js` (déployée automatiquement par Vercel) interroge
-l'**API publique systeme.io** côté serveur et renvoie les ventes à l'app. La clé API n'est
-**jamais** exposée au navigateur. Dans l'app, le bouton **« Synchroniser »** (en-tête)
-appelle cet endpoint et remplace les ventes issues de systeme.io (les ventes saisies à la
-main sont conservées). systeme.io reste la **source de vérité** des paiements/impayés.
+L'**API publique systeme.io n'expose que les contacts/tags** (pas les ventes). La synchro
+passe donc par les **webhooks** : systeme.io pousse chaque événement (vente, paiement
+d'abonnement, **paiement échoué = impayé**) vers notre endpoint, qui le stocke dans une
+**base KV**. L'app lit la base et se met à jour **automatiquement** au chargement.
+
+```
+systeme.io (webhook) ──> /api/ingest ──> base KV ──> /api/sales ──> app
+```
+
+- `api/ingest.js` : reçoit les webhooks (protégé par `INGEST_SECRET`), stocke les événements.
+- `api/sales.js` : regroupe les transactions par client (email) → ventes + échéances.
+- `lib/kv.js` : petit client Redis REST (compatible Vercel KV / Upstash).
 
 ### Mise en route
 
-1. Dans systeme.io : **Profil → « Public API keys » → créer une clé** (copie-la tout de suite,
-   elle n'est plus affichée ensuite).
-2. Dans Vercel : **Project → Settings → Environment Variables**, ajoute `SYSTEME_API_KEY`
-   (et, en option, `SYSTEME_PAID_TAGS` / `SYSTEME_ORGANIC_TAGS` pour l'attribution — voir
-   `.env.example`). **Redéploie** pour que la variable soit prise en compte.
-3. Ouvre l'app → clique **« Synchroniser »**.
+1. **Base KV** : Vercel → **Storage → Create Database → KV (Upstash Redis)** → connecte-la
+   au projet. Ça injecte automatiquement `KV_REST_API_URL` et `KV_REST_API_TOKEN`.
+2. **Secret** : Vercel → Settings → Environment Variables → ajoute `INGEST_SECRET`
+   (une longue chaîne aléatoire). **Redéploie**.
+3. **Webhook systeme.io** : Profil → **Réglages → Webhooks → Create** (ou Automatisations →
+   Règles). Événements : *nouvelle vente*, *paiement d'abonnement*, *paiement d'abonnement
+   échoué*, *vente annulée*. URL :
+   ```
+   https://<ton-app>.vercel.app/api/ingest?secret=<INGEST_SECRET>
+   ```
+4. Fais une vente test (ou attends la prochaine) → elle apparaît dans l'app.
 
-### Calibration du mapping (une fois)
+> ⚠️ Les webhooks ne captent que les **nouveaux** événements à partir de l'activation :
+> l'historique antérieur n'est pas récupérable (l'API systeme.io ne l'expose pas).
 
-Les noms de champs de l'API systeme.io peuvent varier d'un compte à l'autre. Pour vérifier le
-format réel de tes commandes, ouvre dans le navigateur :
+### Calibration du mapping (une fois, sur du réel)
+
+Le format exact du payload systeme.io n'est pas documenté. Après le 1er webhook reçu, ouvre :
 
 ```
-https://<ton-app>.vercel.app/api/systeme?debug=1
+https://<ton-app>.vercel.app/api/sales?debug=1
 ```
 
-Cela renvoie un échantillon brut (`orders`, `contacts`, `tags`). Si un champ ne tombe pas au
-bon endroit (montant, plan de paiement, statut payé), on ajuste le mapping dans
-`api/systeme.js` (fonction `normalizeOrder`) à partir de ce qu'on y voit.
+Ça affiche les derniers payloads bruts. Si un champ ne tombe pas au bon endroit (montant,
+date, contact, offre, statut), on ajuste l'extraction dans `api/ingest.js`.
