@@ -4,7 +4,7 @@ import {
 } from "recharts";
 import {
   AlertTriangle, Check, Plus, X, Calendar, TrendingUp, Trash2, Landmark,
-  RotateCcw, Users, UserCheck, Phone, Mail, Leaf, Megaphone, Grid3x3,
+  RotateCcw, Users, UserCheck, Phone, Mail, Leaf, Megaphone, Grid3x3, Search,
 } from "lucide-react";
 
 /* ------------------------------ helpers ------------------------------ */
@@ -179,6 +179,9 @@ export default function App() {
   const [showAdd, setShowAdd] = useState(false);
   const [menu, setMenu] = useState(null);
   const [toast, setToast] = useState(null);
+  const [q, setQ] = useState("");
+  const [payFor, setPayFor] = useState(null);
+  const [payForm, setPayForm] = useState({ amount: "", date: toISO(today), method: "manual" });
   const [form, setForm] = useState({
     client: "", email: "", phone: "", closer: "", source: "", channel: "organic",
     offer: "Ecom Ascension", total: "", acompte: "", n: "", start: toISO(today),
@@ -200,17 +203,14 @@ export default function App() {
   const [syncing, setSyncing] = useState(false);
   // Applique les ventes venues de la base (webhooks systeme.io) en conservant
   // l'attribution manuelle (canal/source/closer) et les ventes saisies à la main.
+  // Synchro NON destructive : on n'ajoute que les NOUVEAUX clients (id absent).
+  // Les clients déjà présents (et tes corrections manuelles) ne sont jamais écrasés.
   const applyDbSales = (incoming) => {
     setSales((prev) => {
-      const prevById = new Map(
-        prev.filter((s) => String(s.id).startsWith("sio-")).map((s) => [s.id, s])
-      );
-      const merged = incoming.map((s) => {
-        const p = prevById.get(s.id);
-        return p ? { ...s, channel: p.channel, source: p.source, closer: p.closer } : s;
-      });
-      const manual = prev.filter((s) => !String(s.id).startsWith("sio-"));
-      const next = [...manual, ...merged];
+      const have = new Set(prev.map((s) => s.id));
+      const toAdd = incoming.filter((s) => !have.has(s.id));
+      if (!toAdd.length) return prev;
+      const next = [...prev, ...toAdd];
       try { localStorage.setItem(STORAGE_KEY, JSON.stringify(next)); } catch (e) { /* quota */ }
       return next;
     });
@@ -342,6 +342,22 @@ export default function App() {
     setMenu(null);
   };
   const removeSale = (id) => persist(sales.filter((s) => s.id !== id));
+  // Supprimer une seule échéance (ex : virer un faux impayé projeté).
+  const removeInst = (saleId, instId) => {
+    persist(sales.map((s) => s.id !== saleId ? s : { ...s, schedule: s.schedule.filter((i) => i.id !== instId) }));
+    setMenu(null);
+  };
+  // Ajouter un encaissement manuel à un client (ex : acompte reçu sur Stripe).
+  const addPayment = () => {
+    const amt = parseFloat(String(payForm.amount).replace(",", ".")) || 0;
+    if (!payFor || amt <= 0) { flash("Indique un montant valide."); return; }
+    const inst = { id: `m-${Date.now()}`, dueDate: payForm.date || toISO(today), amount: amt, paid: true, method: payForm.method || "manual" };
+    persist(sales.map((s) => s.id !== payFor ? s : { ...s, schedule: [...s.schedule, inst].sort((a, b) => a.dueDate.localeCompare(b.dueDate)) }));
+    setPayFor(null);
+    setPayForm({ amount: "", date: toISO(today), method: "manual" });
+    flash("Encaissement ajouté.");
+  };
+  const matchQ = (s) => !q.trim() || `${s.client} ${s.source} ${s.email}`.toLowerCase().includes(q.trim().toLowerCase());
   // Attribution manuelle organique ⇄ paid (systeme.io ne fournit pas la donnée).
   const toggleChannel = (id) =>
     persist(sales.map((s) => s.id !== id ? s : { ...s, channel: s.channel === "paid" ? "organic" : "paid" }));
@@ -382,6 +398,10 @@ export default function App() {
     return <td className={`num ${over ? "red" : allPaid ? "green" : ""}`}>{euro(amt)}</td>;
   };
 
+  const salesF = sales.filter(matchQ);
+  const overduesF = overdues.filter((i) => matchQ(i.sale));
+  const monthListF = monthList.filter((i) => matchQ(i.sale));
+
   return (
     <div className="melo">
       <style>{css}</style>
@@ -397,6 +417,11 @@ export default function App() {
         .badge.red{color:#FF4D5E;border-color:rgba(255,77,94,.4);background:rgba(255,77,94,.08);}
         .badge.mut{color:rgba(234,242,255,.55);}
         .empty{padding:46px 20px;text-align:center;color:rgba(234,242,255,.55);font-size:14px;}
+        .filterbar{display:flex;align-items:center;gap:9px;margin:0 0 12px;padding:9px 13px;background:var(--panel2);border:1px solid var(--line);border-radius:10px;color:rgba(234,242,255,.55);}
+        .filterbar input{flex:1;background:transparent;border:none;outline:none;color:var(--text);font:inherit;font-size:14px;}
+        .filterbar input::placeholder{color:rgba(234,242,255,.4);}
+        .filterbar .clr{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:6px;border:1px solid var(--line);background:transparent;color:var(--text);cursor:pointer;}
+        .row-end{display:flex;gap:7px;align-items:center;justify-content:flex-end;}
       `}</style>
 
       <header className="melo-head">
@@ -435,10 +460,18 @@ export default function App() {
         <button className={`tab ${tab === "mois" ? "active" : ""}`} onClick={() => setTab("mois")}><Calendar size={15} /> Par mois</button>
       </div>
 
+      {(tab === "clients" || tab === "impayes" || tab === "collecte") && (
+        <div className="filterbar">
+          <Search size={15} />
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Rechercher un client, un email, une source…" />
+          {q && <button className="clr" onClick={() => setQ("")} title="Effacer"><X size={14} /></button>}
+        </div>
+      )}
+
       {/* CLIENTS */}
       {tab === "clients" && (
         <div className="ledger">
-          {sales.map((s) => {
+          {salesF.map((s) => {
             const nd = nextDue(s); const ndSt = nd ? statusOf(nd) : null;
             const paidSum = s.schedule.filter((i) => i.paid).reduce((a, i) => a + i.amount, 0);
             return (
@@ -476,13 +509,17 @@ export default function App() {
                             <div className="menu-item" onClick={() => setPayment(s.id, inst.id, true, "auto")}><Check size={15} color="#2BD9A0" /> Encaissé (Stripe)</div>
                             <div className="menu-item" onClick={() => setPayment(s.id, inst.id, true, "manual")}><Landmark size={15} color="#FFB020" /> Encaissé en direct (virement)</div>
                             <div className="menu-item" onClick={() => setPayment(s.id, inst.id, false, null)}><RotateCcw size={15} color="#FF4D5E" /> Remettre en attente</div>
+                            <div className="menu-item" onClick={() => removeInst(s.id, inst.id)}><Trash2 size={15} color="#FF4D5E" /> Supprimer cette échéance</div>
                           </div>
                         </>)}
                       </div>
                     );
                   })}
                 </div>
-                <button className="del" onClick={() => removeSale(s.id)} title="Supprimer"><Trash2 size={15} /></button>
+                <div className="row-end">
+                  <button className="mini ok" onClick={() => { setPayFor(s.id); setPayForm({ amount: "", date: toISO(today), method: "manual" }); }} title="Ajouter un encaissement"><Plus size={15} /></button>
+                  <button className="del" onClick={() => removeSale(s.id)} title="Supprimer le client"><Trash2 size={15} /></button>
+                </div>
               </div>
             );
           })}
@@ -552,15 +589,15 @@ export default function App() {
       {/* IMPAYÉS */}
       {tab === "impayes" && (
         <div className="card" style={{ padding: 6 }}>
-          {overdues.length === 0 ? (
-            <div className="empty">Aucun impayé 🎉 Toutes les échéances dépassées sont réglées.</div>
+          {overduesF.length === 0 ? (
+            <div className="empty">{overdues.length ? "Aucun impayé pour cette recherche." : "Aucun impayé 🎉 Toutes les échéances dépassées sont réglées."}</div>
           ) : (
             <table className="tbl">
               <thead><tr>
                 <th>Client</th><th>Source</th><th>Offre</th><th className="num">Échéance</th><th className="num">Retard</th><th className="num">Montant</th><th className="num">Relance</th>
               </tr></thead>
               <tbody>
-                {overdues.map((i) => (
+                {overduesF.map((i) => (
                   <tr key={i.id}>
                     <td className="lab">{i.sale.client}{i.sale.phone && <span className="mut" style={{ fontWeight: 400 }}> · {i.sale.phone}</span>}</td>
                     <td><span className={`src src-${i.sale.channel === "paid" ? "paid" : "organic"}`}>{i.sale.channel === "paid" ? <Megaphone size={11} /> : <Leaf size={11} />}{i.sale.source}</span></td>
@@ -572,11 +609,12 @@ export default function App() {
                       <div className="row-actions">
                         <button className="mini ok" title="Encaissé (Stripe)" onClick={() => setPayment(i.sale.id, i.id, true, "auto")}><Check size={14} /></button>
                         <button className="mini warn" title="Encaissé en direct (virement)" onClick={() => setPayment(i.sale.id, i.id, true, "manual")}><Landmark size={14} /></button>
+                        <button className="mini" title="Supprimer cette échéance (faux impayé)" onClick={() => removeInst(i.sale.id, i.id)}><Trash2 size={14} /></button>
                       </div>
                     </td>
                   </tr>
                 ))}
-                <tr className="tot-row"><td className="lab">Total impayés</td><td /><td /><td /><td className="num mut">{overdues.length} éch.</td><td className="num red">{euro(k.overdueAmt)}</td><td /></tr>
+                <tr className="tot-row"><td className="lab">Total impayés</td><td /><td /><td /><td className="num mut">{overduesF.length} éch.</td><td className="num red">{euro(overduesF.reduce((a, i) => a + i.amount, 0))}</td><td /></tr>
               </tbody>
             </table>
           )}
@@ -597,13 +635,13 @@ export default function App() {
           <div className={`card ${monthTot.overdue ? "kpi-alert" : ""}`}><div className="kpi-label">Dont en retard</div><div className="kpi-val">{euro(monthTot.overdue)}</div></div>
         </div>
         <div className="card" style={{ padding: 6, marginTop: 14 }}>
-          {monthList.length === 0 ? (
-            <div className="empty">Aucune échéance sur {monthLabel(selMonth)}.</div>
+          {monthListF.length === 0 ? (
+            <div className="empty">Aucune échéance sur {monthLabel(selMonth)}{q ? " pour cette recherche" : ""}.</div>
           ) : (
             <table className="tbl">
               <thead><tr><th>Client</th><th>Source</th><th className="num">Échéance</th><th>Statut</th><th className="num">Montant</th><th className="num">Action</th></tr></thead>
               <tbody>
-                {monthList.map((i) => (
+                {monthListF.map((i) => (
                   <tr key={i.id}>
                     <td className="lab">{i.sale.client}</td>
                     <td><span className={`src src-${i.sale.channel === "paid" ? "paid" : "organic"}`}>{i.sale.channel === "paid" ? <Megaphone size={11} /> : <Leaf size={11} />}{i.sale.source}</span></td>
@@ -618,16 +656,43 @@ export default function App() {
                         </>) : (
                           <button className="mini" title="Remettre en attente" onClick={() => setPayment(i.sale.id, i.id, false, null)}><RotateCcw size={14} /></button>
                         )}
+                        <button className="mini" title="Supprimer cette échéance" onClick={() => removeInst(i.sale.id, i.id)}><Trash2 size={14} /></button>
                       </div>
                     </td>
                   </tr>
                 ))}
-                <tr className="tot-row"><td className="lab">À collecter</td><td /><td /><td /><td className="num">{euro(monthTot.toCollect)}</td><td /></tr>
+                <tr className="tot-row"><td className="lab">À collecter{q ? " (filtré)" : ""}</td><td /><td /><td /><td className="num">{euro(monthListF.filter((i) => !i.paid).reduce((a, i) => a + i.amount, 0))}</td><td /></tr>
               </tbody>
             </table>
           )}
         </div>
       </>)}
+
+      {/* AJOUTER UN ENCAISSEMENT */}
+      {payFor && (
+        <div className="overlay" onClick={(e) => e.target === e.currentTarget && setPayFor(null)}>
+          <div className="modal">
+            <button className="modal-close" onClick={() => setPayFor(null)}><X size={20} /></button>
+            <h3>Ajouter un encaissement</h3>
+            <p>{(sales.find((s) => s.id === payFor) || {}).client} · paiement reçu (acompte Stripe, virement…).</p>
+            <div className="field-row">
+              <div className="field"><label>Montant (€)</label><input value={payForm.amount} onChange={(e) => setPayForm({ ...payForm, amount: e.target.value })} placeholder="200" inputMode="decimal" autoFocus /></div>
+              <div className="field"><label>Date du paiement</label><input type="date" value={payForm.date} onChange={(e) => setPayForm({ ...payForm, date: e.target.value })} /></div>
+            </div>
+            <div className="field">
+              <label>Moyen d'encaissement</label>
+              <div className="seg">
+                <button className={payForm.method === "manual" ? "on-o" : ""} onClick={() => setPayForm({ ...payForm, method: "manual" })}><Landmark size={14} /> Virement / direct</button>
+                <button className={payForm.method === "auto" ? "on-p" : ""} onClick={() => setPayForm({ ...payForm, method: "auto" })}><Check size={14} /> Stripe</button>
+              </div>
+            </div>
+            <div className="modal-actions">
+              <button className="btn-ghost" onClick={() => setPayFor(null)}>Annuler</button>
+              <button className="btn-primary" onClick={addPayment}><Plus size={16} /> Ajouter l'encaissement</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ADD MODAL */}
       {showAdd && (
