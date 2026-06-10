@@ -183,15 +183,14 @@ module.exports = async (req, res) => {
     // lesquels existent (les chemins exacts de l'API systeme.io ne sont pas publics).
     if (req.query && (req.query.debug === "1" || req.query.debug === "true")) {
       const candidates = [
-        "/contacts", "/tags",
-        "/orders", "/order_items", "/sales", "/sales_orders",
-        "/payments", "/subscriptions", "/invoices",
-        "/funnel_purchases", "/purchases", "/store/orders", "/ecommerce/orders",
-        "/payment_plans", "/transactions",
+        "/contacts", "/tags", "/products", "/contact_fields",
+        "/orders", "/sales", "/payments", "/transactions", "/subscriptions",
+        "/customer_subscriptions", "/invoices", "/coupons",
+        "/funnels", "/courses", "/communities", "/webhooks",
       ];
       const probe = async (path) => {
         try {
-          const body = await sioGet(path, key, { limit: 2 });
+          const body = await sioGet(path, key, { limit: 20 });
           const items = Array.isArray(body) ? body : (body.items || body.data || []);
           const sample = items[0] || (Array.isArray(body) ? null : body);
           return {
