@@ -24,6 +24,30 @@ const addMonths = (date, n) => new Date(date.getFullYear(), date.getMonth() + n,
 const today = new Date();
 today.setHours(0, 0, 0, 0);
 
+const addDays = (date, n) => new Date(date.getFullYear(), date.getMonth(), date.getDate() + n);
+const fmtFr = (iso) => parseLocal(iso).toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric" });
+const presetRange = (key) => {
+  const t = today, Y = t.getFullYear(), M = t.getMonth(), I = toISO;
+  switch (key) {
+    case "today": return { from: I(t), to: I(t) };
+    case "yesterday": { const y = addDays(t, -1); return { from: I(y), to: I(y) }; }
+    case "7d": return { from: I(addDays(t, -6)), to: I(t) };
+    case "30d": return { from: I(addDays(t, -29)), to: I(t) };
+    case "mtd": return { from: I(new Date(Y, M, 1)), to: I(new Date(Y, M + 1, 0)) };
+    case "lastmonth": return { from: I(new Date(Y, M - 1, 1)), to: I(new Date(Y, M, 0)) };
+    case "ytd": return { from: I(new Date(Y, 0, 1)), to: I(t) };
+    case "year": return { from: I(new Date(Y, 0, 1)), to: I(new Date(Y, 11, 31)) };
+    case "lastyear": return { from: I(new Date(Y - 1, 0, 1)), to: I(new Date(Y - 1, 11, 31)) };
+    case "all": return { from: "2000-01-01", to: I(new Date(Y + 2, 11, 31)) };
+    default: return { from: I(new Date(Y, M, 1)), to: I(new Date(Y, M + 1, 0)) };
+  }
+};
+const PRESETS = [
+  ["today", "Aujourd'hui"], ["yesterday", "Hier"], ["7d", "7 derniers jours"], ["30d", "30 derniers jours"],
+  ["mtd", "Mois en cours"], ["lastmonth", "Mois dernier"], ["ytd", "Depuis janvier"],
+  ["year", "Cette année"], ["lastyear", "Année dernière"], ["all", "Tout"],
+];
+
 const monthKey = (iso) => iso.slice(0, 7);
 const monthLabel = (key) => {
   const [y, m] = key.split("-").map(Number);
@@ -184,8 +208,10 @@ export default function App() {
   const [payForm, setPayForm] = useState({ amount: "", date: toISO(today), method: "manual" });
   const [editFor, setEditFor] = useState(null);
   const [editDraft, setEditDraft] = useState(null);
-  const [periodKey, setPeriodKey] = useState("12m");
-  const [pickMonth, setPickMonth] = useState("");
+  const [range, setRange] = useState(() => presetRange("mtd"));
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [calMonth, setCalMonth] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1));
+  const [selStart, setSelStart] = useState(null);
   const [form, setForm] = useState({
     client: "", email: "", phone: "", closer: "", source: "", channel: "organic",
     offer: "Ecom Ascension", total: "", acompte: "", n: "", start: toISO(today),
@@ -292,40 +318,7 @@ export default function App() {
     return Object.values(m).sort((a, b) => a.key.localeCompare(b.key)).map((x) => ({ ...x, label: monthLabel(x.key) }));
   }, [allInst]);
 
-  const [selMonth, setSelMonth] = useState(toISO(today).slice(0, 7));
   const daysLate = (iso) => Math.max(0, Math.floor((today - parseLocal(iso)) / 86400000));
-
-  // Toutes les échéances en retard (impayés), tri du plus ancien au plus récent.
-  const overdues = useMemo(() => {
-    const list = [];
-    sales.forEach((s) => s.schedule.forEach((i) => {
-      if (statusOf(i) === "overdue") list.push({ ...i, sale: s });
-    }));
-    return list.sort((a, b) => a.dueDate.localeCompare(b.dueDate));
-  }, [sales]);
-
-  // Mois disponibles pour le filtre "À collecter".
-  const monthOptions = useMemo(() => {
-    const set = new Set(allInst.map((i) => monthKey(i.dueDate)));
-    set.add(toISO(today).slice(0, 7));
-    return [...set].sort();
-  }, [allInst]);
-
-  // Échéances du mois sélectionné (toutes, payées et à venir).
-  const monthList = useMemo(() => {
-    const list = [];
-    sales.forEach((s) => s.schedule.forEach((i) => {
-      if (monthKey(i.dueDate) === selMonth) list.push({ ...i, sale: s, st: statusOf(i) });
-    }));
-    return list.sort((a, b) => a.dueDate.localeCompare(b.dueDate));
-  }, [sales, selMonth]);
-
-  const monthTot = useMemo(() => ({
-    toCollect: monthList.filter((i) => !i.paid).reduce((a, i) => a + i.amount, 0),
-    collected: monthList.filter((i) => i.paid).reduce((a, i) => a + i.amount, 0),
-    overdue: monthList.filter((i) => i.st === "overdue").reduce((a, i) => a + i.amount, 0),
-    count: monthList.filter((i) => !i.paid).length,
-  }), [monthList]);
 
   const nextDue = (s) => s.schedule.filter((i) => !i.paid).sort((a, b) => a.dueDate.localeCompare(b.dueDate))[0] || null;
   const hasOverdue = (s) => s.schedule.some((i) => statusOf(i) === "overdue");
@@ -405,42 +398,29 @@ export default function App() {
     return <td className={`num ${over ? "red" : allPaid ? "green" : ""}`}>{euro(amt)}</td>;
   };
 
-  // ---- Filtre par période + comparaisons MoM / YoY ----
+  // ---- Plage de dates (filtre global) + comparaisons MoM / YoY ----
   const periodRange = useMemo(() => {
-    const t = new Date(today); const iso = (d) => toISO(d);
-    const Y = t.getFullYear(), M = t.getMonth(), D = t.getDate();
-    let from, to, label;
-    if (pickMonth) {
-      const [y, m] = pickMonth.split("-").map(Number);
-      from = new Date(y, m - 1, 1); to = new Date(y, m, 1); label = monthLabel(pickMonth);
-    } else switch (periodKey) {
-      case "30d": to = new Date(Y, M, D + 1); from = new Date(Y, M, D - 29); label = "30 derniers jours"; break;
-      case "mtd": from = new Date(Y, M, 1); to = new Date(Y, M + 1, 1); label = "Mois en cours"; break;
-      case "lastmonth": from = new Date(Y, M - 1, 1); to = new Date(Y, M, 1); label = "Mois dernier"; break;
-      case "ytd": from = new Date(Y, 0, 1); to = new Date(Y, M, D + 1); label = "Depuis janvier"; break;
-      case "lastyear": from = new Date(Y - 1, 0, 1); to = new Date(Y, 0, 1); label = "Année dernière"; break;
-      case "all": from = new Date(2000, 0, 1); to = new Date(Y + 1, 0, 1); label = "Tout l'historique"; break;
-      default: from = new Date(Y, M - 11, 1); to = new Date(Y, M + 1, 1); label = "12 derniers mois"; break;
-    }
-    const dayMs = 86400000;
-    const len = Math.max(1, Math.round((to - from) / dayMs));
-    const prevFrom = new Date(from.getTime() - len * dayMs), prevTo = new Date(from);
-    const yoyFrom = new Date(from.getFullYear() - 1, from.getMonth(), from.getDate());
-    const yoyTo = new Date(to.getFullYear() - 1, to.getMonth(), to.getDate());
-    return { from: iso(from), to: iso(to), label, prevFrom: iso(prevFrom), prevTo: iso(prevTo), yoyFrom: iso(yoyFrom), yoyTo: iso(yoyTo) };
-  }, [periodKey, pickMonth]);
+    const fromD = parseLocal(range.from), toD = parseLocal(range.to);
+    const lenDays = Math.max(1, Math.round((toD - fromD) / 86400000) + 1);
+    const prevTo = addDays(fromD, -1), prevFrom = addDays(fromD, -lenDays);
+    const yoyFrom = new Date(fromD.getFullYear() - 1, fromD.getMonth(), fromD.getDate());
+    const yoyTo = new Date(toD.getFullYear() - 1, toD.getMonth(), toD.getDate());
+    const label = range.from === range.to ? fmtFr(range.from) : `${fmtFr(range.from)} → ${fmtFr(range.to)}`;
+    return { from: range.from, to: range.to, label, prevFrom: toISO(prevFrom), prevTo: toISO(prevTo), yoyFrom: toISO(yoyFrom), yoyTo: toISO(yoyTo) };
+  }, [range]);
 
+  // métriques sur [from,to] inclusif (dueDate = cash encaissé/dû, closeDate = contracté)
   const metricsFor = (from, to) => {
     let collected = 0, outstanding = 0, overdueAmt = 0, overdueCount = 0, org = 0, paid = 0, expected = 0;
     sales.forEach((s) => s.schedule.forEach((i) => {
-      if (i.dueDate >= from && i.dueDate < to) {
+      if (i.dueDate >= from && i.dueDate <= to) {
         expected += i.amount;
         if (i.paid) { collected += i.amount; if (s.channel === "paid") paid += i.amount; else org += i.amount; }
         else { outstanding += i.amount; if (statusOf(i) === "overdue") { overdueAmt += i.amount; overdueCount++; } }
       }
     }));
     let signed = 0, clients = 0;
-    sales.forEach((s) => { if (s.closeDate >= from && s.closeDate < to) { signed += s.total; clients++; } });
+    sales.forEach((s) => { if (s.closeDate >= from && s.closeDate <= to) { signed += s.total; clients++; } });
     return { collected, outstanding, overdueAmt, overdueCount, org, paid, expected, signed, clients };
   };
   const kp = useMemo(() => metricsFor(periodRange.from, periodRange.to), [sales, periodRange]); // eslint-disable-line
@@ -454,9 +434,43 @@ export default function App() {
     return <span className={`delta ${up ? "up" : "down"}`}>{up ? "▲" : "▼"} {Math.abs(pct)}% {label}</span>;
   };
 
-  const salesF = sales.filter(matchQ);
+  const inPeriod = (iso) => iso >= periodRange.from && iso <= periodRange.to;
+
+  // Échéances de la période (onglet "À collecter").
+  const periodList = useMemo(() => {
+    const list = [];
+    sales.forEach((s) => s.schedule.forEach((i) => { if (inPeriod(i.dueDate)) list.push({ ...i, sale: s, st: statusOf(i) }); }));
+    return list.sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+  }, [sales, periodRange]); // eslint-disable-line
+  const periodTot = {
+    toCollect: periodList.filter((i) => !i.paid).reduce((a, i) => a + i.amount, 0),
+    collected: periodList.filter((i) => i.paid).reduce((a, i) => a + i.amount, 0),
+    overdue: periodList.filter((i) => i.st === "overdue").reduce((a, i) => a + i.amount, 0),
+    count: periodList.filter((i) => !i.paid).length,
+  };
+
+  // Impayés DE LA PÉRIODE (onglet Impayés + bandeau).
+  const overdues = useMemo(() => {
+    const list = [];
+    sales.forEach((s) => s.schedule.forEach((i) => { if (statusOf(i) === "overdue" && inPeriod(i.dueDate)) list.push({ ...i, sale: s }); }));
+    return list.sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+  }, [sales, periodRange]); // eslint-disable-line
+
+  // Clients ayant au moins une échéance dans la période, + tri.
+  const [sortBy, setSortBy] = useState("recent");
+  const lastDateOf = (s) => s.schedule.reduce((mx, i) => i.dueDate > mx ? i.dueDate : mx, "");
+  const sortClients = (list) => {
+    const arr = [...list];
+    if (sortBy === "recent") arr.sort((a, b) => lastDateOf(b).localeCompare(lastDateOf(a)));
+    else if (sortBy === "old") arr.sort((a, b) => lastDateOf(a).localeCompare(lastDateOf(b)));
+    else if (sortBy === "amount") arr.sort((a, b) => b.total - a.total);
+    else if (sortBy === "overdue") arr.sort((a, b) => (hasOverdue(b) ? 1 : 0) - (hasOverdue(a) ? 1 : 0) || lastDateOf(b).localeCompare(lastDateOf(a)));
+    return arr;
+  };
+  const salesInPeriod = sales.filter((s) => s.schedule.some((i) => inPeriod(i.dueDate)));
+  const salesF = sortClients(salesInPeriod.filter(matchQ));
   const overduesF = overdues.filter((i) => matchQ(i.sale));
-  const monthListF = monthList.filter((i) => matchQ(i.sale));
+  const periodListF = periodList.filter((i) => matchQ(i.sale));
 
   return (
     <div className="melo">
@@ -488,13 +502,29 @@ export default function App() {
         .edit-row select:disabled{opacity:.4;}
         .pay-toggle{display:inline-flex;align-items:center;gap:5px;justify-content:center;background:var(--panel2);border:1px solid var(--line);color:rgba(234,242,255,.55);border-radius:8px;padding:8px;font:inherit;font-size:12px;font-weight:600;cursor:pointer;}
         .pay-toggle.on{color:#2BD9A0;border-color:rgba(43,217,160,.4);background:rgba(43,217,160,.08);}
-        .period{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px;color:rgba(234,242,255,.5);}
-        .period-presets{display:flex;gap:6px;flex-wrap:wrap;}
-        .period-presets button{background:var(--panel2);border:1px solid var(--line);color:rgba(234,242,255,.7);border-radius:8px;padding:6px 12px;font:inherit;font-size:12.5px;font-weight:600;cursor:pointer;transition:.15s;}
-        .period-presets button:hover{border-color:rgba(255,255,255,.25);}
-        .period-presets button.on{background:rgba(0,212,255,.12);border-color:var(--cyan);color:var(--cyan);}
-        .month-pick{background:var(--panel2);border:1px solid var(--line);color:var(--text);border-radius:8px;padding:5px 10px;font:inherit;font-size:12.5px;cursor:pointer;color-scheme:dark;}
-        .period-lbl{font-size:12px;font-weight:600;color:rgba(234,242,255,.45);margin-left:auto;}
+        .period{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px;color:rgba(234,242,255,.5);}
+        .daterange{position:relative;}
+        .dr-trigger{display:inline-flex;align-items:center;gap:8px;background:var(--panel2);border:1px solid var(--line);color:var(--text);border-radius:9px;padding:8px 14px;font:inherit;font-size:13.5px;cursor:pointer;}
+        .dr-trigger:hover{border-color:var(--cyan);}
+        .dr-trigger b{font-weight:700;}
+        .dr-scrim{position:fixed;inset:0;z-index:40;}
+        .dr-pop{position:absolute;top:calc(100% + 8px);left:0;z-index:41;display:flex;background:#16243d;border:1px solid rgba(255,255,255,.14);border-radius:12px;box-shadow:0 18px 50px rgba(0,0,0,.5);overflow:hidden;}
+        .dr-presets{display:flex;flex-direction:column;padding:8px;gap:2px;border-right:1px solid rgba(255,255,255,.1);min-width:160px;}
+        .dr-presets button{text-align:left;background:transparent;border:none;color:rgba(234,242,255,.8);border-radius:7px;padding:8px 12px;font:inherit;font-size:13px;cursor:pointer;}
+        .dr-presets button:hover{background:rgba(255,255,255,.06);color:#fff;}
+        .dr-cal{padding:12px;width:248px;}
+        .dr-cal-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;font-weight:700;font-size:13px;text-transform:capitalize;}
+        .dr-cal-head button{background:var(--panel2);border:1px solid var(--line);color:var(--text);width:26px;height:26px;border-radius:7px;cursor:pointer;}
+        .dr-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:3px;}
+        .dr-dow span{text-align:center;font-size:10px;color:rgba(234,242,255,.4);padding:2px 0;}
+        .dr-day{aspect-ratio:1;border:none;background:transparent;color:rgba(234,242,255,.8);border-radius:7px;font:inherit;font-size:12px;cursor:pointer;}
+        .dr-day:hover{background:rgba(255,255,255,.08);}
+        .dr-day.in{background:rgba(0,212,255,.14);color:#fff;border-radius:0;}
+        .dr-day.edge{background:var(--cyan);color:#04121f;font-weight:700;border-radius:7px;}
+        .dr-day.today{outline:1px solid rgba(255,255,255,.3);}
+        .dr-hint{margin-top:8px;font-size:11px;color:rgba(234,242,255,.45);text-align:center;}
+        .period-lbl{font-size:12px;font-weight:600;color:rgba(234,242,255,.4);margin-left:auto;}
+        .sort-sel{background:var(--panel2);border:1px solid var(--line);color:var(--text);border-radius:8px;padding:7px 10px;font:inherit;font-size:13px;font-weight:600;cursor:pointer;color-scheme:dark;}
         .delta{display:inline-block;font-size:11px;font-weight:700;margin-right:8px;}
         .delta.up{color:#2BD9A0;}
         .delta.down{color:#FF4D5E;}
@@ -512,35 +542,79 @@ export default function App() {
       </header>
 
       <div className="period">
-        <Calendar size={15} />
-        <div className="period-presets">
-          {[["30d", "30 j"], ["mtd", "Mois en cours"], ["lastmonth", "Mois dernier"], ["ytd", "Depuis janvier"], ["12m", "12 mois"], ["lastyear", "Année dernière"], ["all", "Tout"]].map(([key, lab]) => (
-            <button key={key} className={!pickMonth && periodKey === key ? "on" : ""} onClick={() => { setPickMonth(""); setPeriodKey(key); }}>{lab}</button>
-          ))}
+        <div className="daterange">
+          <button className="dr-trigger" onClick={() => { setPickerOpen((o) => !o); setSelStart(null); setCalMonth(parseLocal(range.from)); }}>
+            <Calendar size={15} /> <b>{periodRange.label}</b>
+          </button>
+          {pickerOpen && (<>
+            <div className="dr-scrim" onClick={() => setPickerOpen(false)} />
+            <div className="dr-pop">
+              <div className="dr-presets">
+                {PRESETS.map(([key, lab]) => (
+                  <button key={key} onClick={() => { const r = presetRange(key); setRange(r); setCalMonth(parseLocal(r.from)); setSelStart(null); setPickerOpen(false); }}>{lab}</button>
+                ))}
+              </div>
+              <div className="dr-cal">
+                <div className="dr-cal-head">
+                  <button onClick={() => setCalMonth(new Date(calMonth.getFullYear(), calMonth.getMonth() - 1, 1))}>‹</button>
+                  <span>{monthLabel(toISO(calMonth))}</span>
+                  <button onClick={() => setCalMonth(new Date(calMonth.getFullYear(), calMonth.getMonth() + 1, 1))}>›</button>
+                </div>
+                <div className="dr-grid dr-dow">{["L", "M", "M", "J", "V", "S", "D"].map((d, idx) => <span key={idx}>{d}</span>)}</div>
+                <div className="dr-grid">
+                  {(() => {
+                    const y = calMonth.getFullYear(), mo = calMonth.getMonth();
+                    const start = (new Date(y, mo, 1).getDay() + 6) % 7;
+                    const nb = new Date(y, mo + 1, 0).getDate();
+                    const cells = [];
+                    for (let i = 0; i < start; i++) cells.push(<span key={`e${i}`} />);
+                    for (let d = 1; d <= nb; d++) {
+                      const iso = toISO(new Date(y, mo, d));
+                      const inR = iso >= range.from && iso <= range.to;
+                      const edge = iso === range.from || iso === range.to;
+                      const isToday = iso === toISO(today);
+                      cells.push(
+                        <button key={d} className={`dr-day ${inR ? "in" : ""} ${edge ? "edge" : ""} ${selStart === iso ? "edge" : ""} ${isToday ? "today" : ""}`}
+                          onClick={() => {
+                            if (!selStart) { setSelStart(iso); }
+                            else {
+                              const from = selStart <= iso ? selStart : iso;
+                              const to = selStart <= iso ? iso : selStart;
+                              setRange({ from, to }); setSelStart(null); setPickerOpen(false);
+                            }
+                          }}>{d}</button>
+                      );
+                    }
+                    return cells;
+                  })()}
+                </div>
+                <div className="dr-hint">{selStart ? "Choisis la date de fin…" : "Clique une date de début puis de fin"}</div>
+              </div>
+            </div>
+          </>)}
         </div>
-        <input type="month" className="month-pick" value={pickMonth} onChange={(e) => setPickMonth(e.target.value)} title="Choisir un mois précis" />
-        <span className="period-lbl">{periodRange.label}</span>
+        <span className="period-lbl">Comparé à la période précédente (MoM) et N-1 (YoY)</span>
       </div>
 
       <div className="kpis">
-        <div className="card"><div className="kpi-label">CA signé</div><div className="kpi-val">{euro(kp.signed)}</div><div className="kpi-foot">{kp.clients} vente{kp.clients > 1 ? "s" : ""}<br />{Delta(kp.signed, kpPrev.signed, "MoM")}{Delta(kp.signed, kpYoy.signed, "YoY")}</div></div>
-        <div className="card"><div className="kpi-label">Encaissé</div><div className="kpi-val" style={{ color: "var(--green)" }}>{euro(kp.collected)}</div><div className="kpi-foot">{kp.expected ? Math.round((kp.collected / kp.expected) * 100) : 0}% de l'attendu<br />{Delta(kp.collected, kpPrev.collected, "MoM")}{Delta(kp.collected, kpYoy.collected, "YoY")}</div></div>
+        <div className="card"><div className="kpi-label">CA contracté</div><div className="kpi-val">{euro(kp.signed)}</div><div className="kpi-foot">{kp.clients} vente{kp.clients > 1 ? "s" : ""} signée{kp.clients > 1 ? "s" : ""}<br />{Delta(kp.signed, kpPrev.signed, "MoM")}{Delta(kp.signed, kpYoy.signed, "YoY")}</div></div>
+        <div className="card"><div className="kpi-label">CA collecté</div><div className="kpi-val" style={{ color: "var(--green)" }}>{euro(kp.collected)}</div><div className="kpi-foot">{kp.expected ? Math.round((kp.collected / kp.expected) * 100) : 0}% de l'attendu<br />{Delta(kp.collected, kpPrev.collected, "MoM")}{Delta(kp.collected, kpYoy.collected, "YoY")}</div></div>
         <div className="card"><div className="kpi-label">Reste à encaisser</div><div className="kpi-val">{euro(kp.outstanding)}</div><div className="kpi-foot">sur la période</div></div>
         <div className={`card ${kp.overdueCount ? "kpi-alert" : ""}`}><div className="kpi-label">Impayés</div><div className="kpi-val">{euro(kp.overdueAmt)}</div><div className="kpi-foot">{kp.overdueCount} échéance{kp.overdueCount > 1 ? "s" : ""} en retard<br />{Delta(kp.overdueAmt, kpYoy.overdueAmt, "YoY")}</div></div>
         <div className="card"><div className="kpi-label" style={{ display: "flex", alignItems: "center", gap: 6 }}><Leaf size={13} color="#2BD9A0" /> Encaissé organique</div><div className="kpi-val green">{euro(kp.org)}</div><div className="kpi-foot">{kp.collected ? Math.round((kp.org / kp.collected) * 100) : 0}% de l'encaissé<br />{Delta(kp.org, kpPrev.org, "MoM")}{Delta(kp.org, kpYoy.org, "YoY")}</div></div>
         <div className="card"><div className="kpi-label" style={{ display: "flex", alignItems: "center", gap: 6 }}><Megaphone size={13} color="#00D4FF" /> Encaissé paid</div><div className="kpi-val" style={{ color: "var(--cyan)" }}>{euro(kp.paid)}</div><div className="kpi-foot">{kp.collected ? Math.round((kp.paid / kp.collected) * 100) : 0}% de l'encaissé<br />{Delta(kp.paid, kpPrev.paid, "MoM")}{Delta(kp.paid, kpYoy.paid, "YoY")}</div></div>
       </div>
 
-      {k.overdueCount > 0 && (
+      {overdues.length > 0 && (
         <div className="banner"><div className="banner-ic"><AlertTriangle size={20} /></div>
-          <div><b>{k.overdueCount} impayé{k.overdueCount > 1 ? "s" : ""} à relancer</b> · {euro(k.overdueAmt)} dépassé. <span className="mut">Si tu as reçu un virement, marque l'échéance "encaissé en direct".</span></div>
+          <div><b>{overdues.length} impayé{overdues.length > 1 ? "s" : ""} à relancer</b> · {euro(overdues.reduce((a, i) => a + i.amount, 0))} dépassé sur la période. <span className="mut">Si tu as reçu un virement, marque l'échéance "encaissé en direct".</span></div>
         </div>
       )}
 
       <div className="tabs">
         <button className={`tab ${tab === "clients" ? "active" : ""}`} onClick={() => setTab("clients")}><Users size={15} /> Clients</button>
         <button className={`tab ${tab === "cohortes" ? "active" : ""}`} onClick={() => setTab("cohortes")}><Grid3x3 size={15} /> Cohortes</button>
-        <button className={`tab ${tab === "impayes" ? "active" : ""}`} onClick={() => setTab("impayes")}><AlertTriangle size={15} /> Impayés{k.overdueCount ? ` (${k.overdueCount})` : ""}</button>
+        <button className={`tab ${tab === "impayes" ? "active" : ""}`} onClick={() => setTab("impayes")}><AlertTriangle size={15} /> Impayés{overdues.length ? ` (${overdues.length})` : ""}</button>
         <button className={`tab ${tab === "collecte" ? "active" : ""}`} onClick={() => setTab("collecte")}><Landmark size={15} /> À collecter</button>
         <button className={`tab ${tab === "mois" ? "active" : ""}`} onClick={() => setTab("mois")}><Calendar size={15} /> Par mois</button>
       </div>
@@ -550,6 +624,14 @@ export default function App() {
           <Search size={15} />
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Rechercher un client, un email, une source…" />
           {q && <button className="clr" onClick={() => setQ("")} title="Effacer"><X size={14} /></button>}
+          {tab === "clients" && (
+            <select className="sort-sel" value={sortBy} onChange={(e) => setSortBy(e.target.value)} title="Trier">
+              <option value="recent">Plus récents</option>
+              <option value="old">Plus anciens</option>
+              <option value="amount">Montant ↓</option>
+              <option value="overdue">Impayés d'abord</option>
+            </select>
+          )}
         </div>
       )}
 
@@ -707,27 +789,24 @@ export default function App() {
         </div>
       )}
 
-      {/* À COLLECTER — filtre par mois */}
+      {/* À COLLECTER — piloté par la plage de dates globale */}
       {tab === "collecte" && (<>
         <div className="section-h" style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-          <Landmark size={15} /> Paiements à collecter
-          <select className="month-sel" value={selMonth} onChange={(e) => setSelMonth(e.target.value)}>
-            {monthOptions.map((mk) => <option key={mk} value={mk}>{monthLabel(mk)}</option>)}
-          </select>
+          <Landmark size={15} /> Paiements à collecter · <b style={{ color: "var(--text)" }}>{periodRange.label}</b>
         </div>
         <div className="kpis" style={{ marginTop: 4 }}>
-          <div className="card"><div className="kpi-label">À collecter · {monthLabel(selMonth)}</div><div className="kpi-val">{euro(monthTot.toCollect)}</div><div className="kpi-foot">{monthTot.count} échéance{monthTot.count > 1 ? "s" : ""}</div></div>
-          <div className="card"><div className="kpi-label">Déjà encaissé ce mois</div><div className="kpi-val green">{euro(monthTot.collected)}</div></div>
-          <div className={`card ${monthTot.overdue ? "kpi-alert" : ""}`}><div className="kpi-label">Dont en retard</div><div className="kpi-val">{euro(monthTot.overdue)}</div></div>
+          <div className="card"><div className="kpi-label">À collecter</div><div className="kpi-val">{euro(periodTot.toCollect)}</div><div className="kpi-foot">{periodTot.count} échéance{periodTot.count > 1 ? "s" : ""}</div></div>
+          <div className="card"><div className="kpi-label">Déjà encaissé</div><div className="kpi-val green">{euro(periodTot.collected)}</div></div>
+          <div className={`card ${periodTot.overdue ? "kpi-alert" : ""}`}><div className="kpi-label">Dont en retard</div><div className="kpi-val">{euro(periodTot.overdue)}</div></div>
         </div>
         <div className="card" style={{ padding: 6, marginTop: 14 }}>
-          {monthListF.length === 0 ? (
-            <div className="empty">Aucune échéance sur {monthLabel(selMonth)}{q ? " pour cette recherche" : ""}.</div>
+          {periodListF.length === 0 ? (
+            <div className="empty">Aucune échéance sur cette période{q ? " pour cette recherche" : ""}.</div>
           ) : (
             <table className="tbl">
               <thead><tr><th>Client</th><th>Source</th><th className="num">Échéance</th><th>Statut</th><th className="num">Montant</th><th className="num">Action</th></tr></thead>
               <tbody>
-                {monthListF.map((i) => (
+                {periodListF.map((i) => (
                   <tr key={i.id}>
                     <td className="lab">{i.sale.client}</td>
                     <td><span className={`src src-${i.sale.channel === "paid" ? "paid" : "organic"}`}>{i.sale.channel === "paid" ? <Megaphone size={11} /> : <Leaf size={11} />}{i.sale.source}</span></td>
@@ -747,7 +826,7 @@ export default function App() {
                     </td>
                   </tr>
                 ))}
-                <tr className="tot-row"><td className="lab">À collecter{q ? " (filtré)" : ""}</td><td /><td /><td /><td className="num">{euro(monthListF.filter((i) => !i.paid).reduce((a, i) => a + i.amount, 0))}</td><td /></tr>
+                <tr className="tot-row"><td className="lab">À collecter{q ? " (filtré)" : ""}</td><td /><td /><td /><td className="num">{euro(periodListF.filter((i) => !i.paid).reduce((a, i) => a + i.amount, 0))}</td><td /></tr>
               </tbody>
             </table>
           )}
