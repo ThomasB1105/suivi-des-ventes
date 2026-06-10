@@ -492,9 +492,25 @@ export default function App() {
     return Object.values(m).sort((a, b) => a.key.localeCompare(b.key)).map((x) => ({ ...x, label: monthLabel(x.key) }));
   }, [sales, chartRange]);
 
+  // Impayés : filtre dédié "Tous / Période" + tri (indépendant de la période globale).
+  const allOverdue = useMemo(() => {
+    const list = [];
+    sales.forEach((s) => s.schedule.forEach((i) => { if (statusOf(i) === "overdue") list.push({ ...i, sale: s }); }));
+    return list;
+  }, [sales]);
+  const [impAll, setImpAll] = useState(true);
+  const [impSort, setImpSort] = useState("late");
+  const sortOverdue = (list) => {
+    const arr = [...list];
+    if (impSort === "amount") arr.sort((a, b) => b.amount - a.amount);
+    else if (impSort === "recent") arr.sort((a, b) => b.dueDate.localeCompare(a.dueDate));
+    else arr.sort((a, b) => a.dueDate.localeCompare(b.dueDate)); // plus en retard d'abord
+    return arr;
+  };
+
   const salesInPeriod = sales.filter((s) => s.schedule.some((i) => inPeriod(i.dueDate)));
   const salesF = sortClients(salesInPeriod.filter(matchQ));
-  const overduesF = overdues.filter((i) => matchQ(i.sale));
+  const overduesF = sortOverdue((impAll ? allOverdue : overdues).filter((i) => matchQ(i.sale)));
   const periodListF = periodList.filter((i) => matchQ(i.sale));
 
   return (
@@ -564,6 +580,14 @@ export default function App() {
         .pill.pill-cancelled .a{text-decoration:line-through;}
         .pill.pill-refunded{color:#FFB020;border-color:rgba(255,176,32,.4);background:rgba(255,176,32,.08);}
         .badge.warn{color:#FFB020;border-color:rgba(255,176,32,.4);background:rgba(255,176,32,.08);}
+        .seg2{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;}
+        .seg2 button{background:var(--panel2);border:none;color:rgba(234,242,255,.6);padding:6px 12px;font:inherit;font-size:12.5px;font-weight:600;cursor:pointer;}
+        .seg2 button.on{background:rgba(0,212,255,.14);color:var(--cyan);}
+        .chip-btn{cursor:pointer;}
+        .chip-btn:hover{border-color:var(--cyan);}
+        .chip-btn:disabled{opacity:.6;cursor:default;}
+        .spin{animation:spin 1s linear infinite;}
+        @keyframes spin{to{transform:rotate(360deg);}}
         .delta{display:inline-block;font-size:11px;font-weight:700;margin-right:8px;}
         .delta.up{color:#2BD9A0;}
         .delta.down{color:#FF4D5E;}
@@ -575,7 +599,9 @@ export default function App() {
           <div className="melo-sub">Clients iClosed + plans Systeme.io · cohortes, impayés, acquisition</div>
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-          <span className="chip"><span className="dot" style={{ background: syncing ? "#FFB020" : "#2BD9A0" }} /> {syncing ? "Synchronisation…" : "Sync auto · systeme.io"}</span>
+          <button className="chip chip-btn" onClick={() => syncSio()} disabled={syncing} title="Forcer la récupération des nouvelles ventes">
+            <RotateCcw size={13} className={syncing ? "spin" : ""} /> {syncing ? "Actualisation…" : "Actualiser"}
+          </button>
           <button className="btn-primary" onClick={() => setShowAdd(true)}><Plus size={17} /> Ajouter une vente</button>
         </div>
       </header>
@@ -677,7 +703,7 @@ export default function App() {
       <div className="tabs">
         <button className={`tab ${tab === "clients" ? "active" : ""}`} onClick={() => setTab("clients")}><Users size={15} /> Clients</button>
         <button className={`tab ${tab === "cohortes" ? "active" : ""}`} onClick={() => setTab("cohortes")}><Grid3x3 size={15} /> Cohortes</button>
-        <button className={`tab ${tab === "impayes" ? "active" : ""}`} onClick={() => setTab("impayes")}><AlertTriangle size={15} /> Impayés{overdues.length ? ` (${overdues.length})` : ""}</button>
+        <button className={`tab ${tab === "impayes" ? "active" : ""}`} onClick={() => setTab("impayes")}><AlertTriangle size={15} /> Impayés{allOverdue.length ? ` (${allOverdue.length})` : ""}</button>
         <button className={`tab ${tab === "collecte" ? "active" : ""}`} onClick={() => setTab("collecte")}><Landmark size={15} /> À collecter</button>
         <button className={`tab ${tab === "mois" ? "active" : ""}`} onClick={() => setTab("mois")}><Calendar size={15} /> Par mois</button>
       </div>
@@ -695,6 +721,17 @@ export default function App() {
               <option value="overdue">Impayés d'abord</option>
             </select>
           )}
+          {tab === "impayes" && (<>
+            <div className="seg2">
+              <button className={impAll ? "on" : ""} onClick={() => setImpAll(true)}>Tous ({allOverdue.length})</button>
+              <button className={!impAll ? "on" : ""} onClick={() => setImpAll(false)}>Période</button>
+            </div>
+            <select className="sort-sel" value={impSort} onChange={(e) => setImpSort(e.target.value)} title="Trier">
+              <option value="late">Plus en retard</option>
+              <option value="amount">Montant ↓</option>
+              <option value="recent">Plus récents</option>
+            </select>
+          </>)}
         </div>
       )}
 
@@ -816,7 +853,7 @@ export default function App() {
       {tab === "impayes" && (
         <div className="card" style={{ padding: 6 }}>
           {overduesF.length === 0 ? (
-            <div className="empty">{overdues.length ? "Aucun impayé pour cette recherche." : "Aucun impayé 🎉 Toutes les échéances dépassées sont réglées."}</div>
+            <div className="empty">{allOverdue.length ? "Aucun impayé pour ce filtre." : "Aucun impayé 🎉 Toutes les échéances dépassées sont réglées."}</div>
           ) : (
             <table className="tbl">
               <thead><tr>
