@@ -45,6 +45,12 @@ function normalize(row, i) {
 }
 
 module.exports = async (req, res) => {
+  // CORS : ce endpoint est appelé depuis le navigateur (dashboard systeme.io).
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, x-ingest-secret");
+  if (req.method === "OPTIONS") { res.status(204).end(); return; }
+
   const secret = process.env.INGEST_SECRET;
   const provided = (req.query && req.query.secret) || req.headers["x-ingest-secret"];
   if (secret && provided !== secret) { res.status(401).json({ error: "Secret invalide." }); return; }
