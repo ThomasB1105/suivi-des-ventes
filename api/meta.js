@@ -12,8 +12,12 @@
 // La dépense est lue via l'endpoint Insights du compte publicitaire.
 // ---------------------------------------------------------------------------
 
+const { checkAuth } = require("../lib/auth");
+
 module.exports = async (req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, x-app-token");
+  if (!checkAuth(req)) { res.status(401).json({ error: "Non autorisé." }); return; }
   const token = process.env.META_ACCESS_TOKEN;
   const acct = process.env.META_AD_ACCOUNT_ID;
   if (!token || !acct) {

@@ -198,6 +198,9 @@ const css = `
 
 /* ------------------------------ component ------------------------------ */
 
+const appToken = () => { try { return localStorage.getItem("melo_token") || ""; } catch (e) { return ""; } };
+const authFetch = (url, opts = {}) => fetch(url, { ...opts, headers: { ...(opts.headers || {}), "x-app-token": appToken() } });
+
 export default function App() {
   const [sales, setSales] = useState([]);
   const [tab, setTab] = useState("clients");
@@ -218,13 +221,12 @@ export default function App() {
     offer: "Ecom Ascension", total: "", acompte: "", n: "", start: toISO(today),
   });
 
-  // Hydratation depuis la BASE (synchro multi-appareils). À défaut, localStorage.
+  // Hydratation depuis la BASE (synchro multi-appareils) + contrôle d'accès.
   const hydrated = useRef(false);
   useEffect(() => {
     let on = true;
     const fallbackLocal = () => { try { const raw = localStorage.getItem(STORAGE_KEY); if (raw) setSales(normalize(JSON.parse(raw))); } catch (e) { /* ignore */ } };
-    fetch("/api/state").then((r) => r.json()).then((st) => {
-      if (!on) return;
+    const proceed = (st) => {
       // La base n'écrase un champ QUE s'il contient des données (jamais par du vide → pas de perte).
       if (st && st.found) {
         if (Array.isArray(st.sales) && st.sales.length) setSales(normalize(st.sales)); else fallbackLocal();
@@ -232,13 +234,18 @@ export default function App() {
         if (st.ads && Object.keys(st.ads).length) setAdsByMonth(st.ads);
         if (Array.isArray(st.deletedSales) && st.deletedSales.length) setDeletedSales(st.deletedSales);
       } else {
-        fallbackLocal(); // pas d'état en base : on migre le localStorage existant
+        fallbackLocal();
       }
-    }).catch(fallbackLocal).finally(() => {
-      if (!on) return;
       hydrated.current = true;
-      syncSio({ silent: true }); // fusionne les nouvelles ventes par-dessus l'état chargé
-    });
+      syncSio({ silent: true });
+    };
+    authFetch("/api/state").then(async (r) => {
+      if (!on) return;
+      if (r.status === 401) { setAuthed(false); return; } // mot de passe requis
+      setAuthed(true);
+      let st = null; try { st = await r.json(); } catch (e) { /* ignore */ }
+      proceed(st);
+    }).catch(() => { if (!on) return; setAuthed(true); proceed(null); });
     return () => { on = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -251,6 +258,18 @@ export default function App() {
   const flash = (m) => { setToast(m); setTimeout(() => setToast(null), 3800); };
 
   const [syncing, setSyncing] = useState(false);
+  const [authed, setAuthed] = useState(null); // null = vérification, false = login requis, true = ok
+  const [pwInput, setPwInput] = useState("");
+  const [loginErr, setLoginErr] = useState(false);
+  const doLogin = async () => {
+    setLoginErr(false);
+    try {
+      const r = await fetch("/api/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password: pwInput }) });
+      const d = await r.json().catch(() => ({}));
+      if (r.ok && d.ok) { try { localStorage.setItem("melo_token", d.token || ""); } catch (e) { /* ignore */ } window.location.reload(); }
+      else setLoginErr(true);
+    } catch (e) { setLoginErr(true); }
+  };
   const [deletedSales, setDeletedSales] = useState(() => { try { return JSON.parse(localStorage.getItem("melo_deleted_v1") || "[]"); } catch (e) { return []; } });
   // Coûts datés par mois (varient d'un mois à l'autre) + dépenses pub Meta.
   const [costs, setCosts] = useState(() => {
@@ -291,7 +310,7 @@ export default function App() {
   useEffect(() => {
     if (!hydrated.current) return;
     const payload = JSON.stringify({ sales, costs, ads: adsByMonth, deletedSales });
-    const t = setTimeout(() => { try { fetch("/api/state", { method: "POST", headers: { "Content-Type": "application/json" }, body: payload }).catch(() => {}); } catch (e) { /* ignore */ } }, 600);
+    const t = setTimeout(() => { try { authFetch("/api/state", { method: "POST", headers: { "Content-Type": "application/json" }, body: payload }).catch(() => {}); } catch (e) { /* ignore */ } }, 600);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sales, costs, adsByMonth, deletedSales]);
@@ -333,7 +352,7 @@ export default function App() {
   const syncSio = async ({ silent = false } = {}) => {
     if (!silent) setSyncing(true);
     try {
-      const r = await fetch("/api/sales");
+      const r = await authFetch("/api/sales");
       const data = await r.json();
       if (!r.ok) throw new Error(data && data.error ? data.error : `Erreur ${r.status}`);
       const incoming = normalize(data.sales || []);
@@ -635,7 +654,7 @@ export default function App() {
 
   useEffect(() => {
     let on = true;
-    fetch(`/api/meta?since=${periodRange.from}&until=${periodRange.to}`)
+    authFetch(`/api/meta?since=${periodRange.from}&until=${periodRange.to}`)
       .then((r) => r.json()).then((d) => { if (on) setMetaSpend(d || { configured: false, spend: 0 }); })
       .catch(() => {});
     return () => { on = false; };
@@ -646,6 +665,24 @@ export default function App() {
   const salesF = sortClients(salesInPeriod.filter(matchQ));
   const overduesF = sortOverdue((impAll ? allOverdue : overdues).filter((i) => matchQ(i.sale)));
   const periodListF = periodList.filter((i) => matchQ(i.sale));
+
+  // ---- Contrôle d'accès ----
+  if (authed === null) {
+    return <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", background: "#06040F", color: "rgba(234,242,255,.5)", fontFamily: "'Inter',system-ui,sans-serif" }}>Chargement…</div>;
+  }
+  if (authed === false) {
+    return (
+      <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", padding: 20, fontFamily: "'Inter',system-ui,sans-serif", color: "#EAF2FF", background: "radial-gradient(1000px 500px at 80% -10%, rgba(124,92,255,.20), transparent 60%), radial-gradient(700px 460px at 0% 100%, rgba(40,90,230,.12), transparent 55%), #06040F" }}>
+        <div style={{ width: "min(380px,92vw)", background: "#101D33", border: "1px solid rgba(255,255,255,.1)", borderRadius: 22, padding: 32, boxShadow: "0 40px 90px -30px rgba(0,0,0,.85)" }}>
+          <div style={{ fontFamily: "'Montserrat',sans-serif", fontWeight: 800, fontSize: 25, letterSpacing: "-.02em", background: "linear-gradient(95deg,#6A5CFF,#9D5CFF)", WebkitBackgroundClip: "text", backgroundClip: "text", WebkitTextFillColor: "transparent" }}>ANG INDUSTRIES</div>
+          <div style={{ color: "rgba(234,242,255,.55)", fontSize: 13, margin: "8px 0 22px" }}>Tableau de bord protégé — entre ton mot de passe.</div>
+          <input type="password" autoFocus value={pwInput} onChange={(e) => setPwInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && doLogin()} placeholder="Mot de passe" style={{ width: "100%", boxSizing: "border-box", background: "#0A1220", border: `1px solid ${loginErr ? "#FF4D5E" : "rgba(255,255,255,.12)"}`, borderRadius: 12, padding: "13px 14px", color: "#EAF2FF", fontSize: 15, outline: "none" }} />
+          {loginErr && <div style={{ color: "#FF4D5E", fontSize: 13, marginTop: 10 }}>Mot de passe incorrect.</div>}
+          <button onClick={doLogin} style={{ width: "100%", marginTop: 16, background: "linear-gradient(95deg,#6A5CFF,#9D5CFF)", color: "#fff", border: "none", borderRadius: 12, padding: "13px", fontWeight: 700, fontSize: 15, cursor: "pointer" }}>Entrer →</button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="melo">

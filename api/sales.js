@@ -11,6 +11,7 @@
 // ---------------------------------------------------------------------------
 
 const { cmd, isConfigured } = require("../lib/kv");
+const { checkAuth } = require("../lib/auth");
 
 const slug = (s) => String(s || "").replace(/[^a-z0-9]/gi, "").slice(0, 40).toLowerCase();
 const pad = (n) => String(n).padStart(2, "0");
@@ -85,6 +86,8 @@ function groupIntoSales(events) {
 }
 
 module.exports = async (req, res) => {
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, x-app-token");
+  if (!checkAuth(req)) { res.status(401).json({ error: "Non autorisé." }); return; }
   if (!isConfigured()) {
     res.status(200).json({ sales: [], count: 0, configured: false, note: "Base KV non configurée." });
     return;

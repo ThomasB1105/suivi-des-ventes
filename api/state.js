@@ -6,12 +6,14 @@
 //   POST /api/state  body:{sales,costs,ads,deletedSales}
 
 const { cmd, isConfigured } = require("../lib/kv");
+const { checkAuth } = require("../lib/auth");
 
 module.exports = async (req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, x-app-token");
   if (req.method === "OPTIONS") { res.status(204).end(); return; }
+  if (!checkAuth(req)) { res.status(401).json({ error: "Non autorisé." }); return; }
   if (!isConfigured()) { res.status(200).json({ configured: false }); return; }
 
   try {
