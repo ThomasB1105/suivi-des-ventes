@@ -233,18 +233,31 @@ export default function App() {
 
   const [syncing, setSyncing] = useState(false);
   const [deletedSales, setDeletedSales] = useState(() => { try { return JSON.parse(localStorage.getItem("melo_deleted_v1") || "[]"); } catch (e) { return []; } });
-  // Coûts récurrents (logiciels…) + dépenses pub Meta.
-  const [costs, setCosts] = useState(() => { try { return JSON.parse(localStorage.getItem("melo_costs_v1") || "[]"); } catch (e) { return []; } });
+  // Coûts datés par mois (varient d'un mois à l'autre) + dépenses pub Meta.
+  const [costs, setCosts] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("melo_costs_v1") || "[]").map((c) => ({ ...c, month: c.month || toISO(today).slice(0, 7) })); }
+    catch (e) { return []; }
+  });
   const [costForm, setCostForm] = useState({ name: "", amount: "", type: "logiciel" });
+  const [costMonth, setCostMonth] = useState(() => toISO(today).slice(0, 7));
   const [metaSpend, setMetaSpend] = useState({ configured: false, spend: 0 });
   const persistCosts = (next) => { setCosts(next); try { localStorage.setItem("melo_costs_v1", JSON.stringify(next)); } catch (e) { /* quota */ } };
   const addCost = () => {
     const amt = parseFloat(String(costForm.amount).replace(",", ".")) || 0;
     if (!costForm.name.trim() || amt <= 0) { flash("Indique un nom et un montant."); return; }
-    persistCosts([...costs, { id: `c-${Date.now()}`, name: costForm.name.trim(), amount: amt, type: costForm.type }]);
+    persistCosts([...costs, { id: `c-${Date.now()}`, month: costMonth, name: costForm.name.trim(), amount: amt, type: costForm.type }]);
     setCostForm({ name: "", amount: "", type: "logiciel" });
   };
   const removeCost = (id) => persistCosts(costs.filter((c) => c.id !== id));
+  const copyPrevMonthCosts = () => {
+    const [y, m] = costMonth.split("-").map(Number);
+    const prev = `${m === 1 ? y - 1 : y}-${String(m === 1 ? 12 : m - 1).padStart(2, "0")}`;
+    const prevCosts = costs.filter((c) => c.month === prev);
+    if (!prevCosts.length) { flash("Aucun coût le mois précédent à copier."); return; }
+    persistCosts([...costs, ...prevCosts.map((c) => ({ ...c, id: `c-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, month: costMonth }))]);
+    flash(`${prevCosts.length} coût(s) copié(s) depuis ${monthLabel(prev)}.`);
+  };
+  const shiftCostMonth = (d) => { const [y, m] = costMonth.split("-").map(Number); const nd = new Date(y, m - 1 + d, 1); setCostMonth(toISO(nd).slice(0, 7)); };
   // Applique les ventes venues de la base (webhooks systeme.io) en conservant
   // l'attribution manuelle (canal/source/closer) et les ventes saisies à la main.
   // Synchro : ajoute les nouveaux clients ET rafraîchit les clients existants
@@ -568,10 +581,11 @@ export default function App() {
     return arr;
   };
 
-  // Coûts de la période (logiciels mensuels × nb de mois + dépenses Meta) et bénéfice net.
-  const monthsInPeriod = Math.max(1, (parseLocal(periodRange.to).getFullYear() - parseLocal(periodRange.from).getFullYear()) * 12 + (parseLocal(periodRange.to).getMonth() - parseLocal(periodRange.from).getMonth()) + 1);
-  const monthlyCosts = costs.reduce((a, c) => a + c.amount, 0);
-  const periodSoftwareCosts = monthlyCosts * monthsInPeriod;
+  // Coûts réels de la période (somme des coûts de chaque mois compris dans la période) + Meta.
+  const fromM = periodRange.from.slice(0, 7), toM = periodRange.to.slice(0, 7);
+  const periodSoftwareCosts = costs.filter((c) => c.month >= fromM && c.month <= toM).reduce((a, c) => a + c.amount, 0);
+  const monthCosts = costs.filter((c) => c.month === costMonth).sort((a, b) => String(a.name).localeCompare(String(b.name)));
+  const monthCostsTotal = monthCosts.reduce((a, c) => a + c.amount, 0);
   const metaCost = metaSpend && metaSpend.spend ? Number(metaSpend.spend) : 0;
   const periodCosts = periodSoftwareCosts + metaCost;
   const netProfit = kp.collected - periodCosts;
@@ -713,6 +727,10 @@ export default function App() {
         *::-webkit-scrollbar{width:10px;height:10px;}
         *::-webkit-scrollbar-thumb{background:rgba(255,255,255,.13);border-radius:10px;border:2px solid transparent;background-clip:content-box;}
         *::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.22);background-clip:content-box;}
+        .month-nav{display:inline-flex;align-items:center;gap:4px;background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:3px;}
+        .month-nav span{min-width:78px;text-align:center;font-weight:700;font-size:13px;text-transform:capitalize;}
+        .month-nav button{width:28px;height:28px;border-radius:7px;border:none;background:transparent;color:var(--text);cursor:pointer;font-size:16px;}
+        .month-nav button:hover{background:rgba(255,255,255,.08);}
         .cost-form{display:grid;grid-template-columns:2fr 1fr 1.2fr auto;gap:10px;margin-bottom:6px;}
         .cost-form input,.cost-form select{background:var(--panel2);border:1px solid var(--line);color:var(--text);border-radius:10px;padding:11px 12px;font:inherit;font-size:14px;outline:none;color-scheme:dark;}
         .cost-form input:focus{border-color:var(--cyan);}
@@ -1066,52 +1084,56 @@ export default function App() {
         </div>
       </>)}
 
-      {/* COÛTS */}
+      {/* COÛTS — page mois par mois */}
       {tab === "couts" && (<>
         <div className="kpis" style={{ marginTop: 4 }}>
-          <div className="card"><div className="kpi-label">Coûts logiciels / mois</div><div className="kpi-val">{euro(monthlyCosts)}</div><div className="kpi-foot">{costs.length} poste{costs.length > 1 ? "s" : ""} · {euro(periodSoftwareCosts)} sur la période</div></div>
-          <div className="card"><div className="kpi-label" style={{ display: "flex", alignItems: "center", gap: 6 }}><Megaphone size={13} color="#00D4FF" /> Invest. Meta Ads</div><div className="kpi-val" style={{ color: "var(--cyan)" }}>{metaSpend.configured ? euro(metaCost) : "—"}</div><div className="kpi-foot">{metaSpend.configured ? (roas ? `ROAS ${roas.toFixed(1)}x (CA paid / dépense)` : periodRange.label) : "Meta non connecté"}</div></div>
-          <div className="card"><div className="kpi-label">Coûts totaux · {periodRange.label}</div><div className="kpi-val">{euro(periodCosts)}</div><div className="kpi-foot">logiciels + pub</div></div>
-          <div className={`card ${netProfit < 0 ? "kpi-alert" : ""}`}><div className="kpi-label">Bénéfice net (période)</div><div className="kpi-val" style={{ color: netProfit >= 0 ? "var(--green)" : "var(--red)" }}>{euro(netProfit)}</div><div className="kpi-foot">CA collecté {euro(kp.collected)} − coûts</div></div>
+          <div className="card"><div className="kpi-label">Coûts du mois · {monthLabel(costMonth)}</div><div className="kpi-val">{euro(monthCostsTotal)}</div><div className="kpi-foot">{monthCosts.length} poste{monthCosts.length > 1 ? "s" : ""}</div></div>
+          <div className="card"><div className="kpi-label" style={{ display: "flex", alignItems: "center", gap: 6 }}><Megaphone size={13} color="#00D4FF" /> Invest. Meta Ads · {periodRange.label}</div><div className="kpi-val" style={{ color: "var(--cyan)" }}>{metaSpend.configured ? euro(metaCost) : "—"}</div><div className="kpi-foot">{metaSpend.configured ? (roas ? `ROAS ${roas.toFixed(1)}x` : "période") : "Meta non connecté"}</div></div>
+          <div className="card"><div className="kpi-label">Coûts totaux · {periodRange.label}</div><div className="kpi-val">{euro(periodCosts)}</div><div className="kpi-foot">{euro(periodSoftwareCosts)} coûts + {euro(metaCost)} pub</div></div>
+          <div className={`card ${netProfit < 0 ? "kpi-alert" : ""}`}><div className="kpi-label">Bénéfice net · {periodRange.label}</div><div className="kpi-val" style={{ color: netProfit >= 0 ? "var(--green)" : "var(--red)" }}>{euro(netProfit)}</div><div className="kpi-foot">CA collecté {euro(kp.collected)} − coûts</div></div>
         </div>
 
-        <div className="section-h"><Wallet size={15} /> Coûts mensuels récurrents (logiciels, abonnements…)</div>
+        <div className="section-h" style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <Wallet size={15} /> Coûts du mois
+          <div className="month-nav">
+            <button onClick={() => shiftCostMonth(-1)} title="Mois précédent">‹</button>
+            <span>{monthLabel(costMonth)}</span>
+            <button onClick={() => shiftCostMonth(1)} title="Mois suivant">›</button>
+          </div>
+          <button className="btn-ghost" style={{ padding: "7px 12px", fontSize: 13 }} onClick={copyPrevMonthCosts}><RotateCcw size={14} /> Copier le mois précédent</button>
+        </div>
         <div className="card" style={{ padding: 18 }}>
           <div className="cost-form">
             <input placeholder="Nom (ex : Shopify, Notion…)" value={costForm.name} onChange={(e) => setCostForm({ ...costForm, name: e.target.value })} onKeyDown={(e) => e.key === "Enter" && addCost()} />
-            <input placeholder="€ / mois" inputMode="decimal" value={costForm.amount} onChange={(e) => setCostForm({ ...costForm, amount: e.target.value })} onKeyDown={(e) => e.key === "Enter" && addCost()} />
+            <input placeholder="€ ce mois" inputMode="decimal" value={costForm.amount} onChange={(e) => setCostForm({ ...costForm, amount: e.target.value })} onKeyDown={(e) => e.key === "Enter" && addCost()} />
             <select value={costForm.type} onChange={(e) => setCostForm({ ...costForm, type: e.target.value })}>
               <option value="logiciel">Logiciel</option>
               <option value="salaire">Salaire / freelance</option>
               <option value="pub">Publicité</option>
               <option value="autre">Autre</option>
             </select>
-            <button className="btn-primary" onClick={addCost}><Plus size={16} /> Ajouter</button>
+            <button className="btn-primary" onClick={addCost}><Plus size={16} /> Ajouter à {monthLabel(costMonth)}</button>
           </div>
-          {costs.length === 0 ? (
-            <div className="empty">Aucun coût pour l'instant. Ajoute tes abonnements logiciels ci-dessus.</div>
+          {monthCosts.length === 0 ? (
+            <div className="empty">Aucun coût sur {monthLabel(costMonth)}. Ajoute-les ci-dessus, ou copie le mois précédent.</div>
           ) : (
             <table className="tbl" style={{ marginTop: 8 }}>
-              <thead><tr><th>Poste</th><th>Type</th><th className="num">€ / mois</th><th className="num">Sur la période</th><th className="num" /></tr></thead>
+              <thead><tr><th>Poste</th><th>Type</th><th className="num">Montant</th><th className="num" /></tr></thead>
               <tbody>
-                {costs.map((c) => (
+                {monthCosts.map((c) => (
                   <tr key={c.id}>
                     <td className="lab">{c.name}</td>
                     <td><span className="badge mut" style={{ textTransform: "capitalize" }}>{c.type}</span></td>
                     <td className="num">{euro(c.amount)}</td>
-                    <td className="num mut">{euro(c.amount * monthsInPeriod)}</td>
                     <td className="num"><button className="mini" title="Supprimer" onClick={() => removeCost(c.id)}><Trash2 size={14} /></button></td>
                   </tr>
                 ))}
-                {metaSpend.configured && metaCost > 0 && (
-                  <tr><td className="lab">Meta Ads <span className="mut" style={{ fontWeight: 400 }}>(auto)</span></td><td><span className="badge" style={{ color: "var(--cyan)", borderColor: "rgba(0,212,255,.4)" }}>pub</span></td><td className="num mut">—</td><td className="num">{euro(metaCost)}</td><td /></tr>
-                )}
-                <tr className="tot-row"><td className="lab">Total période</td><td /><td className="num">{euro(monthlyCosts)}</td><td className="num">{euro(periodCosts)}</td><td /></tr>
+                <tr className="tot-row"><td className="lab">Total {monthLabel(costMonth)}</td><td /><td className="num">{euro(monthCostsTotal)}</td><td /></tr>
               </tbody>
             </table>
           )}
           {!metaSpend.configured && (
-            <div className="empty" style={{ padding: "18px 20px", fontSize: 13 }}>💡 Connecte <b style={{ color: "var(--cyan)" }}>Meta Ads</b> pour ajouter automatiquement tes dépenses pub (variables d'env <code>META_ACCESS_TOKEN</code> + <code>META_AD_ACCOUNT_ID</code> sur Vercel).</div>
+            <div className="empty" style={{ padding: "16px 20px", fontSize: 13 }}>💡 Connecte <b style={{ color: "var(--cyan)" }}>Meta Ads</b> pour ajouter automatiquement tes dépenses pub (variables d'env <code>META_ACCESS_TOKEN</code> + <code>META_AD_ACCOUNT_ID</code> sur Vercel).</div>
           )}
         </div>
       </>)}
