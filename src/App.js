@@ -225,11 +225,12 @@ export default function App() {
     const fallbackLocal = () => { try { const raw = localStorage.getItem(STORAGE_KEY); if (raw) setSales(normalize(JSON.parse(raw))); } catch (e) { /* ignore */ } };
     fetch("/api/state").then((r) => r.json()).then((st) => {
       if (!on) return;
+      // La base n'écrase un champ QUE s'il contient des données (jamais par du vide → pas de perte).
       if (st && st.found) {
-        if (Array.isArray(st.sales)) setSales(normalize(st.sales));
-        if (Array.isArray(st.costs)) setCosts(st.costs.map((c) => ({ ...c, month: c.month || toISO(today).slice(0, 7) })));
-        if (st.ads && typeof st.ads === "object") setAdsByMonth(st.ads);
-        if (Array.isArray(st.deletedSales)) setDeletedSales(st.deletedSales);
+        if (Array.isArray(st.sales) && st.sales.length) setSales(normalize(st.sales)); else fallbackLocal();
+        if (Array.isArray(st.costs) && st.costs.length) setCosts(st.costs.map((c) => ({ ...c, month: c.month || toISO(today).slice(0, 7) })));
+        if (st.ads && Object.keys(st.ads).length) setAdsByMonth(st.ads);
+        if (Array.isArray(st.deletedSales) && st.deletedSales.length) setDeletedSales(st.deletedSales);
       } else {
         fallbackLocal(); // pas d'état en base : on migre le localStorage existant
       }
