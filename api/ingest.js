@@ -35,6 +35,24 @@ const toISODate = (v) => {
   return isNaN(d) ? undefined : d.toISOString().slice(0, 10);
 };
 
+// Recherche récursive de la 1re clé trouvée (n'importe où dans le payload).
+function deepFind(obj, keys, depth = 0) {
+  if (!obj || typeof obj !== "object" || depth > 7) return undefined;
+  for (const k of keys) if (obj[k] !== undefined && obj[k] !== null && obj[k] !== "") return obj[k];
+  for (const v of Object.values(obj)) {
+    if (v && typeof v === "object") { const r = deepFind(v, keys, depth + 1); if (r !== undefined) return r; }
+  }
+  return undefined;
+};
+const deepEmail = (obj, depth = 0) => {
+  if (!obj || typeof obj !== "object" || depth > 7) return undefined;
+  for (const v of Object.values(obj)) {
+    if (typeof v === "string" && /^[\w.+-]+@[\w.-]+\.\w{2,}$/.test(v)) return v;
+    if (v && typeof v === "object") { const r = deepEmail(v, depth + 1); if (r) return r; }
+  }
+  return undefined;
+};
+
 // Classe l'événement à partir de son type/texte.
 function classify(type) {
   const t = String(type || "").toLowerCase();
@@ -64,8 +82,8 @@ module.exports = async (req, res) => {
   // 3) extraction — format webhook systeme.io (customer/order/pricePlan) ou générique.
   const data = body.data || body.payload || body;
   let record;
-  if (body.customer || body.order || body.pricePlan) {
-    // --- format réel des webhooks systeme.io ("Nouvelle vente") ---
+  if (body.customer || body.order || body.pricePlan || body.subscription || deepEmail(body)) {
+    // --- format réel des webhooks systeme.io ---
     const cust = body.customer || {};
     const order = body.order || {};
     const plan = body.pricePlan || {};
@@ -73,21 +91,26 @@ module.exports = async (req, res) => {
     const item = body.orderItem || {};
     const rec = plan.recurringOptions || {};
     const f = cust.fields || {};
-    const email = String(cust.email || "").toLowerCase();
+    const email = String(cust.email || deepEmail(body) || "").toLowerCase();
     const name = [pick(f, "first_name", "firstName"), pick(f, "last_name", "surname", "lastName")]
-      .filter(Boolean).join(" ").trim() || email || "Client";
-    const refund = /refund|rembours|cancel|annul/i.test(String(body.type || body.event || ""));
+      .filter(Boolean).join(" ").trim() ||
+      deepFind(body, ["first_name", "firstName", "fullName", "name"]) || email || "Client";
+    // Montant (en centimes) : on cherche d'abord aux endroits connus, puis n'importe où.
+    let cents = order.totalPrice != null ? order.totalPrice
+      : (plan.amount != null ? plan.amount
+        : deepFind(body, ["totalPrice", "total_price", "amountPaid", "amount", "total", "price"]));
+    const refund = !!body.refund || /refund|rembours|cancel|annul/i.test(String(body.type || body.event || ""));
     record = {
-      id: "tx-" + (item.id || order.id || `${email}-${Date.now()}`),
+      id: "tx-" + (item.id || order.id || deepFind(body, ["id", "transactionId", "paymentId", "orderId"]) || `${email}-${Date.now()}`),
       email,
       name,
-      amount: num(order.totalPrice != null ? order.totalPrice : plan.amount) / 100, // centimes → €
-      date: toISODate(order.createdAt || item.createdAt) || toISODate(Date.now()),
-      offer: step.name || plan.innerName || plan.name || "",
+      amount: num(cents) / 100, // systeme.io renvoie les montants en centimes
+      date: toISODate(order.createdAt || item.createdAt || deepFind(body, ["createdAt", "created_at", "paidAt", "date"])) || toISODate(Date.now()),
+      offer: step.name || plan.innerName || plan.name || deepFind(body, ["innerName", "productName", "funnelName"]) || "",
       type: plan.type || "sale",
       status: refund ? "cancelled" : "paid",
       planAmount: plan.amount != null ? num(plan.amount) / 100 : null,
-      planCount: rec.limitOfPayments || null,
+      planCount: rec.limitOfPayments || deepFind(body, ["limitOfPayments"]) || null,
       planInterval: rec.interval || null,
       processor: cust.paymentProcessor || "stripe",
       receivedAt: new Date().toISOString(),
