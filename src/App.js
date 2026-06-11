@@ -241,6 +241,15 @@ export default function App() {
   const [costForm, setCostForm] = useState({ name: "", amount: "", type: "logiciel" });
   const [costMonth, setCostMonth] = useState(() => toISO(today).slice(0, 7));
   const [metaSpend, setMetaSpend] = useState({ configured: false, spend: 0 });
+  // Budget Ads saisi à la main, par mois.
+  const [adsByMonth, setAdsByMonth] = useState(() => { try { return JSON.parse(localStorage.getItem("melo_ads_v1") || "{}"); } catch (e) { return {}; } });
+  const setAdsMonth = (month, val) => {
+    const amt = parseFloat(String(val).replace(",", ".")) || 0;
+    const next = { ...adsByMonth };
+    if (amt > 0) next[month] = amt; else delete next[month];
+    setAdsByMonth(next);
+    try { localStorage.setItem("melo_ads_v1", JSON.stringify(next)); } catch (e) { /* quota */ }
+  };
   const persistCosts = (next) => { setCosts(next); try { localStorage.setItem("melo_costs_v1", JSON.stringify(next)); } catch (e) { /* quota */ } };
   const addCost = () => {
     const amt = parseFloat(String(costForm.amount).replace(",", ".")) || 0;
@@ -581,15 +590,21 @@ export default function App() {
     return arr;
   };
 
-  // Coûts réels de la période (somme des coûts de chaque mois compris dans la période) + Meta.
+  // Coûts réels de la période (somme des coûts de chaque mois) + budget Ads (manuel ou Meta).
   const fromM = periodRange.from.slice(0, 7), toM = periodRange.to.slice(0, 7);
   const periodSoftwareCosts = costs.filter((c) => c.month >= fromM && c.month <= toM).reduce((a, c) => a + c.amount, 0);
   const monthCosts = costs.filter((c) => c.month === costMonth).sort((a, b) => String(a.name).localeCompare(String(b.name)));
   const monthCostsTotal = monthCosts.reduce((a, c) => a + c.amount, 0);
   const metaCost = metaSpend && metaSpend.spend ? Number(metaSpend.spend) : 0;
-  const periodCosts = periodSoftwareCosts + metaCost;
-  const netProfit = kp.collected - periodCosts;
-  const roas = metaCost > 0 ? kp.paid / metaCost : 0;
+  const adsBudgetPeriod = Object.entries(adsByMonth).filter(([m]) => m >= fromM && m <= toM).reduce((a, [, v]) => a + Number(v || 0), 0);
+  const adsSpend = adsBudgetPeriod > 0 ? adsBudgetPeriod : metaCost; // manuel prioritaire, sinon Meta
+  const revenueAds = kp.paid;            // revenu encaissé attribué "Ads"
+  const revenueTotal = kp.collected;     // revenu total encaissé
+  const totalCosts = periodSoftwareCosts + adsSpend;
+  const roas = adsSpend > 0 ? revenueAds / adsSpend : 0;       // Revenu Ads / budget Ads
+  const mer = adsSpend > 0 ? revenueTotal / adsSpend : 0;      // Revenu total / Ads
+  const revenueANG = (revenueAds - totalCosts) * 0.2;          // (Revenu Ads − coûts) × 20%
+  const netProfit = revenueTotal - totalCosts;
 
   useEffect(() => {
     let on = true;
@@ -731,6 +746,8 @@ export default function App() {
         .month-nav span{min-width:78px;text-align:center;font-weight:700;font-size:13px;text-transform:capitalize;}
         .month-nav button{width:28px;height:28px;border-radius:7px;border:none;background:transparent;color:var(--text);cursor:pointer;font-size:16px;}
         .month-nav button:hover{background:rgba(255,255,255,.08);}
+        .ads-input{background:var(--panel2);border:1px solid var(--line);color:var(--text);border-radius:10px;padding:10px 12px;font:inherit;font-size:15px;font-weight:700;width:140px;outline:none;}
+        .ads-input:focus{border-color:var(--cyan);}
         .cost-form{display:grid;grid-template-columns:2fr 1fr 1.2fr auto;gap:10px;margin-bottom:6px;}
         .cost-form input,.cost-form select{background:var(--panel2);border:1px solid var(--line);color:var(--text);border-radius:10px;padding:11px 12px;font:inherit;font-size:14px;outline:none;color-scheme:dark;}
         .cost-form input:focus{border-color:var(--cyan);}
@@ -817,6 +834,11 @@ export default function App() {
         <div className={`card ${kp.overdueCount ? "kpi-alert" : ""}`}><div className="kpi-label">Impayés</div><div className="kpi-val">{euro(kp.overdueAmt)}</div><div className="kpi-foot">{kp.overdueCount} échéance{kp.overdueCount > 1 ? "s" : ""} en retard<br />{Delta(kp.overdueAmt, kpYoy.overdueAmt, "YoY")}</div></div>
         <div className="card"><div className="kpi-label" style={{ display: "flex", alignItems: "center", gap: 6 }}><Leaf size={13} color="#2BD9A0" /> Encaissé organique</div><div className="kpi-val green">{euro(kp.org)}</div><div className="kpi-foot">{kp.collected ? Math.round((kp.org / kp.collected) * 100) : 0}% de l'encaissé<br />{Delta(kp.org, kpPrev.org, "MoM")}{Delta(kp.org, kpYoy.org, "YoY")}</div></div>
         <div className="card"><div className="kpi-label" style={{ display: "flex", alignItems: "center", gap: 6 }}><Megaphone size={13} color="#00D4FF" /> Encaissé paid</div><div className="kpi-val" style={{ color: "var(--cyan)" }}>{euro(kp.paid)}</div><div className="kpi-foot">{kp.collected ? Math.round((kp.paid / kp.collected) * 100) : 0}% de l'encaissé<br />{Delta(kp.paid, kpPrev.paid, "MoM")}{Delta(kp.paid, kpYoy.paid, "YoY")}</div></div>
+        <div className="card"><div className="kpi-label" style={{ display: "flex", alignItems: "center", gap: 6 }}><Wallet size={13} color="#FFB020" /> Coût total</div><div className="kpi-val" style={{ color: "var(--amber)" }}>{euro(totalCosts)}</div><div className="kpi-foot">{euro(periodSoftwareCosts)} coûts + {euro(adsSpend)} Ads</div></div>
+        <div className="card"><div className="kpi-label">ROAS</div><div className="kpi-val">{adsSpend > 0 ? `${roas.toFixed(2)}x` : "—"}</div><div className="kpi-foot">Revenu Ads / budget Ads</div></div>
+        <div className="card"><div className="kpi-label">MER</div><div className="kpi-val">{adsSpend > 0 ? `${mer.toFixed(2)}x` : "—"}</div><div className="kpi-foot">Revenu total / Ads</div></div>
+        <div className="card"><div className="kpi-label">Revenue ANG</div><div className="kpi-val" style={{ color: revenueANG >= 0 ? "var(--green)" : "var(--red)" }}>{euro(revenueANG)}</div><div className="kpi-foot">(Revenu Ads − coûts) × 20%</div></div>
+        <div className={`card ${netProfit < 0 ? "kpi-alert" : ""}`}><div className="kpi-label">Bénéfice net</div><div className="kpi-val" style={{ color: netProfit >= 0 ? "var(--green)" : "var(--red)" }}>{euro(netProfit)}</div><div className="kpi-foot">CA collecté − coûts</div></div>
       </div>
 
       {/* GRAPH PRÉVISIONNEL — toujours visible sous les KPIs */}
@@ -1087,20 +1109,27 @@ export default function App() {
       {/* COÛTS — page mois par mois */}
       {tab === "couts" && (<>
         <div className="kpis" style={{ marginTop: 4 }}>
-          <div className="card"><div className="kpi-label">Coûts du mois · {monthLabel(costMonth)}</div><div className="kpi-val">{euro(monthCostsTotal)}</div><div className="kpi-foot">{monthCosts.length} poste{monthCosts.length > 1 ? "s" : ""}</div></div>
-          <div className="card"><div className="kpi-label" style={{ display: "flex", alignItems: "center", gap: 6 }}><Megaphone size={13} color="#00D4FF" /> Invest. Meta Ads · {periodRange.label}</div><div className="kpi-val" style={{ color: "var(--cyan)" }}>{metaSpend.configured ? euro(metaCost) : "—"}</div><div className="kpi-foot">{metaSpend.configured ? (roas ? `ROAS ${roas.toFixed(1)}x` : "période") : "Meta non connecté"}</div></div>
-          <div className="card"><div className="kpi-label">Coûts totaux · {periodRange.label}</div><div className="kpi-val">{euro(periodCosts)}</div><div className="kpi-foot">{euro(periodSoftwareCosts)} coûts + {euro(metaCost)} pub</div></div>
-          <div className={`card ${netProfit < 0 ? "kpi-alert" : ""}`}><div className="kpi-label">Bénéfice net · {periodRange.label}</div><div className="kpi-val" style={{ color: netProfit >= 0 ? "var(--green)" : "var(--red)" }}>{euro(netProfit)}</div><div className="kpi-foot">CA collecté {euro(kp.collected)} − coûts</div></div>
+          <div className="card"><div className="kpi-label">Coûts du mois · {monthLabel(costMonth)}</div><div className="kpi-val">{euro(monthCostsTotal)}</div><div className="kpi-foot">{monthCosts.length} poste{monthCosts.length > 1 ? "s" : ""} · hors Ads</div></div>
+          <div className="card"><div className="kpi-label" style={{ display: "flex", alignItems: "center", gap: 6 }}><Megaphone size={13} color="#00D4FF" /> Budget Ads · {periodRange.label}</div><div className="kpi-val" style={{ color: "var(--cyan)" }}>{euro(adsSpend)}</div><div className="kpi-foot">ROAS {adsSpend ? `${roas.toFixed(2)}x` : "—"} · MER {adsSpend ? `${mer.toFixed(2)}x` : "—"}</div></div>
+          <div className="card"><div className="kpi-label">Coûts totaux · {periodRange.label}</div><div className="kpi-val" style={{ color: "var(--amber)" }}>{euro(totalCosts)}</div><div className="kpi-foot">{euro(periodSoftwareCosts)} coûts + {euro(adsSpend)} Ads</div></div>
+          <div className={`card ${netProfit < 0 ? "kpi-alert" : ""}`}><div className="kpi-label">Bénéfice net · {periodRange.label}</div><div className="kpi-val" style={{ color: netProfit >= 0 ? "var(--green)" : "var(--red)" }}>{euro(netProfit)}</div><div className="kpi-foot">Revenue ANG : {euro(revenueANG)}</div></div>
         </div>
 
         <div className="section-h" style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-          <Wallet size={15} /> Coûts du mois
+          <Wallet size={15} /> Saisie du mois
           <div className="month-nav">
             <button onClick={() => shiftCostMonth(-1)} title="Mois précédent">‹</button>
             <span>{monthLabel(costMonth)}</span>
             <button onClick={() => shiftCostMonth(1)} title="Mois suivant">›</button>
           </div>
           <button className="btn-ghost" style={{ padding: "7px 12px", fontSize: 13 }} onClick={copyPrevMonthCosts}><RotateCcw size={14} /> Copier le mois précédent</button>
+        </div>
+
+        <div className="card" style={{ padding: 16, marginBottom: 14, display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+          <Megaphone size={16} color="#00D4FF" />
+          <b>Budget Ads dépensé sur {monthLabel(costMonth)}</b>
+          <input className="ads-input" inputMode="decimal" placeholder="€ ce mois" value={adsByMonth[costMonth] || ""} onChange={(e) => setAdsMonth(costMonth, e.target.value)} />
+          <span className="mut" style={{ fontSize: 12 }}>{metaSpend.configured ? "(ou laisse vide pour utiliser Meta automatiquement)" : "saisie manuelle"}</span>
         </div>
         <div className="card" style={{ padding: 18 }}>
           <div className="cost-form">
