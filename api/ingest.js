@@ -19,6 +19,7 @@
 // ---------------------------------------------------------------------------
 
 const { cmd, isConfigured } = require("../lib/kv");
+const { mapEvent } = require("../lib/mapEvent");
 
 const pick = (o, ...keys) => {
   for (const k of keys) if (o && o[k] !== undefined && o[k] !== null) return o[k];
@@ -79,57 +80,8 @@ module.exports = async (req, res) => {
   if (typeof body === "string") { try { body = JSON.parse(body); } catch { body = {}; } }
   body = body || {};
 
-  // 3) extraction — format webhook systeme.io (customer/order/pricePlan) ou générique.
-  const data = body.data || body.payload || body;
-  let record;
-  if (body.customer || body.order || body.pricePlan || body.subscription || deepEmail(body)) {
-    // --- format réel des webhooks systeme.io ---
-    const cust = body.customer || {};
-    const order = body.order || {};
-    const plan = body.pricePlan || {};
-    const step = body.funnelStep || {};
-    const item = body.orderItem || {};
-    const rec = plan.recurringOptions || {};
-    const f = cust.fields || {};
-    const email = String(cust.email || deepEmail(body) || "").toLowerCase();
-    const name = [pick(f, "first_name", "firstName"), pick(f, "last_name", "surname", "lastName")]
-      .filter(Boolean).join(" ").trim() ||
-      deepFind(body, ["first_name", "firstName", "fullName", "name"]) || email || "Client";
-    // Montant (en centimes) : on cherche d'abord aux endroits connus, puis n'importe où.
-    let cents = order.totalPrice != null ? order.totalPrice
-      : (plan.amount != null ? plan.amount
-        : deepFind(body, ["totalPrice", "total_price", "amountPaid", "amount", "total", "price"]));
-    const refund = !!body.refund || /refund|rembours|cancel|annul/i.test(String(body.type || body.event || ""));
-    record = {
-      id: "tx-" + (item.id || order.id || deepFind(body, ["id", "transactionId", "paymentId", "orderId"]) || `${email}-${Date.now()}`),
-      email,
-      name,
-      amount: num(cents) / 100, // systeme.io renvoie les montants en centimes
-      date: toISODate(order.createdAt || item.createdAt || deepFind(body, ["createdAt", "created_at", "paidAt", "date"])) || toISODate(Date.now()),
-      offer: step.name || plan.innerName || plan.name || deepFind(body, ["innerName", "productName", "funnelName"]) || "",
-      type: plan.type || "sale",
-      status: refund ? "cancelled" : "paid",
-      planAmount: plan.amount != null ? num(plan.amount) / 100 : null,
-      planCount: rec.limitOfPayments || deepFind(body, ["limitOfPayments"]) || null,
-      planInterval: rec.interval || null,
-      processor: cust.paymentProcessor || "stripe",
-      receivedAt: new Date().toISOString(),
-    };
-  } else {
-    // --- repli générique (autres sources / Make) ---
-    const contact = data.contact || data.customer || body.contact || {};
-    const email = String(pick(contact, "email") || pick(data, "email", "customerEmail") || "").toLowerCase();
-    const name = [pick(contact, "firstName", "first_name"), pick(contact, "surname", "lastName", "last_name")]
-      .filter(Boolean).join(" ").trim() || pick(data, "customerName", "name") || email || "Client";
-    const amount = num(pick(data, "amount", "total", "price", "amountPaid", "value"));
-    const date = toISODate(pick(data, "date", "createdAt", "created_at", "paidAt", "paymentDate")) || toISODate(Date.now());
-    const offer = pick(data, "offer", "productName", "product", "funnelName", "planName", "name") || "";
-    const type = pick(body, "type", "event", "eventType", "trigger") || pick(data, "type", "event") || "";
-    record = {
-      id: String(pick(data, "id", "transactionId", "invoiceId", "paymentId", "orderId") || `${email}-${date}-${amount}-${Math.random().toString(36).slice(2, 7)}`),
-      email, name, amount, date, offer, type, status: classify(type), receivedAt: new Date().toISOString(),
-    };
-  }
+  // 3) extraction (mapping partagé avec /api/reprocess)
+  const record = mapEvent(body);
   const id = record.id;
 
   // 4) stockage
