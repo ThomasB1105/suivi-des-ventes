@@ -672,13 +672,13 @@ export default function App() {
   }
   if (authed === false) {
     return (
-      <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", padding: 20, fontFamily: "'Inter',system-ui,sans-serif", color: "#EAF2FF", background: "radial-gradient(1000px 500px at 80% -10%, rgba(124,92,255,.20), transparent 60%), radial-gradient(700px 460px at 0% 100%, rgba(40,90,230,.12), transparent 55%), #06040F" }}>
-        <div style={{ width: "min(380px,92vw)", background: "#101D33", border: "1px solid rgba(255,255,255,.1)", borderRadius: 22, padding: 32, boxShadow: "0 40px 90px -30px rgba(0,0,0,.85)" }}>
-          <div style={{ fontFamily: "'Montserrat',sans-serif", fontWeight: 800, fontSize: 25, letterSpacing: "-.02em", background: "linear-gradient(95deg,#6A5CFF,#9D5CFF)", WebkitBackgroundClip: "text", backgroundClip: "text", WebkitTextFillColor: "transparent" }}>ANG INDUSTRIES</div>
+      <div style={{ minHeight: "100vh", width: "100%", display: "grid", placeItems: "center", padding: 16, boxSizing: "border-box", overflowX: "hidden", fontFamily: "'Inter',system-ui,sans-serif", color: "#EAF2FF", background: "radial-gradient(1000px 500px at 80% -10%, rgba(124,92,255,.20), transparent 60%), radial-gradient(700px 460px at 0% 100%, rgba(40,90,230,.12), transparent 55%), #06040F" }}>
+        <div style={{ width: "min(380px,100%)", boxSizing: "border-box", background: "#101D33", border: "1px solid rgba(255,255,255,.1)", borderRadius: 20, padding: "28px 22px", boxShadow: "0 40px 90px -30px rgba(0,0,0,.85)" }}>
+          <div style={{ fontFamily: "'Montserrat',sans-serif", fontWeight: 800, fontSize: "clamp(20px,6vw,25px)", letterSpacing: "-.02em", background: "linear-gradient(95deg,#6A5CFF,#9D5CFF)", WebkitBackgroundClip: "text", backgroundClip: "text", WebkitTextFillColor: "transparent" }}>ANG INDUSTRIES</div>
           <div style={{ color: "rgba(234,242,255,.55)", fontSize: 13, margin: "8px 0 22px" }}>Tableau de bord protégé — entre ton mot de passe.</div>
-          <input type="password" autoFocus value={pwInput} onChange={(e) => setPwInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && doLogin()} placeholder="Mot de passe" style={{ width: "100%", boxSizing: "border-box", background: "#0A1220", border: `1px solid ${loginErr ? "#FF4D5E" : "rgba(255,255,255,.12)"}`, borderRadius: 12, padding: "13px 14px", color: "#EAF2FF", fontSize: 15, outline: "none" }} />
+          <input type="password" autoFocus value={pwInput} onChange={(e) => setPwInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && doLogin()} placeholder="Mot de passe" style={{ width: "100%", boxSizing: "border-box", background: "#0A1220", border: `1px solid ${loginErr ? "#FF4D5E" : "rgba(255,255,255,.12)"}`, borderRadius: 12, padding: "13px 14px", color: "#EAF2FF", fontSize: 16, outline: "none" }} />
           {loginErr && <div style={{ color: "#FF4D5E", fontSize: 13, marginTop: 10 }}>Mot de passe incorrect.</div>}
-          <button onClick={doLogin} style={{ width: "100%", marginTop: 16, background: "linear-gradient(95deg,#6A5CFF,#9D5CFF)", color: "#fff", border: "none", borderRadius: 12, padding: "13px", fontWeight: 700, fontSize: 15, cursor: "pointer" }}>Entrer →</button>
+          <button onClick={doLogin} style={{ width: "100%", boxSizing: "border-box", marginTop: 16, background: "linear-gradient(95deg,#6A5CFF,#9D5CFF)", color: "#fff", border: "none", borderRadius: 12, padding: "14px", fontWeight: 700, fontSize: 15, cursor: "pointer" }}>Entrer →</button>
         </div>
       </div>
     );
