@@ -4,7 +4,7 @@ import {
 } from "recharts";
 import {
   AlertTriangle, Check, Plus, X, Calendar, TrendingUp, Trash2, Landmark,
-  RotateCcw, Users, UserCheck, Phone, Mail, Leaf, Megaphone, Grid3x3, Search, Pencil, Wallet,
+  RotateCcw, Users, UserCheck, Phone, Mail, Leaf, Megaphone, Grid3x3, Search, Pencil, Wallet, Eye, EyeOff,
 } from "lucide-react";
 
 /* ------------------------------ helpers ------------------------------ */
@@ -260,6 +260,7 @@ export default function App() {
   const [syncing, setSyncing] = useState(false);
   const [authed, setAuthed] = useState(null); // null = vérification, false = login requis, true = ok
   const [pwInput, setPwInput] = useState("");
+  const [showPw, setShowPw] = useState(false);
   const [loginErr, setLoginErr] = useState(false);
   const doLogin = async () => {
     setLoginErr(false);
@@ -676,7 +677,10 @@ export default function App() {
         <div style={{ width: "min(380px,100%)", boxSizing: "border-box", background: "#101D33", border: "1px solid rgba(255,255,255,.1)", borderRadius: 20, padding: "28px 22px", boxShadow: "0 40px 90px -30px rgba(0,0,0,.85)" }}>
           <div style={{ fontFamily: "'Montserrat',sans-serif", fontWeight: 800, fontSize: "clamp(20px,6vw,25px)", letterSpacing: "-.02em", background: "linear-gradient(95deg,#6A5CFF,#9D5CFF)", WebkitBackgroundClip: "text", backgroundClip: "text", WebkitTextFillColor: "transparent" }}>ANG INDUSTRIES</div>
           <div style={{ color: "rgba(234,242,255,.55)", fontSize: 13, margin: "8px 0 22px" }}>Tableau de bord protégé — entre ton mot de passe.</div>
-          <input type="password" autoFocus value={pwInput} onChange={(e) => setPwInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && doLogin()} placeholder="Mot de passe" style={{ width: "100%", boxSizing: "border-box", background: "#0A1220", border: `1px solid ${loginErr ? "#FF4D5E" : "rgba(255,255,255,.12)"}`, borderRadius: 12, padding: "13px 14px", color: "#EAF2FF", fontSize: 16, outline: "none" }} />
+          <div style={{ position: "relative" }}>
+            <input type={showPw ? "text" : "password"} autoFocus value={pwInput} onChange={(e) => setPwInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && doLogin()} placeholder="Mot de passe" style={{ width: "100%", boxSizing: "border-box", background: "#0A1220", border: `1px solid ${loginErr ? "#FF4D5E" : "rgba(255,255,255,.12)"}`, borderRadius: 12, padding: "13px 46px 13px 14px", color: "#EAF2FF", fontSize: 16, outline: "none" }} />
+            <button type="button" onClick={() => setShowPw((v) => !v)} title={showPw ? "Masquer" : "Afficher"} style={{ position: "absolute", right: 6, top: "50%", transform: "translateY(-50%)", background: "transparent", border: "none", color: "rgba(234,242,255,.6)", cursor: "pointer", padding: 8, display: "inline-flex" }}>{showPw ? <EyeOff size={18} /> : <Eye size={18} />}</button>
+          </div>
           {loginErr && <div style={{ color: "#FF4D5E", fontSize: 13, marginTop: 10 }}>Mot de passe incorrect.</div>}
           <button onClick={doLogin} style={{ width: "100%", boxSizing: "border-box", marginTop: 16, background: "linear-gradient(95deg,#6A5CFF,#9D5CFF)", color: "#fff", border: "none", borderRadius: 12, padding: "14px", fontWeight: 700, fontSize: 15, cursor: "pointer" }}>Entrer →</button>
         </div>
@@ -849,8 +853,9 @@ export default function App() {
         .cost-form .btn-primary{padding:11px 16px;}
         code{background:rgba(255,255,255,.08);padding:1px 6px;border-radius:5px;font-size:12px;}
         /* ============ ULTRA RESPONSIVE MOBILE ============ */
+        html,body,#root{max-width:100%;overflow-x:hidden;}
         @media (max-width:760px){
-          .melo{padding:16px 12px 56px!important;}
+          .melo{padding:16px 12px 56px!important;overflow-x:hidden;}
           .melo-head{flex-direction:column;align-items:flex-start;gap:12px;}
           .melo-head>div:last-child{width:100%;}
           .melo-head .btn-primary{flex:1;justify-content:center;}
