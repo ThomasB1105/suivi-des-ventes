@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
 } from "recharts";
@@ -218,12 +218,30 @@ export default function App() {
     offer: "Ecom Ascension", total: "", acompte: "", n: "", start: toISO(today),
   });
 
+  // Hydratation depuis la BASE (synchro multi-appareils). À défaut, localStorage.
+  const hydrated = useRef(false);
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) setSales(normalize(JSON.parse(raw)));
-    } catch (e) { /* ignore corrupted storage */ }
+    let on = true;
+    const fallbackLocal = () => { try { const raw = localStorage.getItem(STORAGE_KEY); if (raw) setSales(normalize(JSON.parse(raw))); } catch (e) { /* ignore */ } };
+    fetch("/api/state").then((r) => r.json()).then((st) => {
+      if (!on) return;
+      if (st && st.found) {
+        if (Array.isArray(st.sales)) setSales(normalize(st.sales));
+        if (Array.isArray(st.costs)) setCosts(st.costs.map((c) => ({ ...c, month: c.month || toISO(today).slice(0, 7) })));
+        if (st.ads && typeof st.ads === "object") setAdsByMonth(st.ads);
+        if (Array.isArray(st.deletedSales)) setDeletedSales(st.deletedSales);
+      } else {
+        fallbackLocal(); // pas d'état en base : on migre le localStorage existant
+      }
+    }).catch(fallbackLocal).finally(() => {
+      if (!on) return;
+      hydrated.current = true;
+      syncSio({ silent: true }); // fusionne les nouvelles ventes par-dessus l'état chargé
+    });
+    return () => { on = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
 
   const persist = (next) => {
     setSales(next);
@@ -267,6 +285,15 @@ export default function App() {
     flash(`${prevCosts.length} coût(s) copié(s) depuis ${monthLabel(prev)}.`);
   };
   const shiftCostMonth = (d) => { const [y, m] = costMonth.split("-").map(Number); const nd = new Date(y, m - 1 + d, 1); setCostMonth(toISO(nd).slice(0, 7)); };
+
+  // Sauvegarde AUTO de tout l'état en base à chaque changement (après hydratation).
+  useEffect(() => {
+    if (!hydrated.current) return;
+    const payload = JSON.stringify({ sales, costs, ads: adsByMonth, deletedSales });
+    const t = setTimeout(() => { try { fetch("/api/state", { method: "POST", headers: { "Content-Type": "application/json" }, body: payload }).catch(() => {}); } catch (e) { /* ignore */ } }, 600);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sales, costs, adsByMonth, deletedSales]);
   // Applique les ventes venues de la base (webhooks systeme.io) en conservant
   // l'attribution manuelle (canal/source/closer) et les ventes saisies à la main.
   // Synchro : ajoute les nouveaux clients ET rafraîchit les clients existants
@@ -320,9 +347,7 @@ export default function App() {
     }
   };
 
-  // Chargement automatique au démarrage.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { syncSio({ silent: true }); }, []);
+  // (la synchro au démarrage est déclenchée après l'hydratation depuis la base)
 
   const allInst = useMemo(
     () => sales.flatMap((s) => s.schedule.map((i) => ({ ...i, saleId: s.id, st: statusOf(i) }))),
