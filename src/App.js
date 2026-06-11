@@ -605,6 +605,7 @@ export default function App() {
   const mer = adsSpend > 0 ? revenueTotal / adsSpend : 0;      // Revenu total / Ads
   const revenueANG = (revenueAds - totalCosts) * 0.2;          // (Revenu Ads − coûts) × 20%
   const netProfit = revenueTotal - totalCosts;
+  const bossMoney = revenueTotal - totalCosts - revenueANG;    // argent de poche du boss
 
   useEffect(() => {
     let on = true;
@@ -756,6 +757,23 @@ export default function App() {
         .kpis-home{grid-template-columns:repeat(6,minmax(0,1fr));}
         @media (max-width:1500px){ .kpis-home{grid-template-columns:repeat(4,minmax(0,1fr));} }
         @media (max-width:1000px){ .kpis-home{grid-template-columns:repeat(2,minmax(0,1fr));} }
+        /* gradient moderne sur les cartes */
+        .melo{background:
+          radial-gradient(1200px 560px at 88% -10%, rgba(124,92,255,.16), transparent 60%),
+          radial-gradient(820px 460px at -5% 4%, rgba(43,217,160,.06), transparent 55%),
+          radial-gradient(700px 500px at 50% 120%, rgba(124,92,255,.08), transparent 60%),
+          #06040F;}
+        .card{background:linear-gradient(158deg, rgba(124,92,255,.055), rgba(255,255,255,0) 55%), var(--panel);}
+        .kpis-home .card:hover{border-color:rgba(124,92,255,.4);box-shadow:0 20px 46px -24px rgba(124,92,255,.55);}
+        .kpis-home .card::after{background:linear-gradient(90deg,#7C5CFF,#9D5CFF 50%,transparent);opacity:.6;}
+        .kpi-val{background:none;}
+        /* carte phare : argent de poche du boss */
+        .card-boss{background:linear-gradient(135deg,#5B4DFF 0%,#8A4DFF 60%,#A24BFF 100%)!important;border:1px solid rgba(255,255,255,.18)!important;box-shadow:0 22px 56px -20px rgba(124,92,255,.75)!important;position:relative;overflow:hidden;}
+        .card-boss::after{content:"";position:absolute;inset:0;background:radial-gradient(420px 160px at 90% -20%, rgba(255,255,255,.25), transparent 60%);pointer-events:none;}
+        .card-boss .kpi-label,.card-boss .kpi-foot{color:rgba(255,255,255,.88)!important;}
+        .card-boss .kpi-val{color:#fff!important;font-size:29px;}
+        .tabs{background:linear-gradient(180deg, rgba(124,92,255,.06), rgba(255,255,255,.02));}
+        .dr-trigger,.chip{background:linear-gradient(180deg, rgba(124,92,255,.08), rgba(255,255,255,.02));}
         .ads-input:focus{border-color:var(--cyan);}
         .cost-form{display:grid;grid-template-columns:2fr 1fr 1.2fr auto;gap:10px;margin-bottom:6px;}
         .cost-form input,.cost-form select{background:var(--panel2);border:1px solid var(--line);color:var(--text);border-radius:10px;padding:11px 12px;font:inherit;font-size:14px;outline:none;color-scheme:dark;}
@@ -848,6 +866,7 @@ export default function App() {
         <div className="card"><div className="kpi-label">MER</div><div className="kpi-val">{adsSpend > 0 ? `${mer.toFixed(2)}x` : "—"}</div><div className="kpi-foot">Revenu total / Ads</div></div>
         <div className="card"><div className="kpi-label">Revenue ANG</div><div className="kpi-val" style={{ color: revenueANG >= 0 ? "var(--green)" : "var(--red)" }}>{euro(revenueANG)}</div><div className="kpi-foot">(Revenu Ads − coûts) × 20%</div></div>
         <div className={`card ${netProfit < 0 ? "kpi-alert" : ""}`}><div className="kpi-label">Bénéfice net</div><div className="kpi-val" style={{ color: netProfit >= 0 ? "var(--green)" : "var(--red)" }}>{euro(netProfit)}</div><div className="kpi-foot">CA collecté − coûts</div></div>
+        <div className="card card-boss"><div className="kpi-label">💰 Argent de poche du boss</div><div className="kpi-val">{euro(bossMoney)}</div><div className="kpi-foot">collecté − coûts − ANG</div></div>
       </div>
 
       {/* GRAPH PRÉVISIONNEL — toujours visible sous les KPIs */}
