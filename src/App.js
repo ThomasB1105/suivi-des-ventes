@@ -77,9 +77,9 @@ const css = `
 @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap');
 .melo{
   --bg:#0A1220; --panel:#101D33; --panel2:#16243d; --line:rgba(255,255,255,.08);
-  --cyan:#00D4FF; --green:#2BD9A0; --amber:#FFB020; --red:#FF4D5E; --text:#EAF2FF; --muted:rgba(234,242,255,.52);
+  --cyan:#7C5CFF; --green:#2BD9A0; --amber:#FFB020; --red:#FF4D5E; --text:#EAF2FF; --muted:rgba(234,242,255,.52);
   font-family:'Inter',system-ui,sans-serif; color:var(--text);
-  background:radial-gradient(1200px 600px at 80% -10%, rgba(0,212,255,.07), transparent 60%), var(--bg);
+  background:radial-gradient(1200px 600px at 80% -10%, rgba(124,92,255,.07), transparent 60%), var(--bg);
   min-height:100vh; padding:28px clamp(16px,4vw,40px); box-sizing:border-box;
 }
 .melo *{box-sizing:border-box;}
@@ -90,8 +90,8 @@ const css = `
 .chip{display:inline-flex; align-items:center; gap:7px; padding:7px 12px; border-radius:999px; border:1px solid var(--line); background:var(--panel); font-size:12px;}
 .dot{width:7px; height:7px; border-radius:50%; background:var(--amber);}
 .chip button{background:var(--cyan); color:#04121f; border:none; font-weight:700; font-size:11px; padding:4px 9px; border-radius:999px; cursor:pointer; font-family:'Inter';}
-.btn-primary{display:inline-flex; align-items:center; gap:8px; background:var(--cyan); color:#04121f; border:none; padding:11px 16px; border-radius:11px; font-weight:700; font-size:14px; cursor:pointer; font-family:'Inter'; transition:transform .12s, box-shadow .2s; box-shadow:0 6px 22px rgba(0,212,255,.25);}
-.btn-primary:hover{transform:translateY(-1px); box-shadow:0 10px 28px rgba(0,212,255,.4);}
+.btn-primary{display:inline-flex; align-items:center; gap:8px; background:var(--cyan); color:#04121f; border:none; padding:11px 16px; border-radius:11px; font-weight:700; font-size:14px; cursor:pointer; font-family:'Inter'; transition:transform .12s, box-shadow .2s; box-shadow:0 6px 22px rgba(124,92,255,.25);}
+.btn-primary:hover{transform:translateY(-1px); box-shadow:0 10px 28px rgba(124,92,255,.4);}
 .btn-ghost{background:transparent; border:1px solid var(--line); color:var(--text); padding:11px 16px; border-radius:11px; font-weight:600; cursor:pointer; font-family:'Inter'; font-size:14px;}
 
 .kpis{display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:14px; margin-bottom:14px;}
@@ -130,7 +130,7 @@ const css = `
 .tag svg{color:var(--cyan);}
 .src{display:inline-flex; align-items:center; gap:5px; font-size:11px; padding:3px 8px; border-radius:7px; border:1px solid var(--line); white-space:nowrap;}
 .src-organic{color:var(--green); background:rgba(43,217,160,.1); border-color:rgba(43,217,160,.3);}
-.src-paid{color:var(--cyan); background:rgba(0,212,255,.08); border-color:rgba(0,212,255,.3);}
+.src-paid{color:var(--cyan); background:rgba(124,92,255,.08); border-color:rgba(124,92,255,.3);}
 .amt-total{font-family:'Montserrat'; font-weight:700; font-size:17px;}
 .amt-sub{font-size:11.5px; color:var(--muted); margin-top:3px; line-height:1.5;}
 .amt-sub .ok{color:var(--green);} .amt-sub .late{color:var(--red); font-weight:600;}
@@ -150,7 +150,7 @@ const css = `
 .pill-upcoming .a{color:var(--text);}
 .pill-overdue{border-color:rgba(255,77,94,.6); background:rgba(255,77,94,.13); animation:pulse 2.1s ease-in-out infinite;}
 .pill-overdue .ic,.pill-overdue .a,.pill-overdue .m{color:var(--red);}
-.pill-next{box-shadow:0 0 0 2px rgba(0,212,255,.55);}
+.pill-next{box-shadow:0 0 0 2px rgba(124,92,255,.55);}
 @keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(255,77,94,0);}50%{box-shadow:0 0 0 4px rgba(255,77,94,.18);}}
 .pill-menu{position:absolute; top:calc(100% + 6px); left:50%; transform:translateX(-50%); z-index:30; background:var(--panel2); border:1px solid var(--line); border-radius:11px; padding:6px; width:215px; box-shadow:0 14px 40px rgba(0,0,0,.55);}
 .menu-item{display:flex; align-items:center; gap:9px; padding:9px 10px; border-radius:8px; cursor:pointer; font-size:13px; white-space:nowrap;}
@@ -170,7 +170,7 @@ const css = `
 .green{color:var(--green);} .red{color:var(--red);} .mut{color:var(--muted);}
 .grp-row td{background:var(--panel2); font-family:'Montserrat'; font-weight:700; font-size:12.5px; padding:11px 12px;}
 .grp-row .gmeta{color:var(--muted); font-weight:500; font-size:11.5px; margin-left:8px;}
-.tot-row td{border-top:2px solid var(--cyan); background:rgba(0,212,255,.05); font-family:'Montserrat'; font-weight:700;}
+.tot-row td{border-top:2px solid var(--cyan); background:rgba(124,92,255,.05); font-family:'Montserrat'; font-weight:700;}
 .tot-row .num{color:var(--cyan);}
 .rate{display:flex; align-items:center; gap:9px; justify-content:flex-end;}
 .bar{height:6px; width:74px; border-radius:99px; background:rgba(255,255,255,.08); overflow:hidden;}
@@ -188,7 +188,7 @@ const css = `
 .seg{display:flex; gap:8px;}
 .seg button{flex:1; padding:10px; border-radius:10px; border:1px solid var(--line); background:var(--bg); color:var(--muted); cursor:pointer; font-family:'Inter'; font-size:13px; font-weight:600; display:flex; align-items:center; justify-content:center; gap:6px;}
 .seg button.on-o{border-color:var(--green); color:var(--green); background:rgba(43,217,160,.1);}
-.seg button.on-p{border-color:var(--cyan); color:var(--cyan); background:rgba(0,212,255,.08);}
+.seg button.on-p{border-color:var(--cyan); color:var(--cyan); background:rgba(124,92,255,.08);}
 .preview{background:var(--bg); border:1px dashed var(--line); border-radius:11px; padding:12px 14px; font-size:13px; color:var(--muted); margin:4px 0 18px;}
 .preview b{color:var(--cyan); font-family:'Montserrat';}
 .modal-actions{display:flex; gap:10px; justify-content:flex-end;}
@@ -667,7 +667,7 @@ export default function App() {
         .dr-dow span{text-align:center;font-size:10px;color:rgba(234,242,255,.4);padding:2px 0;}
         .dr-day{aspect-ratio:1;border:none;background:transparent;color:rgba(234,242,255,.8);border-radius:7px;font:inherit;font-size:12px;cursor:pointer;}
         .dr-day:hover{background:rgba(255,255,255,.08);}
-        .dr-day.in{background:rgba(0,212,255,.14);color:#fff;border-radius:0;}
+        .dr-day.in{background:rgba(124,92,255,.14);color:#fff;border-radius:0;}
         .dr-day.edge{background:var(--cyan);color:#04121f;font-weight:700;border-radius:7px;}
         .dr-day.today{outline:1px solid rgba(255,255,255,.3);}
         .dr-hint{margin-top:8px;font-size:11px;color:rgba(234,242,255,.45);text-align:center;}
@@ -678,7 +678,7 @@ export default function App() {
         .chart-head .mut{text-transform:none;letter-spacing:0;font-weight:500;}
         .chan-sel{background:var(--panel2);border:1px solid var(--line);border-radius:7px;padding:3px 8px;font:inherit;font-size:11px;font-weight:600;cursor:pointer;color-scheme:dark;}
         .chan-sel.src-organic{color:#2BD9A0;border-color:rgba(43,217,160,.4);background:rgba(43,217,160,.08);}
-        .chan-sel.src-paid{color:#00D4FF;border-color:rgba(0,212,255,.4);background:rgba(0,212,255,.08);}
+        .chan-sel.src-paid{color:#7C5CFF;border-color:rgba(124,92,255,.4);background:rgba(124,92,255,.08);}
         .client-link{display:inline-flex;align-items:center;gap:6px;cursor:pointer;background:none;border:none;color:inherit;font:inherit;font-weight:inherit;padding:0;}
         .client-link svg{opacity:.4;transition:.15s;}
         .client-link:hover{color:var(--cyan);text-decoration:underline;}
@@ -689,7 +689,7 @@ export default function App() {
         .badge.warn{color:#FFB020;border-color:rgba(255,176,32,.4);background:rgba(255,176,32,.08);}
         .seg2{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;}
         .seg2 button{background:var(--panel2);border:none;color:rgba(234,242,255,.6);padding:6px 12px;font:inherit;font-size:12.5px;font-weight:600;cursor:pointer;}
-        .seg2 button.on{background:rgba(0,212,255,.14);color:var(--cyan);}
+        .seg2 button.on{background:rgba(124,92,255,.14);color:var(--cyan);}
         .chip-btn{cursor:pointer;}
         .chip-btn:hover{border-color:var(--cyan);}
         .chip-btn:disabled{opacity:.6;cursor:default;}
@@ -698,15 +698,21 @@ export default function App() {
 
         /* ============ POLISH SaaS ============ */
         .melo{background:
-          radial-gradient(1100px 520px at 85% -8%, rgba(0,212,255,.10), transparent 60%),
+          radial-gradient(1100px 520px at 85% -8%, rgba(124,92,255,.10), transparent 60%),
           radial-gradient(820px 460px at -5% 2%, rgba(43,217,160,.06), transparent 55%),
           #070D18; padding-bottom:60px;}
-        .melo-title{font-family:'Montserrat';letter-spacing:-.025em;}
+        .melo-title{font-family:'Montserrat';letter-spacing:-.02em;}
         .melo-sub{color:var(--muted);}
+        .brand{background:linear-gradient(95deg,#6A5CFF 0%,#9D5CFF 55%,#7C5CFF 100%);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent;font-weight:800;}
+        .brand-for{color:var(--muted);font-weight:600;font-size:.6em;letter-spacing:.16em;margin:0 4px;vertical-align:middle;}
+        .btn-primary{background:linear-gradient(95deg,#6A5CFF,#9D5CFF)!important;color:#fff!important;}
+        .tab.active{color:#fff!important;}
+        .dr-day.edge{color:#fff!important;}
+        .chip button{color:#fff!important;}
         .card{border-radius:18px;box-shadow:0 1px 0 rgba(255,255,255,.04) inset, 0 14px 34px -22px rgba(0,0,0,.75);transition:border-color .2s,transform .2s,box-shadow .2s;}
         .kpis .card{position:relative;overflow:hidden;}
         .kpis .card::after{content:"";position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,var(--cyan),transparent 70%);opacity:.45;}
-        .kpis .card:hover{transform:translateY(-3px);border-color:rgba(0,212,255,.28);box-shadow:0 18px 40px -24px rgba(0,212,255,.5);}
+        .kpis .card:hover{transform:translateY(-3px);border-color:rgba(124,92,255,.28);box-shadow:0 18px 40px -24px rgba(124,92,255,.5);}
         .kpi-val{font-size:27px;}
         .delta{padding:2px 7px;border-radius:6px;}
         .delta.up{background:rgba(43,217,160,.12);}
@@ -714,7 +720,7 @@ export default function App() {
         .tabs{background:rgba(255,255,255,.035);border-radius:14px;backdrop-filter:blur(6px);}
         .tab{transition:background .18s,color .18s;}
         .tab:hover:not(.active){color:var(--text);background:rgba(255,255,255,.05);}
-        .tab.active{box-shadow:0 8px 20px -8px rgba(0,212,255,.65);}
+        .tab.active{box-shadow:0 8px 20px -8px rgba(124,92,255,.65);}
         .row{border-radius:15px;transition:border-color .18s,transform .18s,box-shadow .18s;}
         .row:hover{border-color:rgba(255,255,255,.17);transform:translateY(-1px);box-shadow:0 14px 30px -24px rgba(0,0,0,.8);}
         .pill{transition:transform .12s,border-color .2s,box-shadow .2s;}
@@ -722,7 +728,7 @@ export default function App() {
         .tbl tbody tr{transition:background .14s;}
         .tbl tbody tr:hover td{background:rgba(255,255,255,.028);}
         .btn-primary{border-radius:12px;transition:transform .12s,box-shadow .2s,filter .2s;}
-        .btn-primary:hover{transform:translateY(-1px);filter:brightness(1.05);box-shadow:0 12px 30px rgba(0,212,255,.4);}
+        .btn-primary:hover{transform:translateY(-1px);filter:brightness(1.05);box-shadow:0 12px 30px rgba(124,92,255,.4);}
         .btn-primary:active{transform:translateY(0);}
         .btn-ghost{border-radius:11px;transition:.15s;}
         .btn-ghost:hover{border-color:rgba(255,255,255,.25);background:rgba(255,255,255,.04);}
@@ -738,7 +744,7 @@ export default function App() {
         .menu-item{border-radius:8px;transition:background .14s;}
         .menu-item:hover{background:rgba(255,255,255,.06);}
         .chan-sel:hover,.sort-sel:hover,.dr-trigger:hover{border-color:var(--cyan);}
-        ::selection{background:rgba(0,212,255,.3);}
+        ::selection{background:rgba(124,92,255,.3);}
         *::-webkit-scrollbar{width:10px;height:10px;}
         *::-webkit-scrollbar-thumb{background:rgba(255,255,255,.13);border-radius:10px;border:2px solid transparent;background-clip:content-box;}
         *::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.22);background-clip:content-box;}
@@ -764,8 +770,8 @@ export default function App() {
 
       <header className="melo-head">
         <div>
-          <h1 className="melo-title">Suivi des paiements <span className="accent">·</span> Melo</h1>
-          <div className="melo-sub">Clients iClosed + plans Systeme.io · cohortes, impayés, acquisition</div>
+          <h1 className="melo-title"><span className="brand">ANG INDUSTRIES</span> <span className="brand-for">FOR</span> Melo</h1>
+          <div className="melo-sub">Suivi des ventes, impayés &amp; rentabilité</div>
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
           <button className="chip chip-btn" onClick={() => syncSio()} disabled={syncing} title="Forcer la récupération des nouvelles ventes">
@@ -836,7 +842,7 @@ export default function App() {
         <div className="card"><div className="kpi-label">Reste à encaisser</div><div className="kpi-val">{euro(kp.outstanding)}</div><div className="kpi-foot">sur la période</div></div>
         <div className={`card ${kp.overdueCount ? "kpi-alert" : ""}`}><div className="kpi-label">Impayés</div><div className="kpi-val">{euro(kp.overdueAmt)}</div><div className="kpi-foot">{kp.overdueCount} échéance{kp.overdueCount > 1 ? "s" : ""} en retard<br />{Delta(kp.overdueAmt, kpYoy.overdueAmt, "YoY")}</div></div>
         <div className="card"><div className="kpi-label" style={{ display: "flex", alignItems: "center", gap: 6 }}><Leaf size={13} color="#2BD9A0" /> Encaissé organique</div><div className="kpi-val green">{euro(kp.org)}</div><div className="kpi-foot">{kp.collected ? Math.round((kp.org / kp.collected) * 100) : 0}% de l'encaissé<br />{Delta(kp.org, kpPrev.org, "MoM")}{Delta(kp.org, kpYoy.org, "YoY")}</div></div>
-        <div className="card"><div className="kpi-label" style={{ display: "flex", alignItems: "center", gap: 6 }}><Megaphone size={13} color="#00D4FF" /> Encaissé paid</div><div className="kpi-val" style={{ color: "var(--cyan)" }}>{euro(kp.paid)}</div><div className="kpi-foot">{kp.collected ? Math.round((kp.paid / kp.collected) * 100) : 0}% de l'encaissé<br />{Delta(kp.paid, kpPrev.paid, "MoM")}{Delta(kp.paid, kpYoy.paid, "YoY")}</div></div>
+        <div className="card"><div className="kpi-label" style={{ display: "flex", alignItems: "center", gap: 6 }}><Megaphone size={13} color="#7C5CFF" /> Encaissé paid</div><div className="kpi-val" style={{ color: "var(--cyan)" }}>{euro(kp.paid)}</div><div className="kpi-foot">{kp.collected ? Math.round((kp.paid / kp.collected) * 100) : 0}% de l'encaissé<br />{Delta(kp.paid, kpPrev.paid, "MoM")}{Delta(kp.paid, kpYoy.paid, "YoY")}</div></div>
         <div className="card"><div className="kpi-label" style={{ display: "flex", alignItems: "center", gap: 6 }}><Wallet size={13} color="#FFB020" /> Coût total</div><div className="kpi-val" style={{ color: "var(--amber)" }}>{euro(totalCosts)}</div><div className="kpi-foot">{euro(periodSoftwareCosts)} coûts + {euro(adsSpend)} Ads</div></div>
         <div className="card"><div className="kpi-label">ROAS</div><div className="kpi-val">{adsSpend > 0 ? `${roas.toFixed(2)}x` : "—"}</div><div className="kpi-foot">Revenu Ads / budget Ads</div></div>
         <div className="card"><div className="kpi-label">MER</div><div className="kpi-val">{adsSpend > 0 ? `${mer.toFixed(2)}x` : "—"}</div><div className="kpi-foot">Revenu total / Ads</div></div>
@@ -863,7 +869,7 @@ export default function App() {
             <YAxis tick={{ fill: "rgba(234,242,255,.4)", fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={(v) => (v >= 1000 ? `${v / 1000}k` : v)} />
             <Tooltip cursor={{ fill: "rgba(255,255,255,.04)" }} contentStyle={{ background: "#16243d", border: "1px solid rgba(255,255,255,.12)", borderRadius: 10, color: "#EAF2FF" }} formatter={(v, n) => [euro(v), n === "paid" ? "Encaissé" : "À encaisser"]} />
             <Bar dataKey="paid" stackId="a" fill="#2BD9A0" />
-            <Bar dataKey="due" stackId="a" fill="#00D4FF" radius={[5, 5, 0, 0]} />
+            <Bar dataKey="due" stackId="a" fill="#7C5CFF" radius={[5, 5, 0, 0]} />
           </BarChart>
         </ResponsiveContainer>
       </div>
@@ -955,7 +961,7 @@ export default function App() {
                           <div className="pill-menu" onClick={(e) => e.stopPropagation()}>
                             <div className="menu-item" onClick={() => setPayment(s.id, inst.id, true, "auto")}><Check size={15} color="#2BD9A0" /> Encaissé (Stripe)</div>
                             <div className="menu-item" onClick={() => setPayment(s.id, inst.id, true, "manual")}><Landmark size={15} color="#FFB020" /> Encaissé en direct (virement)</div>
-                            <div className="menu-item" onClick={() => setPayment(s.id, inst.id, false, null)}><RotateCcw size={15} color="#00D4FF" /> Remettre en attente</div>
+                            <div className="menu-item" onClick={() => setPayment(s.id, inst.id, false, null)}><RotateCcw size={15} color="#7C5CFF" /> Remettre en attente</div>
                             <div className="menu-item" onClick={() => setInstState(s.id, inst.id, { cancelled: true })}><X size={15} color="#8a93a5" /> Annuler l'échéance</div>
                             <div className="menu-item" onClick={() => setInstState(s.id, inst.id, { refunded: true })}><RotateCcw size={15} color="#FFB020" /> Marquer remboursé</div>
                             <div className="menu-item" onClick={() => removeInst(s.id, inst.id)}><Trash2 size={15} color="#FF4D5E" /> Supprimer cette échéance</div>
@@ -1113,7 +1119,7 @@ export default function App() {
       {tab === "couts" && (<>
         <div className="kpis" style={{ marginTop: 4 }}>
           <div className="card"><div className="kpi-label">Coûts du mois · {monthLabel(costMonth)}</div><div className="kpi-val">{euro(monthCostsTotal)}</div><div className="kpi-foot">{monthCosts.length} poste{monthCosts.length > 1 ? "s" : ""} · hors Ads</div></div>
-          <div className="card"><div className="kpi-label" style={{ display: "flex", alignItems: "center", gap: 6 }}><Megaphone size={13} color="#00D4FF" /> Budget Ads · {periodRange.label}</div><div className="kpi-val" style={{ color: "var(--cyan)" }}>{euro(adsSpend)}</div><div className="kpi-foot">ROAS {adsSpend ? `${roas.toFixed(2)}x` : "—"} · MER {adsSpend ? `${mer.toFixed(2)}x` : "—"}</div></div>
+          <div className="card"><div className="kpi-label" style={{ display: "flex", alignItems: "center", gap: 6 }}><Megaphone size={13} color="#7C5CFF" /> Budget Ads · {periodRange.label}</div><div className="kpi-val" style={{ color: "var(--cyan)" }}>{euro(adsSpend)}</div><div className="kpi-foot">ROAS {adsSpend ? `${roas.toFixed(2)}x` : "—"} · MER {adsSpend ? `${mer.toFixed(2)}x` : "—"}</div></div>
           <div className="card"><div className="kpi-label">Coûts totaux · {periodRange.label}</div><div className="kpi-val" style={{ color: "var(--amber)" }}>{euro(totalCosts)}</div><div className="kpi-foot">{euro(periodSoftwareCosts)} coûts + {euro(adsSpend)} Ads</div></div>
           <div className={`card ${netProfit < 0 ? "kpi-alert" : ""}`}><div className="kpi-label">Bénéfice net · {periodRange.label}</div><div className="kpi-val" style={{ color: netProfit >= 0 ? "var(--green)" : "var(--red)" }}>{euro(netProfit)}</div><div className="kpi-foot">Revenue ANG : {euro(revenueANG)}</div></div>
         </div>
@@ -1129,7 +1135,7 @@ export default function App() {
         </div>
 
         <div className="card" style={{ padding: 16, marginBottom: 14, display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
-          <Megaphone size={16} color="#00D4FF" />
+          <Megaphone size={16} color="#7C5CFF" />
           <b>Budget Ads dépensé sur {monthLabel(costMonth)}</b>
           <input className="ads-input" inputMode="decimal" placeholder="€ ce mois" value={adsByMonth[costMonth] || ""} onChange={(e) => setAdsMonth(costMonth, e.target.value)} />
           <span className="mut" style={{ fontSize: 12 }}>{metaSpend.configured ? "(ou laisse vide pour utiliser Meta automatiquement)" : "saisie manuelle"}</span>
