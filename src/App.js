@@ -747,6 +747,9 @@ export default function App() {
         .month-nav button{width:28px;height:28px;border-radius:7px;border:none;background:transparent;color:var(--text);cursor:pointer;font-size:16px;}
         .month-nav button:hover{background:rgba(255,255,255,.08);}
         .ads-input{background:var(--panel2);border:1px solid var(--line);color:var(--text);border-radius:10px;padding:10px 12px;font:inherit;font-size:15px;font-weight:700;width:140px;outline:none;}
+        .kpis-home{grid-template-columns:repeat(6,minmax(0,1fr));}
+        @media (max-width:1500px){ .kpis-home{grid-template-columns:repeat(4,minmax(0,1fr));} }
+        @media (max-width:1000px){ .kpis-home{grid-template-columns:repeat(2,minmax(0,1fr));} }
         .ads-input:focus{border-color:var(--cyan);}
         .cost-form{display:grid;grid-template-columns:2fr 1fr 1.2fr auto;gap:10px;margin-bottom:6px;}
         .cost-form input,.cost-form select{background:var(--panel2);border:1px solid var(--line);color:var(--text);border-radius:10px;padding:11px 12px;font:inherit;font-size:14px;outline:none;color-scheme:dark;}
@@ -827,7 +830,7 @@ export default function App() {
         <span className="period-lbl">Comparé à la période précédente (MoM) et N-1 (YoY)</span>
       </div>
 
-      <div className="kpis">
+      <div className="kpis kpis-home">
         <div className="card"><div className="kpi-label">CA contracté</div><div className="kpi-val">{euro(kp.signed)}</div><div className="kpi-foot">{kp.clients} vente{kp.clients > 1 ? "s" : ""} signée{kp.clients > 1 ? "s" : ""}<br />{Delta(kp.signed, kpPrev.signed, "MoM")}{Delta(kp.signed, kpYoy.signed, "YoY")}</div></div>
         <div className="card"><div className="kpi-label">CA collecté</div><div className="kpi-val" style={{ color: "var(--green)" }}>{euro(kp.collected)}</div><div className="kpi-foot">{kp.expected ? Math.round((kp.collected / kp.expected) * 100) : 0}% de l'attendu<br />{Delta(kp.collected, kpPrev.collected, "MoM")}{Delta(kp.collected, kpYoy.collected, "YoY")}</div></div>
         <div className="card"><div className="kpi-label">Reste à encaisser</div><div className="kpi-val">{euro(kp.outstanding)}</div><div className="kpi-foot">sur la période</div></div>
