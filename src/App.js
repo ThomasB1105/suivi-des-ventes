@@ -232,6 +232,7 @@ export default function App() {
   const flash = (m) => { setToast(m); setTimeout(() => setToast(null), 3800); };
 
   const [syncing, setSyncing] = useState(false);
+  const [deletedSales, setDeletedSales] = useState(() => { try { return JSON.parse(localStorage.getItem("melo_deleted_v1") || "[]"); } catch (e) { return []; } });
   // Applique les ventes venues de la base (webhooks systeme.io) en conservant
   // l'attribution manuelle (canal/source/closer) et les ventes saisies à la main.
   // Synchro : ajoute les nouveaux clients ET rafraîchit les clients existants
@@ -239,27 +240,25 @@ export default function App() {
   //  - attribution (canal), nom/téléphone/email édités
   //  - échéances annulées / remboursées
   //  - encaissements marqués à la main (virement) ou ajoutés (id "m-…")
-  const applyDbSales = (incoming) => {
+  const applyDbSales = (incomingRaw) => {
+    const incoming = incomingRaw.filter((s) => !deletedSales.includes(s.id)); // clients supprimés à la main
     setSales((prev) => {
       const prevById = new Map(prev.map((s) => [s.id, s]));
       const incIds = new Set(incoming.map((s) => s.id));
       const merged = incoming.map((inc) => {
         const loc = prevById.get(inc.id);
         if (!loc) return inc; // nouveau client
-        const locById = new Map(loc.schedule.map((i) => [i.id, i]));
-        const schedule = inc.schedule.map((i) => {
-          const lo = locById.get(i.id);
-          if (lo) {
-            if (lo.cancelled || lo.refunded) return { ...i, paid: false, method: null, cancelled: lo.cancelled, refunded: lo.refunded };
-            if (lo.paid && !i.paid) return { ...i, paid: true, method: lo.method || "manual" }; // virement marqué à la main
-          }
-          return i;
-        });
-        // garder les encaissements ajoutés à la main (absents du serveur)
-        loc.schedule.forEach((i) => { if (String(i.id).startsWith("m-") && !inc.schedule.some((x) => x.id === i.id)) schedule.push(i); });
+        const del = new Set(loc.deletedInsts || []);
+        const ov = loc.ov || {};
+        // base = échéances serveur (vérité financière), moins les suppressions, + overlay
+        const schedule = inc.schedule
+          .filter((i) => !del.has(i.id))
+          .map((i) => (ov[i.id] ? { ...i, ...ov[i.id] } : i));
+        // + encaissements ajoutés à la main (id "m-…", absents du serveur)
+        loc.schedule.forEach((i) => { if (String(i.id).startsWith("m-")) schedule.push(i); });
         schedule.sort((a, b) => String(a.dueDate).localeCompare(String(b.dueDate)));
         const total = schedule.reduce((a, i) => a + (i.cancelled || i.refunded ? 0 : i.amount), 0);
-        return { ...inc, client: loc.client, phone: loc.phone || inc.phone, email: loc.email || inc.email, closer: loc.closer, source: loc.source, channel: loc.channel, schedule, total };
+        return { ...inc, client: loc.client, phone: loc.phone || inc.phone, email: loc.email || inc.email, closer: loc.closer, source: loc.source, channel: loc.channel, ov, deletedInsts: loc.deletedInsts || [], schedule, total };
       });
       // conserver les ventes purement manuelles (ajoutées via "Ajouter une vente")
       prev.forEach((s) => { if (!incIds.has(s.id)) merged.push(s); });
@@ -340,19 +339,40 @@ export default function App() {
   const nextDue = (s) => s.schedule.filter((i) => !i.paid && isActive(i)).sort((a, b) => a.dueDate.localeCompare(b.dueDate))[0] || null;
   const hasOverdue = (s) => s.schedule.some((i) => statusOf(i) === "overdue");
 
+  // Applique un correctif à une échéance ET le mémorise (overlay s.ov) pour qu'il
+  // survive aux synchros suivantes.
+  const patchInst = (saleId, instId, patch) => {
+    persist(sales.map((s) => {
+      if (s.id !== saleId) return s;
+      const ov = { ...(s.ov || {}), [instId]: { ...((s.ov || {})[instId] || {}), ...patch } };
+      const schedule = s.schedule.map((i) => i.id === instId ? { ...i, ...patch } : i);
+      return { ...s, ov, schedule };
+    }));
+  };
   const setPayment = (saleId, instId, paid, method) => {
-    persist(sales.map((s) => s.id !== saleId ? s : { ...s, schedule: s.schedule.map((i) => i.id === instId ? { ...i, paid, method: paid ? method : null, cancelled: false, refunded: false, paidDate: paid ? toISO(today) : null } : i) }));
+    patchInst(saleId, instId, { paid, method: paid ? method : null, cancelled: false, refunded: false, paidDate: paid ? toISO(today) : null });
     setMenu(null);
   };
   // Annuler une échéance (sort des impayés) ou la marquer remboursée.
   const setInstState = (saleId, instId, patch) => {
-    persist(sales.map((s) => s.id !== saleId ? s : { ...s, schedule: s.schedule.map((i) => i.id === instId ? { ...i, paid: false, method: null, cancelled: false, refunded: false, ...patch } : i) }));
+    patchInst(saleId, instId, { paid: false, method: null, cancelled: false, refunded: false, ...patch });
     setMenu(null);
   };
-  const removeSale = (id) => persist(sales.filter((s) => s.id !== id));
-  // Supprimer une seule échéance (ex : virer un faux impayé projeté).
+  const removeSale = (id) => {
+    if (String(id).startsWith("sio-")) {
+      const next = [...new Set([...deletedSales, id])];
+      setDeletedSales(next);
+      try { localStorage.setItem("melo_deleted_v1", JSON.stringify(next)); } catch (e) { /* quota */ }
+    }
+    persist(sales.filter((s) => s.id !== id));
+  };
+  // Supprimer une seule échéance — et mémoriser la suppression (persiste à la synchro).
   const removeInst = (saleId, instId) => {
-    persist(sales.map((s) => s.id !== saleId ? s : { ...s, schedule: s.schedule.filter((i) => i.id !== instId) }));
+    persist(sales.map((s) => s.id !== saleId ? s : {
+      ...s,
+      schedule: s.schedule.filter((i) => i.id !== instId),
+      deletedInsts: [...(s.deletedInsts || []), instId],
+    }));
     setMenu(null);
   };
   // Ajouter un encaissement manuel à un client (ex : acompte reçu sur Stripe).
@@ -374,9 +394,16 @@ export default function App() {
   const addEditInst = () => setEditDraft((d) => ({ ...d, schedule: [...d.schedule, { id: `m-${Date.now()}-${d.schedule.length}`, dueDate: toISO(today), amount: "", paid: false, method: null }] }));
   const delEditInst = (idx) => setEditDraft((d) => ({ ...d, schedule: d.schedule.filter((_, j) => j !== idx) }));
   const saveEdit = () => {
+    const orig = sales.find((s) => s.id === editFor) || { schedule: [], ov: {}, deletedInsts: [] };
     const sched = editDraft.schedule.map((i) => ({ ...i, amount: parseFloat(String(i.amount).replace(",", ".")) || 0, method: i.paid ? (i.method || "manual") : null })).sort((a, b) => String(a.dueDate).localeCompare(String(b.dueDate)));
-    const total = sched.reduce((a, i) => a + i.amount, 0);
-    persist(sales.map((s) => s.id !== editFor ? s : { ...s, client: editDraft.client.trim() || s.client, phone: editDraft.phone.trim(), email: editDraft.email.trim(), schedule: sched, total }));
+    // Mémoriser les modifications (overlay) pour qu'elles tiennent à la synchro.
+    const ov = { ...(orig.ov || {}) };
+    sched.forEach((i) => { if (!String(i.id).startsWith("m-")) ov[i.id] = { amount: i.amount, dueDate: i.dueDate, paid: i.paid, method: i.method, cancelled: !!i.cancelled, refunded: !!i.refunded }; });
+    const kept = new Set(sched.map((i) => i.id));
+    const deletedInsts = [...(orig.deletedInsts || [])];
+    orig.schedule.forEach((i) => { if (!kept.has(i.id) && !String(i.id).startsWith("m-") && !deletedInsts.includes(i.id)) deletedInsts.push(i.id); });
+    const total = sched.reduce((a, i) => a + (i.cancelled || i.refunded ? 0 : i.amount), 0);
+    persist(sales.map((s) => s.id !== editFor ? s : { ...s, client: editDraft.client.trim() || s.client, phone: editDraft.phone.trim(), email: editDraft.email.trim(), schedule: sched, ov, deletedInsts, total }));
     closeEdit();
     flash("Fiche mise à jour.");
   };
