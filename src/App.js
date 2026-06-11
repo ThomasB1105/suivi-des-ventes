@@ -896,7 +896,7 @@ export default function App() {
         <div className="card"><div className="kpi-label">ROAS</div><div className="kpi-val">{adsSpend > 0 ? `${roas.toFixed(2)}x` : "—"}</div><div className="kpi-foot">Revenu Ads / budget Ads</div></div>
         <div className="card"><div className="kpi-label">MER</div><div className="kpi-val">{adsSpend > 0 ? `${mer.toFixed(2)}x` : "—"}</div><div className="kpi-foot">Revenu total / Ads</div></div>
         <div className={`card ${netProfit < 0 ? "kpi-alert" : ""}`}><div className="kpi-label">Bénéfice net</div><div className="kpi-val" style={{ color: netProfit >= 0 ? "var(--green)" : "var(--red)" }}>{euro(netProfit)}</div><div className="kpi-foot">CA collecté − coûts</div></div>
-        <div className="card card-ang"><div className="kpi-label">🟣 La moula d'ANG</div><div className="kpi-val">{euro(revenueANG)}</div><div className="kpi-foot">(Revenu Ads − coûts) × 20%</div></div>
+        <div className="card card-ang"><div className="kpi-label">💸 La moula d'ANG</div><div className="kpi-val">{euro(revenueANG)}</div><div className="kpi-foot">(Revenu Ads − coûts) × 20%</div></div>
         <div className="card card-boss"><div className="kpi-label">💰 Argent de poche du boss</div><div className="kpi-val">{euro(bossMoney)}</div><div className="kpi-foot">collecté − coûts − ANG</div></div>
       </div>
 
