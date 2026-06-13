@@ -875,8 +875,8 @@ export default function App() {
         .tab-sep{width:1px;align-self:stretch;background:rgba(255,255,255,.12);margin:5px 6px;}
         .tab.tool.active{background:linear-gradient(95deg,#6A5CFF,#9D5CFF);}
         /* ===== Layout SaaS : sidebar + topbar ===== */
-        .melo.app-shell{display:flex!important;min-height:100vh;padding:0!important;}
-        .sidebar{width:238px;flex:none;background:rgba(8,12,24,.55);backdrop-filter:blur(12px);border-right:1px solid var(--line);display:flex;flex-direction:column;padding:18px 14px;position:sticky;top:0;height:100vh;box-sizing:border-box;}
+        .melo.app-shell{padding:0!important;min-height:100vh;}
+        .sidebar{position:fixed;left:0;top:0;bottom:0;width:238px;background:#0A1426;backdrop-filter:blur(12px);border-right:1px solid var(--line);display:flex;flex-direction:column;padding:18px 14px;box-sizing:border-box;overflow-y:auto;z-index:40;}
         .side-brand{display:flex;align-items:center;gap:9px;font-family:'Montserrat';font-weight:800;font-size:15px;letter-spacing:.02em;padding:4px 6px 16px;}
         .side-logo{width:30px;height:30px;border-radius:9px;background:linear-gradient(135deg,#6A5CFF,#9D5CFF);display:grid;place-items:center;color:#fff;font-weight:800;font-size:16px;flex:none;}
         .side-nav{display:flex;flex-direction:column;gap:3px;flex:1;overflow-y:auto;}
@@ -893,7 +893,7 @@ export default function App() {
         .side-user-info .mut{font-size:11px;}
         .side-logout{display:flex;align-items:center;gap:7px;width:100%;justify-content:center;margin-top:10px;background:transparent;border:1px solid var(--line);color:rgba(234,242,255,.6);border-radius:9px;padding:9px;font:inherit;font-size:12.5px;font-weight:600;cursor:pointer;transition:.15s;}
         .side-logout:hover{border-color:var(--red);color:var(--red);background:rgba(255,77,94,.06);}
-        .main{flex:1;min-width:0;padding:18px 26px 60px;box-sizing:border-box;}
+        .main{margin-left:238px;min-width:0;padding:18px 26px 60px;box-sizing:border-box;}
         .topbar{display:flex;align-items:center;gap:14px;margin-bottom:18px;}
         .topbar-title{font-family:'Montserrat';font-weight:800;font-size:21px;letter-spacing:-.02em;}
         .topbar-actions{margin-left:auto;display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end;}
@@ -902,12 +902,11 @@ export default function App() {
         .burger{display:none;background:var(--panel2);border:1px solid var(--line);color:var(--text);border-radius:9px;width:38px;height:38px;font-size:18px;cursor:pointer;flex:none;}
         .side-scrim{display:none;}
         @media (max-width:900px){
-          .melo.app-shell{flex-direction:column;}
-          .sidebar{position:fixed;left:0;top:0;bottom:0;z-index:60;transform:translateX(-100%);transition:transform .25s ease;width:250px;}
+          .sidebar{z-index:60;transform:translateX(-100%);transition:transform .25s ease;width:250px;}
           .sidebar.open{transform:none;box-shadow:0 0 60px rgba(0,0,0,.6);}
           .side-scrim{display:block;position:fixed;inset:0;background:rgba(4,8,16,.6);z-index:55;}
           .burger{display:inline-flex;align-items:center;justify-content:center;}
-          .main{padding:14px 12px 56px;width:100%;}
+          .main{margin-left:0;padding:14px 12px 56px;width:100%;}
           .topbar{flex-wrap:wrap;}
           .topbar-actions{width:100%;margin-left:0;}
           .topbar-actions .period,.topbar-actions .daterange,.topbar-actions .dr-trigger{width:100%;}
