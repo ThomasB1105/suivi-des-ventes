@@ -262,6 +262,7 @@ export default function App() {
   const [pwInput, setPwInput] = useState("");
   const [showPw, setShowPw] = useState(false);
   const [loginErr, setLoginErr] = useState(false);
+  const [navOpen, setNavOpen] = useState(false);
   const doLogin = async () => {
     setLoginErr(false);
     try {
@@ -687,6 +688,11 @@ export default function App() {
   const overduesF = sortOverdue((impAll ? allOverdue : overdues).filter((i) => matchQ(i.sale)));
   const periodListF = periodList.filter((i) => matchQ(i.sale));
 
+  const SECTION = { clients: "Tableau de bord", cohortes: "Cohortes", mois: "Par mois", collecte: "À collecter", impayes: "Impayés", couts: "Coûts", closers: "Closers" };
+  const go = (t) => { setTab(t); setNavOpen(false); };
+  const navCls = (t) => `nav-item ${tab === t ? "active" : ""}`;
+  const logout = () => { try { localStorage.removeItem("melo_token"); } catch (e) { /* ignore */ } window.location.reload(); };
+
   // ---- Contrôle d'accès ----
   if (authed === null) {
     return <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", background: "#06040F", color: "rgba(234,242,255,.5)", fontFamily: "'Inter',system-ui,sans-serif" }}>Chargement…</div>;
@@ -868,6 +874,45 @@ export default function App() {
         .tab-group{font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:rgba(234,242,255,.35);padding:0 8px 0 6px;}
         .tab-sep{width:1px;align-self:stretch;background:rgba(255,255,255,.12);margin:5px 6px;}
         .tab.tool.active{background:linear-gradient(95deg,#6A5CFF,#9D5CFF);}
+        /* ===== Layout SaaS : sidebar + topbar ===== */
+        .melo.app-shell{display:flex!important;min-height:100vh;padding:0!important;}
+        .sidebar{width:238px;flex:none;background:rgba(8,12,24,.55);backdrop-filter:blur(12px);border-right:1px solid var(--line);display:flex;flex-direction:column;padding:18px 14px;position:sticky;top:0;height:100vh;box-sizing:border-box;}
+        .side-brand{display:flex;align-items:center;gap:9px;font-family:'Montserrat';font-weight:800;font-size:15px;letter-spacing:.02em;padding:4px 6px 16px;}
+        .side-logo{width:30px;height:30px;border-radius:9px;background:linear-gradient(135deg,#6A5CFF,#9D5CFF);display:grid;place-items:center;color:#fff;font-weight:800;font-size:16px;flex:none;}
+        .side-nav{display:flex;flex-direction:column;gap:3px;flex:1;overflow-y:auto;}
+        .nav-label{font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:rgba(234,242,255,.32);padding:14px 8px 6px;}
+        .nav-item{display:flex;align-items:center;gap:10px;width:100%;text-align:left;background:transparent;border:none;color:rgba(234,242,255,.7);border-radius:10px;padding:10px 11px;font:inherit;font-size:13.5px;font-weight:600;cursor:pointer;transition:.15s;}
+        .nav-item:hover{background:rgba(255,255,255,.05);color:#fff;}
+        .nav-item.active{background:linear-gradient(95deg,rgba(124,92,255,.24),rgba(124,92,255,.07));color:#fff;box-shadow:inset 2px 0 0 #7C5CFF;}
+        .nav-item svg{flex:none;}
+        .nav-badge{margin-left:auto;background:var(--red);color:#fff;font-size:11px;font-weight:700;padding:1px 7px;border-radius:20px;}
+        .side-foot{border-top:1px solid var(--line);padding-top:12px;margin-top:8px;}
+        .side-user{display:flex;align-items:center;gap:10px;padding:4px 6px;}
+        .side-ava{width:32px;height:32px;border-radius:9px;background:linear-gradient(135deg,#0F2C6E,#2F7DF6);display:grid;place-items:center;font-weight:800;color:#fff;flex:none;}
+        .side-user-name{font-weight:700;font-size:13px;}
+        .side-user-info .mut{font-size:11px;}
+        .side-logout{display:flex;align-items:center;gap:7px;width:100%;justify-content:center;margin-top:10px;background:transparent;border:1px solid var(--line);color:rgba(234,242,255,.6);border-radius:9px;padding:9px;font:inherit;font-size:12.5px;font-weight:600;cursor:pointer;transition:.15s;}
+        .side-logout:hover{border-color:var(--red);color:var(--red);background:rgba(255,77,94,.06);}
+        .main{flex:1;min-width:0;padding:18px 26px 60px;box-sizing:border-box;}
+        .topbar{display:flex;align-items:center;gap:14px;margin-bottom:18px;}
+        .topbar-title{font-family:'Montserrat';font-weight:800;font-size:21px;letter-spacing:-.02em;}
+        .topbar-actions{margin-left:auto;display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end;}
+        .topbar-actions .period{margin:0;flex-direction:row;align-items:center;}
+        .topbar-actions .period-lbl{display:none;}
+        .burger{display:none;background:var(--panel2);border:1px solid var(--line);color:var(--text);border-radius:9px;width:38px;height:38px;font-size:18px;cursor:pointer;flex:none;}
+        .side-scrim{display:none;}
+        @media (max-width:900px){
+          .melo.app-shell{flex-direction:column;}
+          .sidebar{position:fixed;left:0;top:0;bottom:0;z-index:60;transform:translateX(-100%);transition:transform .25s ease;width:250px;}
+          .sidebar.open{transform:none;box-shadow:0 0 60px rgba(0,0,0,.6);}
+          .side-scrim{display:block;position:fixed;inset:0;background:rgba(4,8,16,.6);z-index:55;}
+          .burger{display:inline-flex;align-items:center;justify-content:center;}
+          .main{padding:14px 12px 56px;width:100%;}
+          .topbar{flex-wrap:wrap;}
+          .topbar-actions{width:100%;margin-left:0;}
+          .topbar-actions .period,.topbar-actions .daterange,.topbar-actions .dr-trigger{width:100%;}
+          .topbar-title{font-size:18px;}
+        }
         .dr-trigger,.chip{background:linear-gradient(180deg, rgba(124,92,255,.08), rgba(255,255,255,.02));}
         .ads-input:focus{border-color:var(--cyan);}
         .cost-form{display:grid;grid-template-columns:2fr 1fr 1.2fr auto;gap:10px;margin-bottom:6px;}
@@ -926,20 +971,32 @@ export default function App() {
         .delta.down{color:#FF4D5E;}
       `}</style>
 
-      <header className="melo-head">
-        <div>
-          <h1 className="melo-title"><span className="brand">ANG INDUSTRIES</span> <span className="brand-for">FOR</span> Melo</h1>
-          <div className="melo-sub">Suivi des ventes, impayés &amp; rentabilité</div>
+      <aside className={`sidebar ${navOpen ? "open" : ""}`}>
+        <div className="side-brand"><span className="side-logo">A</span><span><span className="brand">ANG</span> <span className="brand-for">INDUSTRIES</span></span></div>
+        <nav className="side-nav">
+          <div className="nav-label">Vue d'ensemble</div>
+          <button className={navCls("clients")} onClick={() => go("clients")}><Users size={16} /> Tableau de bord</button>
+          <button className={navCls("cohortes")} onClick={() => go("cohortes")}><Grid3x3 size={16} /> Cohortes</button>
+          <button className={navCls("mois")} onClick={() => go("mois")}><Calendar size={16} /> Par mois</button>
+          <button className={navCls("collecte")} onClick={() => go("collecte")}><Landmark size={16} /> À collecter</button>
+          <div className="nav-label">Outils</div>
+          <button className={navCls("impayes")} onClick={() => go("impayes")}><AlertTriangle size={16} /> Impayés{allOverdue.length ? <span className="nav-badge">{allOverdue.length}</span> : null}</button>
+          <button className={navCls("couts")} onClick={() => go("couts")}><Wallet size={16} /> Coûts</button>
+          <button className={navCls("closers")} onClick={() => go("closers")}><UserCheck size={16} /> Closers</button>
+        </nav>
+        <div className="side-foot">
+          <div className="side-user"><div className="side-ava">A</div><div className="side-user-info"><div className="side-user-name">ANG Industries</div><div className="mut">FOR Melo</div></div></div>
+          <button className="side-logout" onClick={logout}><X size={14} /> Déconnexion</button>
         </div>
-        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-          <button className="chip chip-btn" onClick={() => syncSio()} disabled={syncing} title="Forcer la récupération des nouvelles ventes">
-            <RotateCcw size={13} className={syncing ? "spin" : ""} /> {syncing ? "Actualisation…" : "Actualiser"}
-          </button>
-          <button className="btn-primary" onClick={() => setShowAdd(true)}><Plus size={17} /> Ajouter une vente</button>
-        </div>
-      </header>
+      </aside>
+      {navOpen && <div className="side-scrim" onClick={() => setNavOpen(false)} />}
 
-      <div className="period">
+      <main className="main">
+        <header className="topbar">
+          <button className="burger" onClick={() => setNavOpen(true)} title="Menu">☰</button>
+          <div className="topbar-title">{SECTION[tab] || "Tableau de bord"}</div>
+          <div className="topbar-actions">
+            <div className="period">
         <div className="daterange">
           <button className="dr-trigger" onClick={() => { setPickerOpen((o) => !o); setSelStart(null); setCalMonth(parseLocal(range.from)); }}>
             <Calendar size={15} /> <b>{periodRange.label}</b>
@@ -991,9 +1048,15 @@ export default function App() {
             </div>
           </>)}
         </div>
-        <span className="period-lbl">Comparé à la période précédente (MoM) et N-1 (YoY)</span>
-      </div>
+            </div>
+            <button className="chip chip-btn" onClick={() => syncSio()} disabled={syncing} title="Forcer la récupération des nouvelles ventes">
+              <RotateCcw size={13} className={syncing ? "spin" : ""} /> {syncing ? "Actu…" : "Actualiser"}
+            </button>
+            <button className="btn-primary" onClick={() => setShowAdd(true)}><Plus size={17} /> Ajouter une vente</button>
+          </div>
+        </header>
 
+      {tab === "clients" && (<>
       <div className="kpis kpis-home">
         <div className="card"><div className="kpi-label">CA contracté</div><div className="kpi-val">{euro(kp.signed)}</div><div className="kpi-foot">{kp.clients} vente{kp.clients > 1 ? "s" : ""} signée{kp.clients > 1 ? "s" : ""}<br />{Delta(kp.signed, kpPrev.signed, "MoM")}{Delta(kp.signed, kpYoy.signed, "YoY")}</div></div>
         <div className="card"><div className="kpi-label">CA collecté</div><div className="kpi-val" style={{ color: "var(--green)" }}>{euro(kp.collected)}</div><div className="kpi-foot">{kp.expected ? Math.round((kp.collected / kp.expected) * 100) : 0}% de l'attendu<br />{Delta(kp.collected, kpPrev.collected, "MoM")}{Delta(kp.collected, kpYoy.collected, "YoY")}</div></div>
@@ -1038,18 +1101,7 @@ export default function App() {
           <div><b>{overdues.length} impayé{overdues.length > 1 ? "s" : ""} à relancer</b> · {euro(overdues.reduce((a, i) => a + i.amount, 0))} dépassé sur la période. <span className="mut">Si tu as reçu un virement, marque l'échéance "encaissé en direct".</span></div>
         </div>
       )}
-
-      <div className="tabs">
-        <span className="tab-group">Reporting</span>
-        <button className={`tab ${tab === "clients" ? "active" : ""}`} onClick={() => setTab("clients")}><Users size={15} /> Clients</button>
-        <button className={`tab ${tab === "cohortes" ? "active" : ""}`} onClick={() => setTab("cohortes")}><Grid3x3 size={15} /> Cohortes</button>
-        <button className={`tab ${tab === "mois" ? "active" : ""}`} onClick={() => setTab("mois")}><Calendar size={15} /> Par mois</button>
-        <button className={`tab ${tab === "collecte" ? "active" : ""}`} onClick={() => setTab("collecte")}><Landmark size={15} /> À collecter</button>
-        <span className="tab-sep" />
-        <button className={`tab tool ${tab === "impayes" ? "active" : ""}`} onClick={() => setTab("impayes")}><AlertTriangle size={15} /> Impayés{allOverdue.length ? ` (${allOverdue.length})` : ""}</button>
-        <button className={`tab tool ${tab === "couts" ? "active" : ""}`} onClick={() => setTab("couts")}><Wallet size={15} /> Coûts</button>
-        <button className={`tab tool ${tab === "closers" ? "active" : ""}`} onClick={() => setTab("closers")}><UserCheck size={15} /> Closers</button>
-      </div>
+      </>)}
 
       {(tab === "clients" || tab === "impayes" || tab === "collecte") && (
         <div className="filterbar">
@@ -1394,6 +1446,8 @@ export default function App() {
           <div className="empty" style={{ padding: "16px 20px", fontSize: 13 }}>💡 Les stats d'appels (no-show, closing, réponses aux questions) s'afficheront dès que tu enverras les appels iClosed via Make vers <code>/api/iclosed</code> (avec <code>status</code> et <code>answers</code>).</div>
         )}
       </>)}
+
+      </main>
 
       {/* ÉDITER LA FICHE */}
       {editFor && editDraft && (
