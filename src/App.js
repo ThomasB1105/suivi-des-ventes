@@ -974,8 +974,8 @@ export default function App() {
       <aside className={`sidebar ${navOpen ? "open" : ""}`}>
         <div className="side-brand"><span className="side-logo">A</span><span><span className="brand">ANG</span> <span className="brand-for">INDUSTRIES</span></span></div>
         <nav className="side-nav">
-          <div className="nav-label">Vue d'ensemble</div>
           <button className={navCls("clients")} onClick={() => go("clients")}><Users size={16} /> Tableau de bord</button>
+          <div className="nav-label">Vue d'ensemble</div>
           <button className={navCls("cohortes")} onClick={() => go("cohortes")}><Grid3x3 size={16} /> Cohortes</button>
           <button className={navCls("mois")} onClick={() => go("mois")}><Calendar size={16} /> Par mois</button>
           <button className={navCls("collecte")} onClick={() => go("collecte")}><Landmark size={16} /> À collecter</button>
