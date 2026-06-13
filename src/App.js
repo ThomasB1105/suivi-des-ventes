@@ -280,6 +280,8 @@ export default function App() {
   const [costForm, setCostForm] = useState({ name: "", amount: "", type: "logiciel" });
   const [costMonth, setCostMonth] = useState(() => toISO(today).slice(0, 7));
   const [metaSpend, setMetaSpend] = useState({ configured: false, spend: 0 });
+  const [callStats, setCallStats] = useState({ closers: [], questions: [], totalCalls: 0 });
+  useEffect(() => { authFetch("/api/closers").then((r) => r.json()).then((d) => d && setCallStats(d)).catch(() => {}); }, []);
   // Budget Ads saisi à la main, par mois.
   const [adsByMonth, setAdsByMonth] = useState(() => { try { return JSON.parse(localStorage.getItem("melo_ads_v1") || "{}"); } catch (e) { return {}; } });
   const setAdsMonth = (month, val) => {
@@ -662,6 +664,24 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [periodRange.from, periodRange.to]);
 
+  // Stats de vente par closer (sur la période, par date de signature) fusionnées avec les stats d'appels iClosed.
+  const closerRows = useMemo(() => {
+    const m = {};
+    sales.forEach((s) => {
+      if (!(s.closeDate >= periodRange.from && s.closeDate <= periodRange.to)) return;
+      const name = (s.closer && s.closer !== "—") ? s.closer : "Non attribué";
+      if (!m[name]) m[name] = { closer: name, deals: 0, contracted: 0, collected: 0, ads: 0 };
+      const g = m[name];
+      g.deals += 1; g.contracted += s.total;
+      g.collected += s.schedule.filter((i) => i.paid).reduce((a, i) => a + i.amount, 0);
+      if (s.channel === "paid") g.ads += 1;
+    });
+    (callStats.closers || []).forEach((c) => { m[c.closer] = { ...(m[c.closer] || { closer: c.closer, deals: 0, contracted: 0, collected: 0, ads: 0 }), ...c }; });
+    return Object.values(m).sort((a, b) => (b.contracted || 0) - (a.contracted || 0) || (b.won || 0) - (a.won || 0));
+  }, [sales, periodRange, callStats]);
+  const callTot = (callStats.closers || []).reduce((a, c) => ({ calls: a.calls + (c.calls || 0), noshow: a.noshow + (c.noshow || 0), won: a.won + (c.won || 0), lost: a.lost + (c.lost || 0) }), { calls: 0, noshow: 0, won: 0, lost: 0 });
+  const pct = (x) => `${Math.round((x || 0) * 100)}%`;
+
   const salesInPeriod = sales.filter((s) => s.schedule.some((i) => inPeriod(i.dueDate)));
   const salesF = sortClients(salesInPeriod.filter(matchQ));
   const overduesF = sortOverdue((impAll ? allOverdue : overdues).filter((i) => matchQ(i.sale)));
@@ -844,7 +864,10 @@ export default function App() {
         .card-ang::after{content:"";position:absolute;inset:0;background:radial-gradient(420px 160px at 90% -20%, rgba(255,255,255,.22), transparent 60%);pointer-events:none;}
         .card-ang .kpi-label,.card-ang .kpi-foot{color:rgba(255,255,255,.88)!important;}
         .card-ang .kpi-val{color:#fff!important;font-size:29px;}
-        .tabs{background:linear-gradient(180deg, rgba(124,92,255,.06), rgba(255,255,255,.02));}
+        .tabs{background:linear-gradient(180deg, rgba(124,92,255,.06), rgba(255,255,255,.02));align-items:center;}
+        .tab-group{font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:rgba(234,242,255,.35);padding:0 8px 0 6px;}
+        .tab-sep{width:1px;align-self:stretch;background:rgba(255,255,255,.12);margin:5px 6px;}
+        .tab.tool.active{background:linear-gradient(95deg,#6A5CFF,#9D5CFF);}
         .dr-trigger,.chip{background:linear-gradient(180deg, rgba(124,92,255,.08), rgba(255,255,255,.02));}
         .ads-input:focus{border-color:var(--cyan);}
         .cost-form{display:grid;grid-template-columns:2fr 1fr 1.2fr auto;gap:10px;margin-bottom:6px;}
@@ -1017,12 +1040,15 @@ export default function App() {
       )}
 
       <div className="tabs">
+        <span className="tab-group">Reporting</span>
         <button className={`tab ${tab === "clients" ? "active" : ""}`} onClick={() => setTab("clients")}><Users size={15} /> Clients</button>
         <button className={`tab ${tab === "cohortes" ? "active" : ""}`} onClick={() => setTab("cohortes")}><Grid3x3 size={15} /> Cohortes</button>
-        <button className={`tab ${tab === "impayes" ? "active" : ""}`} onClick={() => setTab("impayes")}><AlertTriangle size={15} /> Impayés{allOverdue.length ? ` (${allOverdue.length})` : ""}</button>
-        <button className={`tab ${tab === "collecte" ? "active" : ""}`} onClick={() => setTab("collecte")}><Landmark size={15} /> À collecter</button>
         <button className={`tab ${tab === "mois" ? "active" : ""}`} onClick={() => setTab("mois")}><Calendar size={15} /> Par mois</button>
-        <button className={`tab ${tab === "couts" ? "active" : ""}`} onClick={() => setTab("couts")}><Wallet size={15} /> Coûts</button>
+        <button className={`tab ${tab === "collecte" ? "active" : ""}`} onClick={() => setTab("collecte")}><Landmark size={15} /> À collecter</button>
+        <span className="tab-sep" />
+        <button className={`tab tool ${tab === "impayes" ? "active" : ""}`} onClick={() => setTab("impayes")}><AlertTriangle size={15} /> Impayés{allOverdue.length ? ` (${allOverdue.length})` : ""}</button>
+        <button className={`tab tool ${tab === "couts" ? "active" : ""}`} onClick={() => setTab("couts")}><Wallet size={15} /> Coûts</button>
+        <button className={`tab tool ${tab === "closers" ? "active" : ""}`} onClick={() => setTab("closers")}><UserCheck size={15} /> Closers</button>
       </div>
 
       {(tab === "clients" || tab === "impayes" || tab === "collecte") && (
@@ -1310,6 +1336,63 @@ export default function App() {
             <div className="empty" style={{ padding: "16px 20px", fontSize: 13 }}>💡 Connecte <b style={{ color: "var(--cyan)" }}>Meta Ads</b> pour ajouter automatiquement tes dépenses pub (variables d'env <code>META_ACCESS_TOKEN</code> + <code>META_AD_ACCOUNT_ID</code> sur Vercel).</div>
           )}
         </div>
+      </>)}
+
+      {/* CLOSERS */}
+      {tab === "closers" && (<>
+        <div className="kpis" style={{ marginTop: 4 }}>
+          <div className="card"><div className="kpi-label">Closers actifs</div><div className="kpi-val">{closerRows.length}</div><div className="kpi-foot">{callStats.totalCalls || 0} appels iClosed</div></div>
+          <div className="card"><div className="kpi-label">Taux de no-show</div><div className="kpi-val">{(callTot.calls) ? pct(callTot.noshow / callTot.calls) : "—"}</div><div className="kpi-foot">{callTot.noshow} no-show / {callTot.calls} appels</div></div>
+          <div className="card"><div className="kpi-label">Taux de closing</div><div className="kpi-val green">{(callTot.won + callTot.lost) ? pct(callTot.won / (callTot.won + callTot.lost)) : "—"}</div><div className="kpi-foot">{callTot.won} gagnés / {callTot.won + callTot.lost} présentés</div></div>
+          <div className="card"><div className="kpi-label">CA contracté · {periodRange.label}</div><div className="kpi-val">{euro(closerRows.reduce((a, c) => a + (c.contracted || 0), 0))}</div><div className="kpi-foot">via closers</div></div>
+        </div>
+
+        <div className="section-h"><UserCheck size={15} /> Performance par closer · {periodRange.label}</div>
+        <div className="card" style={{ padding: 6 }}>
+          {closerRows.length === 0 ? (
+            <div className="empty">Aucune donnée closer. Branche iClosed (Make → /api/iclosed) pour faire remonter closers, appels et réponses.</div>
+          ) : (
+            <table className="tbl">
+              <thead><tr>
+                <th>Closer</th><th className="num">Ventes</th><th className="num">CA contracté</th><th className="num">CA collecté</th><th className="num">Appels</th><th className="num">No-show</th><th className="num">Closing</th>
+              </tr></thead>
+              <tbody>
+                {closerRows.map((c) => (
+                  <tr key={c.closer}>
+                    <td className="lab">{c.closer}</td>
+                    <td className="num">{c.deals || 0}</td>
+                    <td className="num">{euro(c.contracted || 0)}</td>
+                    <td className="num green">{euro(c.collected || 0)}</td>
+                    <td className="num">{c.calls != null ? c.calls : "—"}</td>
+                    <td className={`num ${c.noShowRate > 0.3 ? "red" : "mut"}`}>{c.calls ? pct(c.noShowRate) : "—"}</td>
+                    <td className="num">{c.calls ? pct(c.closingRate) : "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        {(callStats.questions || []).length > 0 && (<>
+          <div className="section-h"><Grid3x3 size={15} /> Réponses aux questions de qualification</div>
+          {callStats.questions.map((q) => (
+            <div className="card" style={{ padding: 6, marginBottom: 12 }} key={q.question}>
+              <div style={{ padding: "8px 12px", fontWeight: 700, fontSize: 13 }}>{q.question}</div>
+              <table className="tbl">
+                <thead><tr><th>Réponse</th><th className="num">Nb</th><th className="num">Closés</th><th className="num">Taux de closing</th></tr></thead>
+                <tbody>
+                  {q.answers.map((a) => (
+                    <tr key={a.answer}><td className="lab">{a.answer}</td><td className="num">{a.n}</td><td className="num">{a.won}</td><td className={`num ${a.rate >= 0.5 ? "green" : ""}`}>{pct(a.rate)}</td></tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ))}
+        </>)}
+
+        {callStats.totalCalls === 0 && (
+          <div className="empty" style={{ padding: "16px 20px", fontSize: 13 }}>💡 Les stats d'appels (no-show, closing, réponses aux questions) s'afficheront dès que tu enverras les appels iClosed via Make vers <code>/api/iclosed</code> (avec <code>status</code> et <code>answers</code>).</div>
+        )}
       </>)}
 
       {/* ÉDITER LA FICHE */}

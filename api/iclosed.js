@@ -57,9 +57,35 @@ module.exports = async (req, res) => {
     if (source) record.source = String(source);
     if (channel) record.channel = channel;
     record.at = new Date().toISOString();
-
     await cmd(["HSET", "iclosed:contacts", email, JSON.stringify(record)]);
-    res.status(200).json({ ok: true, email, record });
+
+    // Si l'événement porte un statut d'appel / des réponses → on stocke un "call" pour les stats closers.
+    const rawStatus = pick(data, "status", "outcome", "callStatus", "disposition", "result", "callOutcome");
+    const answers = pick(data, "answers", "questions", "qualification", "customFields", "fields");
+    let stored = false;
+    if (rawStatus || answers) {
+      const normStatus = (s) => {
+        const t = String(s || "").toLowerCase();
+        if (/no.?show|absent/.test(t)) return "noshow";
+        if (/won|gagn|closed.?won|sold|vente|signed/.test(t)) return "won";
+        if (/lost|perdu|closed.?lost|refus/.test(t)) return "lost";
+        if (/cancel|annul/.test(t)) return "cancelled";
+        if (/show|present|complete|done|held|attended/.test(t)) return "show";
+        if (/book|schedul|reserv|upcoming|planned/.test(t)) return "booked";
+        return t || "other";
+      };
+      const call = {
+        email, closer: closer ? String(closer) : "Non attribué",
+        status: normStatus(rawStatus), source: source ? String(source) : undefined,
+        date: (pick(data, "date", "callDate", "scheduledAt", "createdAt") || new Date().toISOString()),
+        answers: (answers && typeof answers === "object") ? answers : undefined,
+        at: new Date().toISOString(),
+      };
+      await cmd(["LPUSH", "iclosed:calls", JSON.stringify(call)]);
+      await cmd(["LTRIM", "iclosed:calls", "0", "4999"]);
+      stored = true;
+    }
+    res.status(200).json({ ok: true, email, record, call: stored });
   } catch (e) {
     res.status(500).json({ error: String(e.message || e) });
   }
