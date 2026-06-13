@@ -1,0 +1,66 @@
+/* eslint-disable */
+// Réception des données iClosed (via Make/Zapier) : closer + source du lead.
+//   POST /api/iclosed?secret=XXXX   body:{ email, closer, source, channel }
+// Stocké par email ; /api/sales enrichit les clients correspondants.
+
+const { cmd, isConfigured } = require("../lib/kv");
+
+const pick = (o, ...keys) => { for (const k of keys) if (o && o[k] !== undefined && o[k] !== null && o[k] !== "") return o[k]; return undefined; };
+function deepEmail(obj, depth = 0) {
+  if (!obj || typeof obj !== "object" || depth > 6) return undefined;
+  for (const v of Object.values(obj)) {
+    if (typeof v === "string" && /^[\w.+-]+@[\w.-]+\.\w{2,}$/.test(v)) return v;
+    if (v && typeof v === "object") { const r = deepEmail(v, depth + 1); if (r) return r; }
+  }
+  return undefined;
+}
+const inferChannel = (src) => {
+  const s = String(src || "").toLowerCase();
+  if (/(ads?|meta|facebook|fb|google|tiktok|sea|paid|pub)/.test(s)) return "paid";
+  if (s) return "organic";
+  return undefined;
+};
+
+module.exports = async (req, res) => {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, x-ingest-secret");
+  if (req.method === "OPTIONS") { res.status(204).end(); return; }
+
+  const secret = process.env.INGEST_SECRET;
+  const provided = (req.query && req.query.secret) || req.headers["x-ingest-secret"];
+  if (secret && provided !== secret) { res.status(401).json({ error: "Secret invalide." }); return; }
+  if (!isConfigured()) { res.status(500).json({ error: "Base KV non configurée." }); return; }
+
+  try {
+    if (req.method === "GET") { // debug : voir ce qui est stocké
+      const flat = (await cmd(["HGETALL", "iclosed:contacts"])) || [];
+      const out = {};
+      for (let i = 0; i < flat.length; i += 2) { try { out[flat[i]] = JSON.parse(flat[i + 1]); } catch {} }
+      res.status(200).json({ count: Object.keys(out).length, contacts: out });
+      return;
+    }
+
+    let body = req.body;
+    if (typeof body === "string") { try { body = JSON.parse(body); } catch { body = {}; } }
+    body = body || {};
+    const data = body.data || body.payload || body;
+
+    const email = String(pick(data, "email", "contactEmail", "invitee_email", "inviteeEmail") || deepEmail(body) || "").toLowerCase();
+    if (!email) { res.status(400).json({ error: "Email manquant." }); return; }
+    const closer = pick(data, "closer", "closerName", "owner", "rep", "assignee", "host") || undefined;
+    const source = pick(data, "source", "leadSource", "lead_source", "utm_source", "utmSource", "origin", "channelSource") || undefined;
+    const channel = pick(data, "channel") || inferChannel(source);
+
+    const record = {};
+    if (closer) record.closer = String(closer);
+    if (source) record.source = String(source);
+    if (channel) record.channel = channel;
+    record.at = new Date().toISOString();
+
+    await cmd(["HSET", "iclosed:contacts", email, JSON.stringify(record)]);
+    res.status(200).json({ ok: true, email, record });
+  } catch (e) {
+    res.status(500).json({ error: String(e.message || e) });
+  }
+};

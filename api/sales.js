@@ -109,6 +109,24 @@ module.exports = async (req, res) => {
       try { events.push(JSON.parse(flat[i])); } catch {}
     }
     const sales = groupIntoSales(events);
+
+    // Enrichissement iClosed (closer + source/canal) par email.
+    try {
+      const icFlat = (await cmd(["HGETALL", "iclosed:contacts"])) || [];
+      const ic = {};
+      for (let i = 0; i < icFlat.length; i += 2) { try { ic[icFlat[i]] = JSON.parse(icFlat[i + 1]); } catch {} }
+      if (Object.keys(ic).length) {
+        sales.forEach((s) => {
+          const m = ic[(s.email || "").toLowerCase()];
+          if (m) {
+            if (m.closer) s.closer = m.closer;
+            if (m.source) s.source = m.source;
+            if (m.channel) s.channel = m.channel;
+          }
+        });
+      }
+    } catch (e) { /* iClosed optionnel */ }
+
     res.setHeader("Cache-Control", "s-maxage=10, stale-while-revalidate=60");
     res.status(200).json({ sales, count: sales.length, events: events.length, syncedAt: new Date().toISOString() });
   } catch (e) {
