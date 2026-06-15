@@ -21,15 +21,19 @@ module.exports = async (req, res) => {
       let body = req.body;
       if (typeof body === "string") { try { body = JSON.parse(body); } catch { body = {}; } }
       body = body || {};
+      // État existant : on ne remplace JAMAIS un champ rempli par du vide (anti-perte).
+      let prev = {};
+      try { const raw = await cmd(["GET", "app:state"]); if (raw) prev = JSON.parse(raw) || {}; } catch (e) { /* ignore */ }
+      const arr = (a) => Array.isArray(a) ? a : null;
       const data = {
-        sales: Array.isArray(body.sales) ? body.sales : [],
-        costs: Array.isArray(body.costs) ? body.costs : [],
-        ads: (body.ads && typeof body.ads === "object") ? body.ads : {},
-        deletedSales: Array.isArray(body.deletedSales) ? body.deletedSales : [],
+        sales: (arr(body.sales) && body.sales.length) ? body.sales : (prev.sales || []),
+        costs: (arr(body.costs) && body.costs.length) ? body.costs : (prev.costs || []),
+        ads: (body.ads && Object.keys(body.ads).length) ? body.ads : (prev.ads || {}),
+        deletedSales: arr(body.deletedSales) ? body.deletedSales : (prev.deletedSales || []),
         savedAt: new Date().toISOString(),
       };
       await cmd(["SET", "app:state", JSON.stringify(data)]);
-      res.status(200).json({ ok: true });
+      res.status(200).json({ ok: true, kept: { costs: data.costs.length, sales: data.sales.length } });
       return;
     }
     const raw = await cmd(["GET", "app:state"]);
