@@ -13,8 +13,12 @@ module.exports = async (req, res) => {
 
   try {
     const raw = (await cmd(["LRANGE", "iclosed:calls", "0", "4999"])) || [];
-    const calls = [];
-    raw.forEach((s) => { try { calls.push(JSON.parse(s)); } catch {} });
+    const hashRaw = (await cmd(["HGETALL", "iclosed:calls_h"])) || [];
+    const byId = new Map();
+    const add = (c) => { const k = c.id || `${c.email}|${c.date}|${c.status}`; byId.set(k, c); };
+    raw.forEach((s) => { try { add(JSON.parse(s)); } catch {} });
+    for (let i = 1; i < hashRaw.length; i += 2) { try { add(JSON.parse(hashRaw[i])); } catch {} }
+    const calls = [...byId.values()];
 
     const tally = {};
     const bump = (obj, key, n = 1) => { const k = key || "—"; obj[k] = (obj[k] || 0) + n; };

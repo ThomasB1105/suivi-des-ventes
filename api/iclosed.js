@@ -102,7 +102,9 @@ module.exports = async (req, res) => {
         return t || "other";
       };
       const num = (v) => { if (v == null) return 0; const n = parseFloat(String(v).replace(/[^\d.,-]/g, "").replace(",", ".")); return isNaN(n) ? 0 : n; };
+      const callId = "ic-" + (pick(data, "id", "callId", "eventCallId", "uuid", "_id") || `${email}-${pick(data, "date", "callDate", "scheduledAt", "createdAt") || ""}-${normStatus(rawStatus)}`);
       const call = {
+        id: callId,
         email, closer: closer ? String(closer) : "Non attribué",
         status: normStatus(rawStatus), source: source ? String(source) : undefined,
         date: (pick(data, "date", "callDate", "scheduledAt", "createdAt") || new Date().toISOString()),
@@ -113,8 +115,8 @@ module.exports = async (req, res) => {
         amount: amount != null ? num(amount) : undefined,
         at: new Date().toISOString(),
       };
-      await cmd(["LPUSH", "iclosed:calls", JSON.stringify(call)]);
-      await cmd(["LTRIM", "iclosed:calls", "0", "4999"]);
+      // hash dédupliqué par id (cohérent avec l'import API)
+      await cmd(["HSET", "iclosed:calls_h", callId, JSON.stringify(call)]);
       stored = true;
     }
     res.status(200).json({ ok: true, email, record, call: stored });
