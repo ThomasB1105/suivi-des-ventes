@@ -26,11 +26,25 @@ module.exports = async (req, res) => {
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, x-ingest-secret");
   if (req.method === "OPTIONS") { res.status(204).end(); return; }
+  if (!isConfigured()) { res.status(500).json({ error: "Base KV non configurée." }); return; }
 
   const secret = process.env.INGEST_SECRET;
   const provided = (req.query && req.query.secret) || req.headers["x-ingest-secret"];
-  if (secret && provided !== secret) { res.status(401).json({ error: "Secret invalide." }); return; }
-  if (!isConfigured()) { res.status(500).json({ error: "Base KV non configurée." }); return; }
+
+  // POST : on capture TOUJOURS le payload brut (avant le contrôle du secret) pour pouvoir
+  // diagnostiquer ce qu'iClosed envoie réellement, même si le secret ne passe pas.
+  if (req.method === "POST") {
+    let pbody = req.body;
+    if (typeof pbody === "string") { try { pbody = JSON.parse(pbody); } catch { pbody = { _raw: req.body }; } }
+    const hdr = {};
+    try { Object.keys(req.headers || {}).forEach((h) => { if (/secret|sign|auth|token|iclosed|webhook/i.test(h)) hdr[h] = req.headers[h]; }); } catch (e) {}
+    try {
+      await cmd(["LPUSH", "iclosed:raw", JSON.stringify({ at: new Date().toISOString(), auth: (!secret || provided === secret), query: req.query || {}, headers: hdr, body: pbody || {} })]);
+      await cmd(["LTRIM", "iclosed:raw", "0", "19"]);
+    } catch (e) { /* ignore */ }
+  }
+
+  if (secret && provided !== secret) { res.status(200).json({ ok: true, ignored: "secret" }); return; }
 
   try {
     if (req.method === "GET") { // debug : voir ce qui est stocké
@@ -50,8 +64,6 @@ module.exports = async (req, res) => {
     let body = req.body;
     if (typeof body === "string") { try { body = JSON.parse(body); } catch { body = {}; } }
     body = body || {};
-    // on garde les derniers payloads bruts pour caler le mapping iClosed
-    try { await cmd(["LPUSH", "iclosed:raw", JSON.stringify({ at: new Date().toISOString(), body })]); await cmd(["LTRIM", "iclosed:raw", "0", "19"]); } catch (e) {}
     const data = body.data || body.payload || body;
 
     const email = String(pick(data, "email", "contactEmail", "invitee_email", "inviteeEmail") || deepEmail(body) || "").toLowerCase();
