@@ -21,26 +21,60 @@ async function icGet(path, key, params = {}) {
 const pick = (o, ...ks) => { for (const k of ks) if (o && o[k] != null && o[k] !== "") return o[k]; return undefined; };
 const num = (v) => { if (v == null) return 0; const n = parseFloat(String(v).replace(/[^\d.,-]/g, "").replace(",", ".")); return isNaN(n) ? 0 : n; };
 function deepEmail(o, d = 0) { if (!o || typeof o !== "object" || d > 6) return undefined; for (const v of Object.values(o)) { if (typeof v === "string" && /^[\w.+-]+@[\w.-]+\.\w{2,}$/.test(v)) return v; if (v && typeof v === "object") { const r = deepEmail(v, d + 1); if (r) return r; } } return undefined; }
-function normStatus(s) { const t = String(s || "").toLowerCase(); if (/no.?show|absent/.test(t)) return "noshow"; if (/won|gagn|sold|signed|deposit|closed.?won/.test(t)) return "won"; if (/lost|perdu|no.?sale|refus|closed.?lost/.test(t)) return "lost"; if (/cancel|annul/.test(t)) return "cancelled"; if (/reschedul|report/.test(t)) return "rescheduled"; if (/pending|attente|follow/.test(t)) return "pending"; if (/show|present|complete|held|attended/.test(t)) return "show"; if (/book|schedul|upcoming|planned/.test(t)) return "booked"; return t || "other"; }
 
-function mapCall(c) {
-  const contact = c.contact || {};
-  const host = c.host || c.owner || c.assignee || {};
-  const email = String(pick(c, "email", "contactEmail", "inviteeEmail") || pick(contact, "email") || deepEmail(c) || "").toLowerCase();
-  const closer = pick(host, "name", "fullName", "firstName") || pick(c, "closer", "host", "owner", "rep", "hostName", "ownerName") || "Non attribué";
-  const answers = pick(c, "answers", "questions", "qualification", "formAnswers", "customFields");
+// Valeur d'une réponse iClosed (souvent un tableau [{inputType, answer}]).
+const ansVal = (a) => {
+  if (Array.isArray(a)) return a.map((x) => (x && (x.answer != null ? x.answer : x.value != null ? x.value : x))).filter((v) => v != null && v !== "").join(", ");
+  if (a && typeof a === "object") return a.answer != null ? a.answer : a.value;
+  return a;
+};
+// Aplatit toutes les Q/R (questions de booking + secondaryAnswers).
+function collectQA(c) {
+  const map = {};
+  const put = (st, a) => { if (st) { const v = ansVal(a); if (v != null && v !== "") map[st] = v; } };
+  (c.questions || []).forEach((q) => put(q.statement || q.question, q.answer));
+  (c.invitee || []).forEach((inv) => (inv.secondaryAnswers || inv.answers || []).forEach((sa) => put(sa.statement || sa.question, sa.answer)));
+  (c.secondaryAnswers || []).forEach((sa) => put(sa.statement || sa.question, sa.answer));
+  return map;
+}
+
+const META_Q = ["Call Outcome", "Outcome", "No Sale Reason", "Objection", "Phone Number", "Téléphone"];
+
+function mapCall(c, userMap) {
+  const qa = collectQA(c);
+  const email = String(pick(c, "email", "contactEmail", "inviteeEmail") || deepEmail(c) || "").toLowerCase();
+  const uid = pick(c, "userId", "ownerId", "hostId");
+  const closer = (userMap && userMap[uid]) || pick(c, "closerName", "hostName", "ownerName") || (uid ? `Closer ${uid}` : "Non attribué");
+
+  const outcomeAns = String(qa["Call Outcome"] || qa["Outcome"] || "").toUpperCase();
+  const topOutcome = String(pick(c, "outcome") || "").toUpperCase();
+  let status;
+  if (/NO.?SHOW/.test(outcomeAns) || /NO.?SHOW/.test(topOutcome)) status = "noshow";
+  else if (/NO.?SALE|LOST|REFUS/.test(outcomeAns)) status = "lost";
+  else if (/SALE|WON|GAGN|DEPOSIT|ACOMPTE|CLOSED.?WON/.test(outcomeAns)) status = "won";
+  else if (/CANCEL|ANNUL/.test(topOutcome)) status = "cancelled";
+  else if (String(c.eventType || "").toUpperCase() === "UPCOMING") status = "booked";
+  else if (topOutcome === "COMPLETED" || c.completed === true) status = "show";
+  else status = "pending";
+
+  const reason = qa["No Sale Reason"] || pick(c, "noSaleReason") || undefined;
+  const objection = qa["Objection"] || pick(c, "objection") || undefined;
+  // réponses de qualif (on retire les méta)
+  const answers = {};
+  Object.entries(qa).forEach(([k, v]) => { if (!META_Q.includes(k)) answers[k] = v; });
+
+  const ev = c.event || {};
   return {
-    id: "ic-" + (pick(c, "id", "uuid", "callId", "eventCallId", "_id") || `${email}-${pick(c, "startTime", "scheduledAt", "date", "createdAt") || ""}`),
+    id: "ic-" + (pick(c, "callId", "id", "uuid", "_id") || `${email}-${pick(c, "dateTime", "startTime", "date") || ""}`),
     email,
     closer: String(closer),
-    status: normStatus(pick(c, "outcome", "status", "callOutcome", "disposition", "result", "callStatus", "eventType")),
-    date: pick(c, "startTime", "scheduledAt", "date", "callDate", "createdAt") || new Date().toISOString(),
-    answers: (answers && typeof answers === "object") ? answers : undefined,
-    reason: pick(c, "noSaleReason", "reason", "lostReason") || undefined,
-    objection: pick(c, "objection", "mainObjection") || undefined,
-    event: pick(c, "eventName", "callType") || pick(c.event || {}, "name", "title") || undefined,
-    amount: num(pick(c, "amount", "dealValue", "revenue", "value")) || undefined,
-    source: pick(c, "source", "leadSource", "utmSource") || undefined,
+    status,
+    date: pick(c, "dateTime", "startTime", "scheduledAt", "date", "createdAt") || new Date().toISOString(),
+    answers: Object.keys(answers).length ? answers : undefined,
+    reason: reason ? String(reason) : undefined,
+    objection: objection ? String(objection) : undefined,
+    event: pick(ev, "name", "title") || pick(c, "eventName", "callType") || undefined,
+    amount: num(pick((c.deals && c.deals[0]) || {}, "amount", "value", "price") || pick(c, "amount", "dealValue", "revenue")) || undefined,
     at: new Date().toISOString(),
   };
 }
@@ -65,6 +99,19 @@ module.exports = async (req, res) => {
       return;
     }
 
+    // Carte userId -> nom du closer (best effort).
+    const userMap = {};
+    for (const p of ["/users", "/teamMembers", "/members"]) {
+      try {
+        const u = await icGet(p, key, { limit: 200 });
+        const list = Array.isArray(u) ? u : (u.users || u.members || (u.data && (u.data.users || u.data.members || u.data)) || []);
+        if (Array.isArray(list) && list.length) {
+          list.forEach((m) => { const id = pick(m, "id", "userId", "_id"); const nm = pick(m, "name", "fullName", "firstName") || [pick(m, "firstName"), pick(m, "lastName")].filter(Boolean).join(" "); if (id != null && nm) userMap[id] = nm; });
+          break;
+        }
+      } catch (e) { /* endpoint inconnu, on continue */ }
+    }
+
     // Import complet (pagination défensive : limit + offset).
     const all = [];
     let guard = 0;
@@ -72,14 +119,14 @@ module.exports = async (req, res) => {
       let offset = 0, seen = -1;
       while (guard++ < 300) {
         let page; try { page = await icGet("/eventCalls", key, { eventType: et, limit: 100, offset }); } catch (e) { break; }
-        const arr = Array.isArray(page) ? page : (page.items || page.data || page.eventCalls || page.results || []);
-        if (!arr.length || arr.length === seen && offset === 0) break;
+        const arr = Array.isArray(page) ? page : (page.eventCalls || (page.data && (page.data.eventCalls || page.data.items || (Array.isArray(page.data) ? page.data : null))) || page.items || page.results || []);
+        if (!Array.isArray(arr) || !arr.length || (arr.length === seen && offset === 0)) break;
         all.push(...arr);
         if (arr.length < 100) break;
         offset += 100; seen = arr.length;
       }
     }
-    const recs = all.map(mapCall);
+    const recs = all.map((c) => mapCall(c, userMap));
     let stored = 0;
     for (let i = 0; i < recs.length; i += 40) {
       const batch = recs.slice(i, i + 40);
