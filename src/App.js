@@ -680,7 +680,7 @@ export default function App() {
     (callStats.closers || []).forEach((c) => { m[c.closer] = { ...(m[c.closer] || { closer: c.closer, deals: 0, contracted: 0, collected: 0, ads: 0 }), ...c }; });
     return Object.values(m).sort((a, b) => (b.contracted || 0) - (a.contracted || 0) || (b.won || 0) - (a.won || 0));
   }, [sales, periodRange, callStats]);
-  const callTot = (callStats.closers || []).reduce((a, c) => ({ calls: a.calls + (c.calls || 0), noshow: a.noshow + (c.noshow || 0), won: a.won + (c.won || 0), lost: a.lost + (c.lost || 0) }), { calls: 0, noshow: 0, won: 0, lost: 0 });
+  const callT = callStats.totals || { scheduled: 0, sales: 0, noSale: 0, pending: 0, showRate: 0, noShowRate: 0, closingRate: 0, revenue: 0 };
   const pct = (x) => `${Math.round((x || 0) * 100)}%`;
 
   const salesInPeriod = sales.filter((s) => s.schedule.some((i) => inPeriod(i.dueDate)));
@@ -968,6 +968,13 @@ export default function App() {
         .delta{display:inline-block;font-size:11px;font-weight:700;margin-right:8px;}
         .delta.up{color:#2BD9A0;}
         .delta.down{color:#FF4D5E;}
+        .two-col{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+        @media(max-width:900px){ .two-col{grid-template-columns:1fr;} }
+        .barrow{display:grid;grid-template-columns:140px 1fr 36px;align-items:center;gap:10px;padding:7px 8px;}
+        .barlbl{font-size:13px;color:var(--text);text-transform:capitalize;}
+        .bar{height:8px;background:rgba(255,255,255,.06);border-radius:6px;overflow:hidden;}
+        .bar-fill{display:block;height:100%;background:linear-gradient(90deg,#7C5CFF,#9D5CFF);border-radius:6px;}
+        .barn{text-align:right;font-weight:700;font-size:13px;}
       `}</style>
 
       <aside className={`sidebar ${navOpen ? "open" : ""}`}>
@@ -1391,12 +1398,23 @@ export default function App() {
 
       {/* CLOSERS */}
       {tab === "closers" && (<>
-        <div className="kpis" style={{ marginTop: 4 }}>
-          <div className="card"><div className="kpi-label">Closers actifs</div><div className="kpi-val">{closerRows.length}</div><div className="kpi-foot">{callStats.totalCalls || 0} appels iClosed</div></div>
-          <div className="card"><div className="kpi-label">Taux de no-show</div><div className="kpi-val">{(callTot.calls) ? pct(callTot.noshow / callTot.calls) : "—"}</div><div className="kpi-foot">{callTot.noshow} no-show / {callTot.calls} appels</div></div>
-          <div className="card"><div className="kpi-label">Taux de closing</div><div className="kpi-val green">{(callTot.won + callTot.lost) ? pct(callTot.won / (callTot.won + callTot.lost)) : "—"}</div><div className="kpi-foot">{callTot.won} gagnés / {callTot.won + callTot.lost} présentés</div></div>
-          <div className="card"><div className="kpi-label">CA contracté · {periodRange.label}</div><div className="kpi-val">{euro(closerRows.reduce((a, c) => a + (c.contracted || 0), 0))}</div><div className="kpi-foot">via closers</div></div>
+        <div className="kpis kpis-home" style={{ marginTop: 4 }}>
+          <div className="card"><div className="kpi-label">Appels (iClosed)</div><div className="kpi-val">{callStats.totalCalls || 0}</div><div className="kpi-foot">{callT.scheduled} planifiés</div></div>
+          <div className="card"><div className="kpi-label">Show-up</div><div className="kpi-val">{callStats.totalCalls ? pct(callT.showRate) : "—"}</div><div className="kpi-foot">présents / honorés</div></div>
+          <div className="card"><div className="kpi-label">Closing</div><div className="kpi-val green">{callStats.totalCalls ? pct(callT.closingRate) : "—"}</div><div className="kpi-foot">{callT.sales} vente{callT.sales > 1 ? "s" : ""} / {callT.sales + callT.noSale} closés</div></div>
+          <div className="card"><div className="kpi-label">No-show</div><div className="kpi-val" style={{ color: callT.noShowRate > 0.3 ? "var(--red)" : "var(--text)" }}>{callStats.totalCalls ? pct(callT.noShowRate) : "—"}</div></div>
+          <div className="card"><div className="kpi-label">Revenu appels</div><div className="kpi-val green">{euro(callT.revenue || 0)}</div><div className="kpi-foot">deals gagnés (iClosed)</div></div>
+          <div className="card"><div className="kpi-label">CA contracté (closers)</div><div className="kpi-val">{euro(closerRows.reduce((a, c) => a + (c.contracted || 0), 0))}</div><div className="kpi-foot">{periodRange.label}</div></div>
         </div>
+
+        {callStats.totalCalls > 0 && (
+          <div className="kpis" style={{ marginTop: 4 }}>
+            <div className="card"><div className="kpi-label">Planifiés</div><div className="kpi-val">{callT.scheduled}</div></div>
+            <div className="card"><div className="kpi-label">Ventes</div><div className="kpi-val green">{callT.sales}</div></div>
+            <div className="card"><div className="kpi-label">No-sale</div><div className="kpi-val" style={{ color: "var(--red)" }}>{callT.noSale}</div></div>
+            <div className="card"><div className="kpi-label">En attente</div><div className="kpi-val mut">{callT.pending}</div></div>
+          </div>
+        )}
 
         <div className="section-h"><UserCheck size={15} /> Performance par closer · {periodRange.label}</div>
         <div className="card" style={{ padding: 6 }}>
@@ -1405,18 +1423,19 @@ export default function App() {
           ) : (
             <table className="tbl">
               <thead><tr>
-                <th>Closer</th><th className="num">Ventes</th><th className="num">CA contracté</th><th className="num">CA collecté</th><th className="num">Appels</th><th className="num">No-show</th><th className="num">Closing</th>
+                <th>Closer</th><th className="num">Appels</th><th className="num">Show-up</th><th className="num">Closing</th><th className="num">Gagnés</th><th className="num">Revenu</th><th className="num">CA contracté</th><th className="num">CA collecté</th>
               </tr></thead>
               <tbody>
                 {closerRows.map((c) => (
                   <tr key={c.closer}>
                     <td className="lab">{c.closer}</td>
-                    <td className="num">{c.deals || 0}</td>
+                    <td className="num">{c.calls != null ? c.calls : "—"}</td>
+                    <td className="num">{c.calls ? pct(c.showRate) : "—"}</td>
+                    <td className="num">{c.calls ? pct(c.closingRate) : "—"}</td>
+                    <td className="num">{c.won != null ? c.won : "—"}</td>
+                    <td className="num green">{euro(c.revenue || 0)}</td>
                     <td className="num">{euro(c.contracted || 0)}</td>
                     <td className="num green">{euro(c.collected || 0)}</td>
-                    <td className="num">{c.calls != null ? c.calls : "—"}</td>
-                    <td className={`num ${c.noShowRate > 0.3 ? "red" : "mut"}`}>{c.calls ? pct(c.noShowRate) : "—"}</td>
-                    <td className="num">{c.calls ? pct(c.closingRate) : "—"}</td>
                   </tr>
                 ))}
               </tbody>
@@ -1424,8 +1443,43 @@ export default function App() {
           )}
         </div>
 
+        <div className="two-col">
+          <div>
+            <div className="section-h"><X size={15} /> Raisons de no-sale</div>
+            <div className="card" style={{ padding: 10 }}>
+              {(callStats.reasons || []).length === 0 ? <div className="empty" style={{ padding: 20 }}>—</div> :
+                callStats.reasons.map((r) => { const mx = Math.max(...callStats.reasons.map((x) => x.n), 1); return (
+                  <div className="barrow" key={r.label}><span className="barlbl">{r.label}</span><span className="bar"><span className="bar-fill" style={{ width: `${(r.n / mx) * 100}%`, background: "linear-gradient(90deg,#FF4D5E,#ff8a93)" }} /></span><span className="barn">{r.n}</span></div>
+                ); })}
+            </div>
+          </div>
+          <div>
+            <div className="section-h"><AlertTriangle size={15} /> Objections rencontrées</div>
+            <div className="card" style={{ padding: 10 }}>
+              {(callStats.objections || []).length === 0 ? <div className="empty" style={{ padding: 20 }}>—</div> :
+                callStats.objections.map((r) => { const mx = Math.max(...callStats.objections.map((x) => x.n), 1); return (
+                  <div className="barrow" key={r.label}><span className="barlbl">{r.label}</span><span className="bar"><span className="bar-fill" style={{ width: `${(r.n / mx) * 100}%` }} /></span><span className="barn">{r.n}</span></div>
+                ); })}
+            </div>
+          </div>
+        </div>
+
+        {(callStats.events || []).length > 0 && (<>
+          <div className="section-h"><Calendar size={15} /> Par événement</div>
+          <div className="card" style={{ padding: 6 }}>
+            <table className="tbl">
+              <thead><tr><th>Événement</th><th className="num">Bookés</th><th className="num">Replanifiés</th><th className="num">Annulés</th><th className="num">Gagnés</th></tr></thead>
+              <tbody>
+                {callStats.events.map((e) => (
+                  <tr key={e.event}><td className="lab">{e.event}</td><td className="num">{e.booked}</td><td className="num mut">{e.rescheduled}</td><td className="num red">{e.cancelled}</td><td className="num green">{e.won}</td></tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>)}
+
         {(callStats.questions || []).length > 0 && (<>
-          <div className="section-h"><Grid3x3 size={15} /> Réponses aux questions de qualification</div>
+          <div className="section-h"><Grid3x3 size={15} /> Conversion par réponse aux questions</div>
           {callStats.questions.map((q) => (
             <div className="card" style={{ padding: 6, marginBottom: 12 }} key={q.question}>
               <div style={{ padding: "8px 12px", fontWeight: 700, fontSize: 13 }}>{q.question}</div>
@@ -1442,7 +1496,7 @@ export default function App() {
         </>)}
 
         {callStats.totalCalls === 0 && (
-          <div className="empty" style={{ padding: "16px 20px", fontSize: 13 }}>💡 Les stats d'appels (no-show, closing, réponses aux questions) s'afficheront dès que tu enverras les appels iClosed via Make vers <code>/api/iclosed</code> (avec <code>status</code> et <code>answers</code>).</div>
+          <div className="empty" style={{ padding: "16px 20px", fontSize: 13 }}>💡 Ce reporting se remplit dès que tu envoies les appels iClosed via <b>Make → <code>/api/iclosed</code></b> (champs : <code>closer</code>, <code>email</code>, <code>status</code>, <code>noSaleReason</code>, <code>objection</code>, <code>event</code>, <code>amount</code>, <code>answers</code>).</div>
         )}
       </>)}
 

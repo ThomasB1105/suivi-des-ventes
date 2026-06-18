@@ -60,25 +60,37 @@ module.exports = async (req, res) => {
     await cmd(["HSET", "iclosed:contacts", email, JSON.stringify(record)]);
 
     // Si l'événement porte un statut d'appel / des réponses → on stocke un "call" pour les stats closers.
-    const rawStatus = pick(data, "status", "outcome", "callStatus", "disposition", "result", "callOutcome");
+    const rawStatus = pick(data, "status", "outcome", "callStatus", "disposition", "result", "callOutcome", "callStage");
     const answers = pick(data, "answers", "questions", "qualification", "customFields", "fields");
+    const reason = pick(data, "noSaleReason", "no_sale_reason", "reason", "lostReason", "cancelReason");
+    const objection = pick(data, "objection", "objections", "mainObjection");
+    const eventName = pick(data, "event", "eventName", "callType", "eventType", "funnel");
+    const amount = pick(data, "amount", "dealValue", "revenue", "price", "total", "value");
+    const isCall = rawStatus || answers || reason || objection || eventName;
     let stored = false;
-    if (rawStatus || answers) {
+    if (isCall) {
       const normStatus = (s) => {
         const t = String(s || "").toLowerCase();
         if (/no.?show|absent/.test(t)) return "noshow";
-        if (/won|gagn|closed.?won|sold|vente|signed/.test(t)) return "won";
-        if (/lost|perdu|closed.?lost|refus/.test(t)) return "lost";
+        if (/won|gagn|closed.?won|sold|vente|signed|deposit|acompte/.test(t)) return "won";
+        if (/lost|perdu|closed.?lost|refus|no.?sale|pas de vente/.test(t)) return "lost";
         if (/cancel|annul/.test(t)) return "cancelled";
+        if (/reschedul|replanif|report/.test(t)) return "rescheduled";
+        if (/pending|attente|follow|relance/.test(t)) return "pending";
         if (/show|present|complete|done|held|attended/.test(t)) return "show";
         if (/book|schedul|reserv|upcoming|planned/.test(t)) return "booked";
         return t || "other";
       };
+      const num = (v) => { if (v == null) return 0; const n = parseFloat(String(v).replace(/[^\d.,-]/g, "").replace(",", ".")); return isNaN(n) ? 0 : n; };
       const call = {
         email, closer: closer ? String(closer) : "Non attribué",
         status: normStatus(rawStatus), source: source ? String(source) : undefined,
         date: (pick(data, "date", "callDate", "scheduledAt", "createdAt") || new Date().toISOString()),
         answers: (answers && typeof answers === "object") ? answers : undefined,
+        reason: reason ? String(reason) : undefined,
+        objection: objection ? String(objection) : undefined,
+        event: eventName ? String(eventName) : undefined,
+        amount: amount != null ? num(amount) : undefined,
         at: new Date().toISOString(),
       };
       await cmd(["LPUSH", "iclosed:calls", JSON.stringify(call)]);
