@@ -34,16 +34,24 @@ module.exports = async (req, res) => {
 
   try {
     if (req.method === "GET") { // debug : voir ce qui est stocké
+      if (req.query && (req.query.debug === "1" || req.query.debug === "true")) {
+        const raw = (await cmd(["LRANGE", "iclosed:raw", "0", "9"])) || [];
+        res.status(200).json({ debug: true, raw: raw.map((s) => { try { return JSON.parse(s); } catch { return s; } }) });
+        return;
+      }
       const flat = (await cmd(["HGETALL", "iclosed:contacts"])) || [];
       const out = {};
       for (let i = 0; i < flat.length; i += 2) { try { out[flat[i]] = JSON.parse(flat[i + 1]); } catch {} }
-      res.status(200).json({ count: Object.keys(out).length, contacts: out });
+      const ncalls = (await cmd(["LLEN", "iclosed:calls"])) || 0;
+      res.status(200).json({ contacts: Object.keys(out).length, calls: ncalls, data: out });
       return;
     }
 
     let body = req.body;
     if (typeof body === "string") { try { body = JSON.parse(body); } catch { body = {}; } }
     body = body || {};
+    // on garde les derniers payloads bruts pour caler le mapping iClosed
+    try { await cmd(["LPUSH", "iclosed:raw", JSON.stringify({ at: new Date().toISOString(), body })]); await cmd(["LTRIM", "iclosed:raw", "0", "19"]); } catch (e) {}
     const data = body.data || body.payload || body;
 
     const email = String(pick(data, "email", "contactEmail", "invitee_email", "inviteeEmail") || deepEmail(body) || "").toLowerCase();
