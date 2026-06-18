@@ -32,8 +32,17 @@ function groupIntoSales(events) {
   });
 
   return Object.values(byClient).map((c, idx) => {
+    // Déduplication : un même paiement peut arriver 2× (webhook + import) avec des
+    // id différents → on dédoublonne par (date + montant).
+    const seenKey = new Set();
     const evs = c.events
       .filter((e) => e.status !== "cancelled")
+      .filter((e) => {
+        const k = `${e.date}|${Math.round((Number(e.amount) || 0) * 100)}`;
+        if (seenKey.has(k)) return false;
+        seenKey.add(k);
+        return true;
+      })
       .sort((a, b) => String(a.date).localeCompare(String(b.date)));
 
     // 1) échéances réellement encaissées (une par transaction)
