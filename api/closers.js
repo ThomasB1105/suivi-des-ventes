@@ -52,9 +52,10 @@ module.exports = async (req, res) => {
 
     // Résolution des noms de closers SUR LES DONNÉES DÉJÀ STOCKÉES (sans réimport).
     // L'API iClosed n'expose pas les noms : on traduit "Closer <id>" via la carte
-    // configurable Vercel → ICLOSED_USER_MAP = {"22743":"Ecom ascension", ...}.
+    // configurable Vercel → ICLOSED_USER_MAP = {"22743":"Melo", ...}.
     let NAMEMAP = {}; try { NAMEMAP = JSON.parse(process.env.ICLOSED_USER_MAP || "{}"); } catch {}
-    if (!NAMEMAP["22743"]) NAMEMAP["22743"] = "Ecom ascension";
+    if (!NAMEMAP["22743"]) NAMEMAP["22743"] = "Melo";          // compte principal (ex-"Ecom ascension")
+    if (!NAMEMAP["Ecom ascension"]) NAMEMAP["Ecom ascension"] = "Melo";
     const renameCloser = (name) => {
       if (!name) return "Non attribué";
       const m = /^Closer\s+(.+)$/i.exec(String(name));
@@ -79,6 +80,16 @@ module.exports = async (req, res) => {
         return true;
       });
     }
+
+    // Attribution automatique des closers restants par activité (indication user) :
+    // Melo (22743) déjà mappé ; parmi les "Closer <id>" restants, le plus actif = Diego,
+    // le suivant = Saphia. Surclassé par ICLOSED_USER_MAP si défini.
+    const AUTO_NAMES = ["Diego", "Saphia"];
+    const unmappedCnt = {};
+    calls.forEach((c) => { if (/^Closer\s+\d+/i.test(String(c.closer || ""))) unmappedCnt[c.closer] = (unmappedCnt[c.closer] || 0) + 1; });
+    const autoMap = {};
+    Object.entries(unmappedCnt).sort((a, b) => b[1] - a[1]).slice(0, AUTO_NAMES.length).forEach(([lbl], i) => { autoMap[lbl] = AUTO_NAMES[i]; });
+    if (Object.keys(autoMap).length) calls.forEach((c) => { if (autoMap[c.closer]) c.closer = autoMap[c.closer]; });
 
     // Nb de contacts iClosed (haut du funnel)
     let contactsCount = 0;
