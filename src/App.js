@@ -1032,6 +1032,22 @@ export default function App() {
         .cohbar-fill{position:absolute;left:0;top:0;height:100%;border-radius:6px;}
         .cohbar-n{position:relative;font-size:11px;font-weight:700;color:var(--text);padding-left:8px;}
         .cohrate{text-align:right;font-weight:700;font-size:13px;}
+        /* En-tête + bouton réimport bien visible */
+        .closers-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:4px 0 14px;flex-wrap:wrap;}
+        .closers-title{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;}
+        .refresh-btn{display:inline-flex;align-items:center;gap:8px;padding:9px 16px;border-radius:10px;border:1px solid rgba(124,92,255,.5);background:linear-gradient(135deg,#7C5CFF,#9D5CFF);color:#fff;font-size:13px;font-weight:700;cursor:pointer;box-shadow:0 4px 14px rgba(124,92,255,.35);transition:transform .1s,opacity .2s;}
+        .refresh-btn:hover:not(:disabled){transform:translateY(-1px);}
+        .refresh-btn:disabled{opacity:.7;cursor:wait;}
+        .refresh-btn.is-loading{background:linear-gradient(135deg,#5a4bcc,#7a5fd6);}
+        /* Cases KPI nettes et contrastées */
+        .kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:4px;}
+        @media(max-width:1100px){ .kpi-grid{grid-template-columns:repeat(2,1fr);} }
+        @media(max-width:560px){ .kpi-grid{grid-template-columns:1fr 1fr;} }
+        .kcard{background:linear-gradient(180deg,rgba(255,255,255,.05),rgba(255,255,255,.02));border:1px solid rgba(255,255,255,.09);border-radius:14px;padding:16px 18px;}
+        .kcard-l{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;font-weight:600;}
+        .kcard-v{font-size:30px;font-weight:800;line-height:1.1;margin-top:6px;color:var(--text);}
+        .kcard-v.green{color:#00E0A4;}
+        .kcard-f{font-size:12px;color:var(--muted);margin-top:4px;}
       `}</style>
 
       <aside className={`sidebar ${navOpen ? "open" : ""}`}>
@@ -1464,31 +1480,34 @@ export default function App() {
         const reasonMax = Math.max(...(callStats.reasons || []).map((x) => x.n), 1);
         const tip = { background: "#0f1117", border: "1px solid #2a2f3a", borderRadius: 10, fontSize: 12, color: "#fff" };
         return (<>
-        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
-          <button className="chip chip-btn" onClick={refreshClosers} disabled={closersSync} title="Réimporte les appels depuis iClosed (purge + reconstruction)">
-            <RotateCcw size={14} className={closersSync ? "spin" : ""} /> {closersSync ? "Import iClosed…" : "Réimporter iClosed"}
+        <div className="closers-head">
+          <div className="closers-title"><Phone size={16} /> Reporting des appels</div>
+          <button className={`refresh-btn ${closersSync ? "is-loading" : ""}`} onClick={refreshClosers} disabled={closersSync} title="Réimporte les appels depuis iClosed (purge + reconstruction)">
+            <RotateCcw size={15} className={closersSync ? "spin" : ""} /> {closersSync ? "Import iClosed en cours…" : "Réimporter iClosed"}
           </button>
         </div>
+
         {/* TUNNEL : Strategy calls bookés -> Honorés -> Ventes */}
-        <div className="section-h"><TrendingUp size={15} /> Tunnel</div>
         <div className="card funnel-card">
           <div className="funnel-row">
             <div className="funnel-step"><div className="funnel-n">{fn.created || 0}</div><div className="funnel-l">Strategy calls bookés</div></div>
             <div className="funnel-arrow"><span>{pct(fn.createdToHeld || 0)}</span><div className="funnel-line" /></div>
-            <div className="funnel-step"><div className="funnel-n">{fn.held || 0}</div><div className="funnel-l">Appels honorés</div></div>
+            <div className="funnel-step"><div className="funnel-n">{callT.present || 0}</div><div className="funnel-l">Appels honorés</div></div>
             <div className="funnel-arrow"><span>{pct(fn.heldToWon || 0)}</span><div className="funnel-line" /></div>
             <div className="funnel-step"><div className="funnel-n">{fn.won || 0}</div><div className="funnel-l">Ventes</div></div>
           </div>
         </div>
 
-        {/* KPI : strategy calls bookés · no-show · show-up · revenu · cash/appel · closing */}
-        <div className="kpis kpis-home" style={{ marginTop: 4 }}>
-          <div className="card"><div className="kpi-label">Strategy calls bookés</div><div className="kpi-val">{callT.scheduled || 0}</div><div className="kpi-foot">{callT.cancelled || 0} annulé{(callT.cancelled || 0) > 1 ? "s" : ""} · {callT.upcoming || 0} à venir</div></div>
-          <div className="card"><div className="kpi-label">No-show</div><div className="kpi-val" style={{ color: (callT.noShow || 0) > 0 ? "var(--red)" : "var(--text)" }}>{callT.noShow || 0}</div><div className="kpi-foot">{callStats.totalCalls ? pct(callT.noShowRate) : "—"} des honorés</div></div>
-          <div className="card"><div className="kpi-label">Show-up</div><div className="kpi-val">{callStats.totalCalls ? pct(callT.showRate) : "—"}</div><div className="kpi-foot">présents / honorés</div></div>
-          <div className="card"><div className="kpi-label">Closing</div><div className="kpi-val green">{callStats.totalCalls ? pct(callT.closingRate) : "—"}</div><div className="kpi-foot">{callT.sales} / {callT.sales + callT.noSale} closés</div></div>
-          <div className="card"><div className="kpi-label">Revenu (iClosed)</div><div className="kpi-val green">{euro(callT.revenue || 0)}</div><div className="kpi-foot">{callT.sales || 0} vente{(callT.sales || 0) > 1 ? "s" : ""}</div></div>
-          <div className="card"><div className="kpi-label">Cash / appel</div><div className="kpi-val">{euro(callT.cashPerCall || 0)}</div><div className="kpi-foot">revenu / appel créé</div></div>
+        {/* CASES DÉDIÉES : bookés · honorés · annulés · no-show · show-up · closing · revenu · cash/appel */}
+        <div className="kpi-grid">
+          <div className="kcard"><div className="kcard-l">Strategy calls bookés</div><div className="kcard-v">{callT.scheduled || 0}</div><div className="kcard-f">{callT.upcoming || 0} à venir</div></div>
+          <div className="kcard"><div className="kcard-l">Appels honorés</div><div className="kcard-v">{callT.present || 0}</div><div className="kcard-f">non saisi = a eu lieu</div></div>
+          <div className="kcard"><div className="kcard-l">Appels annulés</div><div className="kcard-v" style={{ color: (callT.cancelled || 0) > 0 ? "var(--amber,#FDCB6E)" : "var(--text)" }}>{callT.cancelled || 0}</div><div className="kcard-f">{callStats.totalCalls ? pct(callT.cancelRate) : "—"} des bookés</div></div>
+          <div className="kcard"><div className="kcard-l">No-show</div><div className="kcard-v" style={{ color: (callT.noShow || 0) > 0 ? "var(--red)" : "var(--text)" }}>{callT.noShow || 0}</div><div className="kcard-f">{callStats.totalCalls ? pct(callT.noShowRate) : "—"} des honorés</div></div>
+          <div className="kcard"><div className="kcard-l">Taux de show-up</div><div className="kcard-v" style={{ color: "var(--cyan,#22D3EE)" }}>{callStats.totalCalls ? pct(callT.showRate) : "—"}</div><div className="kcard-f">présents / planifiés</div></div>
+          <div className="kcard"><div className="kcard-l">Taux de closing</div><div className="kcard-v green">{callStats.totalCalls ? pct(callT.closingRate) : "—"}</div><div className="kcard-f">{callT.sales} / {callT.sales + callT.noSale} closés</div></div>
+          <div className="kcard"><div className="kcard-l">Revenu (iClosed)</div><div className="kcard-v green">{euro(callT.revenue || 0)}</div><div className="kcard-f">{callT.sales || 0} vente{(callT.sales || 0) > 1 ? "s" : ""}</div></div>
+          <div className="kcard"><div className="kcard-l">Cash / appel</div><div className="kcard-v">{euro(callT.cashPerCall || 0)}</div><div className="kcard-f">revenu / appel créé</div></div>
         </div>
 
         {/* APPELS CRÉÉS PAR SEMAINE */}

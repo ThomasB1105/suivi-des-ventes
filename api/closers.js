@@ -217,13 +217,20 @@ module.exports = async (req, res) => {
       }
     });
 
-    const held = out.won + out.lost + out.show;        // appels honorés
-    const heldOrNo = held + out.noshow;
-    const closers = Object.values(byCloser).map((g) => ({
-      ...g,
-      showRate: (g.won + g.lost + g.show + g.noshow) ? (g.won + g.lost + g.show) / (g.won + g.lost + g.show + g.noshow) : 0,
-      closingRate: (g.won + g.lost) ? g.won / (g.won + g.lost) : 0,
-    })).sort((a, b) => b.revenue - a.revenue || b.won - a.won);
+    // Règle demandée : si le résultat n'est pas renseigné, on considère que
+    // l'appel A EU LIEU (présent). Donc "honorés" = tout sauf no-show, annulés et
+    // à-venir -> won + lost + show + pending (les pending = appels passés non saisis).
+    const held = out.won + out.lost + out.show + out.pending;   // appels honorés (présents)
+    const heldOrNo = held + out.noshow;                          // planifiés hors annulés / à-venir
+    const closers = Object.values(byCloser).map((g) => {
+      const gHeld = g.won + g.lost + g.show + g.pending;
+      return {
+        ...g,
+        present: gHeld,
+        showRate: (gHeld + g.noshow) ? gHeld / (gHeld + g.noshow) : 0,
+        closingRate: (g.won + g.lost) ? g.won / (g.won + g.lost) : 0,
+      };
+    }).sort((a, b) => b.revenue - a.revenue || b.won - a.won);
 
     const toArr = (obj) => Object.entries(obj).map(([k, v]) => ({ label: k, n: v })).sort((a, b) => b.n - a.n);
     // On ne garde que les questions "qualifiantes" (réponses catégorielles).
@@ -264,9 +271,11 @@ module.exports = async (req, res) => {
       totalCalls: calls.length,
       outcomes: out,
       totals: {
-        scheduled,                       // = Strategy Calls booked (appels créés)
+        scheduled,                       // = Strategy Calls bookés
         upcoming: upcomingCount,
         cancelled: out.cancelled,
+        cancelRate: scheduled ? out.cancelled / scheduled : 0,
+        present: held,                   // appels honorés (non saisi = a eu lieu)
         noShow: out.noshow,
         sales: out.won, noSale: out.lost, pending: out.pending,
         showRate: heldOrNo ? held / heldOrNo : 0,
