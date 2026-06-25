@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
+  PieChart, Pie, Cell,
 } from "recharts";
 import {
   AlertTriangle, Check, Plus, X, Calendar, TrendingUp, Trash2, Landmark,
@@ -975,6 +976,25 @@ export default function App() {
         .bar{height:8px;background:rgba(255,255,255,.06);border-radius:6px;overflow:hidden;}
         .bar-fill{display:block;height:100%;background:linear-gradient(90deg,#7C5CFF,#9D5CFF);border-radius:6px;}
         .barn{text-align:right;font-weight:700;font-size:13px;}
+        /* Tunnel de planification */
+        .funnel-card{padding:22px 18px;}
+        .funnel-row{display:flex;align-items:center;justify-content:space-between;gap:6px;flex-wrap:wrap;}
+        .funnel-step{flex:1;min-width:90px;text-align:center;}
+        .funnel-n{font-size:30px;font-weight:800;line-height:1;}
+        .funnel-l{font-size:12px;color:var(--muted);margin-top:6px;text-transform:uppercase;letter-spacing:.04em;}
+        .funnel-arrow{flex:1;min-width:60px;display:flex;flex-direction:column;align-items:center;gap:6px;}
+        .funnel-arrow span{font-size:13px;font-weight:700;color:var(--cyan,#22D3EE);}
+        .funnel-line{width:100%;height:2px;background:linear-gradient(90deg,rgba(124,92,255,.2),rgba(124,92,255,.7));border-radius:2px;}
+        @media(max-width:640px){ .funnel-arrow{min-width:40px;} .funnel-n{font-size:22px;} }
+        /* Donut objections */
+        .donut-wrap{display:grid;grid-template-columns:170px 1fr;align-items:center;gap:8px;}
+        @media(max-width:520px){ .donut-wrap{grid-template-columns:1fr;} }
+        .donut-legend{display:flex;flex-direction:column;gap:7px;}
+        .legrow{display:grid;grid-template-columns:14px 1fr auto;align-items:center;gap:8px;font-size:13px;}
+        .legdot{width:10px;height:10px;border-radius:3px;}
+        .leglbl{color:var(--text);text-transform:capitalize;}
+        .legn{color:var(--muted);font-weight:700;font-size:12px;white-space:nowrap;}
+        .avatar-mini{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:linear-gradient(135deg,#7C5CFF,#9D5CFF);color:#fff;font-size:11px;font-weight:700;margin-right:8px;vertical-align:middle;}
       `}</style>
 
       <aside className={`sidebar ${navOpen ? "open" : ""}`}>
@@ -1396,30 +1416,174 @@ export default function App() {
         </div>
       </>)}
 
-      {/* CLOSERS */}
-      {tab === "closers" && (<>
-        <div className="kpis kpis-home" style={{ marginTop: 4 }}>
-          <div className="card"><div className="kpi-label">Appels (iClosed)</div><div className="kpi-val">{callStats.totalCalls || 0}</div><div className="kpi-foot">{callT.scheduled} planifiés</div></div>
-          <div className="card"><div className="kpi-label">Show-up</div><div className="kpi-val">{callStats.totalCalls ? pct(callT.showRate) : "—"}</div><div className="kpi-foot">présents / honorés</div></div>
-          <div className="card"><div className="kpi-label">Closing</div><div className="kpi-val green">{callStats.totalCalls ? pct(callT.closingRate) : "—"}</div><div className="kpi-foot">{callT.sales} vente{callT.sales > 1 ? "s" : ""} / {callT.sales + callT.noSale} closés</div></div>
-          <div className="card"><div className="kpi-label">No-show</div><div className="kpi-val" style={{ color: callT.noShowRate > 0.3 ? "var(--red)" : "var(--text)" }}>{callStats.totalCalls ? pct(callT.noShowRate) : "—"}</div></div>
-          <div className="card"><div className="kpi-label">Revenu appels</div><div className="kpi-val green">{euro(callT.revenue || 0)}</div><div className="kpi-foot">deals gagnés (iClosed)</div></div>
-          <div className="card"><div className="kpi-label">CA contracté (closers)</div><div className="kpi-val">{euro(closerRows.reduce((a, c) => a + (c.contracted || 0), 0))}</div><div className="kpi-foot">{periodRange.label}</div></div>
+      {/* CLOSERS — reporting type iClosed Analytics (FR) */}
+      {tab === "closers" && (() => {
+        const o = callStats.outcomes || {};
+        const fn = callStats.funnel || { contacts: 0, calls: 0, held: 0 };
+        const bd = callStats.breakdown || { revenue: 0, won: 0, deposits: 0, recurring: 0 };
+        const series = (callStats.series || []).map((w) => ({ ...w, lbl: w.week ? `${w.week.slice(8, 10)}/${w.week.slice(5, 7)}` : "" }));
+        const topMembers = (callStats.closers || []).slice(0, 3);
+        const objTotal = (callStats.objections || []).reduce((a, x) => a + x.n, 0) || 1;
+        const OBJ_COLORS = ["#6C5CE7", "#00B894", "#0984E3", "#E17055", "#FDCB6E", "#B2BEC3"];
+        const reasonMax = Math.max(...(callStats.reasons || []).map((x) => x.n), 1);
+        const tip = { background: "#0f1117", border: "1px solid #2a2f3a", borderRadius: 10, fontSize: 12, color: "#fff" };
+        return (<>
+        {/* TUNNEL DE PLANIFICATION */}
+        <div className="section-h"><TrendingUp size={15} /> Tunnel de planification</div>
+        <div className="card funnel-card">
+          <div className="funnel-row">
+            <div className="funnel-step"><div className="funnel-n">{fn.contacts || 0}</div><div className="funnel-l">Contacts</div></div>
+            <div className="funnel-arrow"><span>{pct(fn.contactToCall || 0)}</span><div className="funnel-line" /></div>
+            <div className="funnel-step"><div className="funnel-n">{fn.calls || 0}</div><div className="funnel-l">Appels créés</div></div>
+            <div className="funnel-arrow"><span>{pct(fn.callToHeld || 0)}</span><div className="funnel-line" /></div>
+            <div className="funnel-step"><div className="funnel-n">{fn.held || 0}</div><div className="funnel-l">Appels honorés</div></div>
+          </div>
         </div>
 
-        {callStats.totalCalls > 0 && (
-          <div className="kpis" style={{ marginTop: 4 }}>
-            <div className="card"><div className="kpi-label">Planifiés</div><div className="kpi-val">{callT.scheduled}</div></div>
-            <div className="card"><div className="kpi-label">Ventes</div><div className="kpi-val green">{callT.sales}</div></div>
-            <div className="card"><div className="kpi-label">No-sale</div><div className="kpi-val" style={{ color: "var(--red)" }}>{callT.noSale}</div></div>
-            <div className="card"><div className="kpi-label">En attente</div><div className="kpi-val mut">{callT.pending}</div></div>
+        {/* TAUX CLÉS */}
+        <div className="kpis kpis-home" style={{ marginTop: 4 }}>
+          <div className="card"><div className="kpi-label">Appels créés</div><div className="kpi-val">{callT.scheduled || 0}</div><div className="kpi-foot">{o.booked || 0} à venir</div></div>
+          <div className="card"><div className="kpi-label">Show-up</div><div className="kpi-val">{callStats.totalCalls ? pct(callT.showRate) : "—"}</div><div className="kpi-foot">présents / honorés</div></div>
+          <div className="card"><div className="kpi-label">Engagement</div><div className="kpi-val">{callStats.totalCalls ? pct(callT.engagementRate) : "—"}</div><div className="kpi-foot">ont interagi</div></div>
+          <div className="card"><div className="kpi-label">Closing</div><div className="kpi-val green">{callStats.totalCalls ? pct(callT.closingRate) : "—"}</div><div className="kpi-foot">{callT.sales} / {callT.sales + callT.noSale} closés</div></div>
+          <div className="card"><div className="kpi-label">No-show</div><div className="kpi-val" style={{ color: callT.noShowRate > 0.3 ? "var(--red)" : "var(--text)" }}>{callStats.totalCalls ? pct(callT.noShowRate) : "—"}</div></div>
+          <div className="card"><div className="kpi-label">Revenu (iClosed)</div><div className="kpi-val green">{euro(callT.revenue || 0)}</div><div className="kpi-foot">deals gagnés</div></div>
+        </div>
+
+        {/* APPELS CRÉÉS PAR SEMAINE */}
+        {series.length > 0 && (<>
+          <div className="section-h"><Calendar size={15} /> Appels créés par semaine</div>
+          <div className="card" style={{ padding: "14px 12px 6px" }}>
+            <ResponsiveContainer width="100%" height={210}>
+              <BarChart data={series} margin={{ top: 4, right: 12, left: 0, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,.06)" vertical={false} />
+                <XAxis dataKey="lbl" tick={{ fontSize: 11, fill: "var(--muted)" }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fontSize: 11, fill: "var(--muted)" }} axisLine={false} tickLine={false} allowDecimals={false} />
+                <Tooltip contentStyle={tip} cursor={{ fill: "rgba(255,255,255,.04)" }} />
+                <Bar dataKey="created" name="Appels créés" radius={[4, 4, 0, 0]} fill="#6C5CE7" />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </>)}
+
+        {/* RÉSULTATS DES APPELS */}
+        <div className="section-h"><Phone size={15} /> Résultats des appels</div>
+        <div className="kpis" style={{ marginTop: 4 }}>
+          <div className="card"><div className="kpi-label">Total planifiés</div><div className="kpi-val">{callT.scheduled || 0}</div></div>
+          <div className="card"><div className="kpi-label">Ventes</div><div className="kpi-val green">{callT.sales || 0}</div></div>
+          <div className="card"><div className="kpi-label">Sans vente</div><div className="kpi-val" style={{ color: "var(--red)" }}>{callT.noSale || 0}</div></div>
+          <div className="card"><div className="kpi-label">En attente</div><div className="kpi-val mut">{callT.pending || 0}</div></div>
+        </div>
+        {series.length > 0 && (
+          <div className="card" style={{ padding: "14px 12px 6px", marginTop: 4 }}>
+            <ResponsiveContainer width="100%" height={210}>
+              <BarChart data={series} margin={{ top: 4, right: 12, left: 0, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,.06)" vertical={false} />
+                <XAxis dataKey="lbl" tick={{ fontSize: 11, fill: "var(--muted)" }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fontSize: 11, fill: "var(--muted)" }} axisLine={false} tickLine={false} allowDecimals={false} />
+                <Tooltip contentStyle={tip} cursor={{ fill: "rgba(255,255,255,.04)" }} />
+                <Bar dataKey="won" stackId="a" name="Ventes" fill="#00B894" />
+                <Bar dataKey="lost" stackId="a" name="Sans vente" fill="#FF4D5E" />
+                <Bar dataKey="pending" stackId="a" name="En attente" fill="#FDCB6E" />
+                <Bar dataKey="noshow" stackId="a" name="No-show" radius={[4, 4, 0, 0]} fill="#636E72" />
+              </BarChart>
+            </ResponsiveContainer>
           </div>
         )}
 
-        <div className="section-h"><UserCheck size={15} /> Performance par closer · {periodRange.label}</div>
+        {/* VENTILATION DES VENTES */}
+        <div className="section-h"><Wallet size={15} /> Ventilation des ventes</div>
+        <div className="kpis kpis-home" style={{ marginTop: 4 }}>
+          <div className="card"><div className="kpi-label">Revenu total</div><div className="kpi-val green">{euro(bd.revenue || 0)}</div></div>
+          <div className="card"><div className="kpi-label">Gagnés (WON)</div><div className="kpi-val">{bd.won || 0}</div></div>
+          <div className="card"><div className="kpi-label">Acomptes</div><div className="kpi-val">{euro(bd.deposits || 0)}</div></div>
+          <div className="card"><div className="kpi-label">Récurrent</div><div className="kpi-val">{euro(bd.recurring || 0)}</div></div>
+        </div>
+
+        {/* RAISONS DE NON-VENTE + OBJECTIONS */}
+        <div className="two-col">
+          <div>
+            <div className="section-h"><X size={15} /> Raisons de non-vente</div>
+            <div className="card" style={{ padding: 10 }}>
+              {(callStats.reasons || []).length === 0 ? <div className="empty" style={{ padding: 20 }}>—</div> :
+                callStats.reasons.map((r) => (
+                  <div className="barrow" key={r.label}><span className="barlbl">{r.label}</span><span className="bar"><span className="bar-fill" style={{ width: `${(r.n / reasonMax) * 100}%`, background: "linear-gradient(90deg,#FF4D5E,#ff8a93)" }} /></span><span className="barn">{r.n}</span></div>
+                ))}
+            </div>
+          </div>
+          <div>
+            <div className="section-h"><AlertTriangle size={15} /> Objections gérées</div>
+            <div className="card" style={{ padding: 10 }}>
+              {(callStats.objections || []).length === 0 ? <div className="empty" style={{ padding: 20 }}>—</div> : (
+                <div className="donut-wrap">
+                  <div className="donut-chart">
+                    <ResponsiveContainer width="100%" height={170}>
+                      <PieChart>
+                        <Pie data={callStats.objections} dataKey="n" nameKey="label" innerRadius={48} outerRadius={72} paddingAngle={2} stroke="none">
+                          {callStats.objections.map((e, i) => <Cell key={i} fill={OBJ_COLORS[i % OBJ_COLORS.length]} />)}
+                        </Pie>
+                        <Tooltip contentStyle={tip} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <div className="donut-legend">
+                    {callStats.objections.map((r, i) => (
+                      <div className="legrow" key={r.label}>
+                        <span className="legdot" style={{ background: OBJ_COLORS[i % OBJ_COLORS.length] }} />
+                        <span className="leglbl">{r.label}</span>
+                        <span className="legn">{r.n} · {pct(r.n / objTotal)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* TOP 3 CLOSERS + ÉVÉNEMENTS */}
+        <div className="two-col">
+          <div>
+            <div className="section-h"><Users size={15} /> Top 3 closers</div>
+            <div className="card" style={{ padding: 6 }}>
+              {topMembers.length === 0 ? <div className="empty" style={{ padding: 20 }}>—</div> : (
+                <table className="tbl">
+                  <thead><tr><th>Membre</th><th className="num">Revenu</th><th className="num">Appels</th></tr></thead>
+                  <tbody>
+                    {topMembers.map((m) => (
+                      <tr key={m.closer}>
+                        <td className="lab"><span className="avatar-mini">{String(m.closer).slice(0, 1).toUpperCase()}</span>{m.closer}</td>
+                        <td className="num green">{euro(m.revenue || 0)}</td>
+                        <td className="num">{m.calls}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+          <div>
+            <div className="section-h"><Calendar size={15} /> Événements les plus performants</div>
+            <div className="card" style={{ padding: 6 }}>
+              {(callStats.events || []).length === 0 ? <div className="empty" style={{ padding: 20 }}>—</div> : (
+                <table className="tbl">
+                  <thead><tr><th>Événement</th><th className="num">Bookés</th><th className="num">Replan.</th><th className="num">Annulés</th></tr></thead>
+                  <tbody>
+                    {callStats.events.map((e) => (
+                      <tr key={e.event}><td className="lab">{e.event}</td><td className="num">{e.booked}</td><td className="num mut">{e.rescheduled}</td><td className="num red">{e.cancelled}</td></tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* PERFORMANCE DÉTAILLÉE PAR CLOSER */}
+        <div className="section-h"><UserCheck size={15} /> Performance détaillée par closer · {periodRange.label}</div>
         <div className="card" style={{ padding: 6 }}>
           {closerRows.length === 0 ? (
-            <div className="empty">Aucune donnée closer. Branche iClosed (Make → /api/iclosed) pour faire remonter closers, appels et réponses.</div>
+            <div className="empty">Aucune donnée closer. L'import iClosed (<code>/api/iclosed-import</code>) alimente cette section.</div>
           ) : (
             <table className="tbl">
               <thead><tr>
@@ -1443,43 +1607,9 @@ export default function App() {
           )}
         </div>
 
-        <div className="two-col">
-          <div>
-            <div className="section-h"><X size={15} /> Raisons de no-sale</div>
-            <div className="card" style={{ padding: 10 }}>
-              {(callStats.reasons || []).length === 0 ? <div className="empty" style={{ padding: 20 }}>—</div> :
-                callStats.reasons.map((r) => { const mx = Math.max(...callStats.reasons.map((x) => x.n), 1); return (
-                  <div className="barrow" key={r.label}><span className="barlbl">{r.label}</span><span className="bar"><span className="bar-fill" style={{ width: `${(r.n / mx) * 100}%`, background: "linear-gradient(90deg,#FF4D5E,#ff8a93)" }} /></span><span className="barn">{r.n}</span></div>
-                ); })}
-            </div>
-          </div>
-          <div>
-            <div className="section-h"><AlertTriangle size={15} /> Objections rencontrées</div>
-            <div className="card" style={{ padding: 10 }}>
-              {(callStats.objections || []).length === 0 ? <div className="empty" style={{ padding: 20 }}>—</div> :
-                callStats.objections.map((r) => { const mx = Math.max(...callStats.objections.map((x) => x.n), 1); return (
-                  <div className="barrow" key={r.label}><span className="barlbl">{r.label}</span><span className="bar"><span className="bar-fill" style={{ width: `${(r.n / mx) * 100}%` }} /></span><span className="barn">{r.n}</span></div>
-                ); })}
-            </div>
-          </div>
-        </div>
-
-        {(callStats.events || []).length > 0 && (<>
-          <div className="section-h"><Calendar size={15} /> Par événement</div>
-          <div className="card" style={{ padding: 6 }}>
-            <table className="tbl">
-              <thead><tr><th>Événement</th><th className="num">Bookés</th><th className="num">Replanifiés</th><th className="num">Annulés</th><th className="num">Gagnés</th></tr></thead>
-              <tbody>
-                {callStats.events.map((e) => (
-                  <tr key={e.event}><td className="lab">{e.event}</td><td className="num">{e.booked}</td><td className="num mut">{e.rescheduled}</td><td className="num red">{e.cancelled}</td><td className="num green">{e.won}</td></tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </>)}
-
+        {/* COHORTE DE PLANIFICATION (question × réponse) */}
         {(callStats.questions || []).length > 0 && (<>
-          <div className="section-h"><Grid3x3 size={15} /> Conversion par réponse aux questions</div>
+          <div className="section-h"><Grid3x3 size={15} /> Cohorte de planification · conversion par réponse</div>
           {callStats.questions.map((q) => (
             <div className="card" style={{ padding: 6, marginBottom: 12 }} key={q.question}>
               <div style={{ padding: "8px 12px", fontWeight: 700, fontSize: 13 }}>{q.question}</div>
@@ -1496,9 +1626,10 @@ export default function App() {
         </>)}
 
         {callStats.totalCalls === 0 && (
-          <div className="empty" style={{ padding: "16px 20px", fontSize: 13 }}>💡 Ce reporting se remplit dès que tu envoies les appels iClosed via <b>Make → <code>/api/iclosed</code></b> (champs : <code>closer</code>, <code>email</code>, <code>status</code>, <code>noSaleReason</code>, <code>objection</code>, <code>event</code>, <code>amount</code>, <code>answers</code>).</div>
+          <div className="empty" style={{ padding: "16px 20px", fontSize: 13 }}>💡 Ce reporting se remplit dès que les appels iClosed sont importés (<code>/api/iclosed-import</code>) ou reçus par webhook (<code>/api/iclosed</code>).</div>
         )}
-      </>)}
+        </>);
+      })()}
 
       </main>
 

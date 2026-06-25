@@ -44,7 +44,7 @@ function mapCall(c, userMap) {
   const qa = collectQA(c);
   const email = String(pick(c, "email", "contactEmail", "inviteeEmail") || deepEmail(c) || "").toLowerCase();
   const uid = pick(c, "userId", "ownerId", "hostId");
-  const closer = (userMap && userMap[uid]) || pick(c, "closerName", "hostName", "ownerName") || (uid ? `Closer ${uid}` : "Non attribué");
+  const closer = (userMap && (userMap[uid] || userMap[String(uid)])) || pick(c, "closerName", "hostName", "ownerName") || (uid ? `Closer ${uid}` : "Non attribué");
 
   const outcomeAns = String(qa["Call Outcome"] || qa["Outcome"] || "").toUpperCase();
   const topOutcome = String(pick(c, "outcome") || "").toUpperCase();
@@ -101,16 +101,27 @@ module.exports = async (req, res) => {
 
     // Carte userId -> nom du closer (best effort).
     const userMap = {};
-    for (const p of ["/users", "/teamMembers", "/members"]) {
+    for (const p of ["/users", "/teamMembers", "/members", "/team", "/account/users"]) {
       try {
         const u = await icGet(p, key, { limit: 200 });
-        const list = Array.isArray(u) ? u : (u.users || u.members || (u.data && (u.data.users || u.data.members || u.data)) || []);
+        const list = Array.isArray(u) ? u : (u.users || u.members || u.teamMembers || u.team || (u.data && (u.data.users || u.data.members || u.data.teamMembers || u.data.team || u.data)) || []);
         if (Array.isArray(list) && list.length) {
-          list.forEach((m) => { const id = pick(m, "id", "userId", "_id"); const nm = pick(m, "name", "fullName", "firstName") || [pick(m, "firstName"), pick(m, "lastName")].filter(Boolean).join(" "); if (id != null && nm) userMap[id] = nm; });
-          break;
+          list.forEach((m) => {
+            const id = pick(m, "id", "userId", "_id", "uuid");
+            const nm = pick(m, "name", "fullName", "displayName") || [pick(m, "firstName", "first_name"), pick(m, "lastName", "last_name")].filter(Boolean).join(" ") || pick(m, "email");
+            if (id != null && nm) userMap[String(id)] = String(nm);
+          });
+          if (Object.keys(userMap).length) break;
         }
       } catch (e) { /* endpoint inconnu, on continue */ }
     }
+    // Override manuel (l'API n'expose pas toujours les noms) :
+    // Vercel → ICLOSED_USER_MAP = {"22743":"Ecom ascension","123":"Diego","456":"saphia"}
+    try {
+      const ov = JSON.parse(process.env.ICLOSED_USER_MAP || "{}");
+      Object.entries(ov).forEach(([id, nm]) => { if (nm) userMap[String(id)] = String(nm); });
+    } catch (e) { /* JSON invalide -> ignoré */ }
+    if (!userMap["22743"]) userMap["22743"] = "Ecom ascension"; // compte principal connu
 
     // Import complet (pagination défensive : limit + offset).
     const all = [];
