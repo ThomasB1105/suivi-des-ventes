@@ -70,7 +70,22 @@ module.exports = async (req, res) => {
         saleByEmail[em] = (saleByEmail[em] || 0) + amount;
       }
     } catch {}
-    // Montant d'un appel : iClosed en priorité, sinon la vente liée par email.
+    // Pour chaque email ayant une vente, on désigne UN appel gagnant (pour ne pas
+    // gonfler le nombre de ventes si le lead a plusieurs appels) :
+    //   - si un appel est déjà "gagné" côté iClosed -> c'est lui ;
+    //   - sinon l'appel le plus récent. Cet appel est forcé en "gagné" même si
+    //     iClosed l'a marqué "perdu", car une vente (revenu) y est rattachée.
+    const callsByEmail = {};
+    calls.forEach((c) => { const em = String(c.email || "").toLowerCase(); if (em) (callsByEmail[em] = callsByEmail[em] || []).push(c); });
+    const winnerIds = new Set();
+    Object.keys(saleByEmail).forEach((em) => {
+      const list = callsByEmail[em];
+      if (!list || !list.length) return;
+      const alreadyWon = list.find((c) => c.status === "won");
+      const winner = alreadyWon || list.slice().sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")))[0];
+      if (winner) winnerIds.add(winner.id);
+    });
+    // Montant d'un appel gagnant : iClosed en priorité, sinon la vente liée par email.
     const usedEmail = new Set(); // n'attribue le total d'une vente qu'une fois
     const callAmount = (c) => {
       let a = Number(c.amount || 0);
@@ -78,8 +93,6 @@ module.exports = async (req, res) => {
       if (!a && em && saleByEmail[em] && !usedEmail.has(em)) { a = saleByEmail[em]; usedEmail.add(em); }
       return a;
     };
-    // Un appel est "gagné" si iClosed le dit OU si l'email a une vente associée.
-    const hasSale = (c) => { const em = String(c.email || "").toLowerCase(); return !!(em && saleByEmail[em]); };
 
     const bump = (obj, key, n = 1) => { const k = key || "—"; obj[k] = (obj[k] || 0) + n; };
 
@@ -92,11 +105,11 @@ module.exports = async (req, res) => {
     const weeks = {};   // weekKey -> { created, won, lost, pending, noshow, cancelled }
     let revenue = 0, deposits = 0, recurring = 0;
 
-    const UNFILLED = ["pending", "booked", "show", "other"]; // résultat iClosed non renseigné
     calls.forEach((c) => {
       let st = c.status || "other";
-      // Repli : iClosed non rempli mais l'email correspond à une vente -> gagné
-      if (UNFILLED.includes(st) && hasSale(c)) st = "won";
+      // L'appel gagnant d'un email ayant une vente est forcé "gagné" (même si
+      // iClosed l'a marqué perdu/en attente) : le revenu doit aller au closer.
+      if (winnerIds.has(c.id)) st = "won";
       if (out[st] !== undefined) out[st] += 1; else out.other += 1;
       const amt = st === "won" ? callAmount(c) : Number(c.amount || 0);
       if (st === "won") {
