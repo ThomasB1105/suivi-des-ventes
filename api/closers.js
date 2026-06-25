@@ -169,9 +169,22 @@ module.exports = async (req, res) => {
     })).sort((a, b) => b.revenue - a.revenue || b.won - a.won);
 
     const toArr = (obj) => Object.entries(obj).map(([k, v]) => ({ label: k, n: v })).sort((a, b) => b.n - a.n);
-    const questions = Object.entries(qmap).map(([q, ans]) => ({
+    // On ne garde que les questions "qualifiantes" (réponses catégorielles).
+    // On exclut les champs d'identité (nom, email, téléphone…) et le texte libre
+    // où chaque réponse est unique : ça ne dit rien sur la conversion.
+    const IDENTITY_Q = /(full ?name|name|nom|prénom|prenom|e-?mail|courriel|phone|t[ée]l[ée]phone|num[ée]ro|whatsapp|instagram|@|adresse|address|website|site)/i;
+    const questions = Object.entries(qmap).filter(([q, ans]) => {
+      if (IDENTITY_Q.test(q)) return false;
+      const vals = Object.values(ans);
+      const total = vals.reduce((a, v) => a + v.n, 0);
+      if (total < 3) return false;                       // pas assez de volume
+      if (vals.length > 8) return false;                 // trop d'options = liste de leads, pas une cohorte
+      if (vals.length / total > 0.6) return false;       // surtout du texte libre / réponses uniques
+      return true;
+    }).map(([q, ans]) => ({
       question: q,
-      answers: Object.values(ans).map((a) => ({ ...a, rate: a.n ? a.won / a.n : 0 })).sort((x, y) => y.n - x.n),
+      total: Object.values(ans).reduce((a, v) => a + v.n, 0),
+      answers: Object.values(ans).map((a) => ({ ...a, rate: a.n ? a.won / a.n : 0 })).sort((x, y) => y.n - x.n).slice(0, 8),
     }));
 
     const series = Object.values(weeks).sort((a, b) => a.week.localeCompare(b.week));

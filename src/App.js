@@ -1000,6 +1000,13 @@ export default function App() {
         .leglbl{color:var(--text);text-transform:capitalize;}
         .legn{color:var(--muted);font-weight:700;font-size:12px;white-space:nowrap;}
         .avatar-mini{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:linear-gradient(135deg,#7C5CFF,#9D5CFF);color:#fff;font-size:11px;font-weight:700;margin-right:8px;vertical-align:middle;}
+        /* Cohorte datavis */
+        .cohrow{display:grid;grid-template-columns:120px 1fr 44px;align-items:center;gap:10px;padding:5px 0;}
+        .cohlbl{font-size:12.5px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-transform:capitalize;}
+        .cohbar{position:relative;height:20px;background:rgba(255,255,255,.05);border-radius:6px;overflow:hidden;display:flex;align-items:center;}
+        .cohbar-fill{position:absolute;left:0;top:0;height:100%;border-radius:6px;}
+        .cohbar-n{position:relative;font-size:11px;font-weight:700;color:var(--text);padding-left:8px;}
+        .cohrate{text-align:right;font-weight:700;font-size:13px;}
       `}</style>
 
       <aside className={`sidebar ${navOpen ? "open" : ""}`}>
@@ -1612,22 +1619,29 @@ export default function App() {
           )}
         </div>
 
-        {/* COHORTE DE PLANIFICATION (question × réponse) */}
+        {/* COHORTE DE PLANIFICATION (question × réponse) — datavis */}
         {(callStats.questions || []).length > 0 && (<>
-          <div className="section-h"><Grid3x3 size={15} /> Cohorte de planification · conversion par réponse</div>
-          {callStats.questions.map((q) => (
-            <div className="card" style={{ padding: 6, marginBottom: 12 }} key={q.question}>
-              <div style={{ padding: "8px 12px", fontWeight: 700, fontSize: 13 }}>{q.question}</div>
-              <table className="tbl">
-                <thead><tr><th>Réponse</th><th className="num">Nb</th><th className="num">Closés</th><th className="num">Taux de closing</th></tr></thead>
-                <tbody>
-                  {q.answers.map((a) => (
-                    <tr key={a.answer}><td className="lab">{a.answer}</td><td className="num">{a.n}</td><td className="num">{a.won}</td><td className={`num ${a.rate >= 0.5 ? "green" : ""}`}>{pct(a.rate)}</td></tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ))}
+          <div className="section-h"><Grid3x3 size={15} /> Cohorte · conversion par réponse</div>
+          <div className="two-col">
+            {callStats.questions.map((q) => {
+              const mx = Math.max(...q.answers.map((a) => a.n), 1);
+              return (
+                <div className="card" style={{ padding: "12px 14px", marginBottom: 0 }} key={q.question}>
+                  <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 10 }}>{q.question} <span className="mut" style={{ fontWeight: 500 }}>· {q.total} appels</span></div>
+                  {q.answers.map((a) => {
+                    const rc = a.rate >= 0.4 ? "#00B894" : a.rate >= 0.2 ? "#FDCB6E" : a.n && a.won === 0 ? "#636E72" : "#7C5CFF";
+                    return (
+                      <div className="cohrow" key={a.answer}>
+                        <span className="cohlbl" title={a.answer}>{a.answer}</span>
+                        <span className="cohbar"><span className="cohbar-fill" style={{ width: `${(a.n / mx) * 100}%`, background: "rgba(124,92,255,.35)" }} /><span className="cohbar-n">{a.n}</span></span>
+                        <span className="cohrate" style={{ color: rc }}>{pct(a.rate)}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })}
+          </div>
         </>)}
 
         {callStats.totalCalls === 0 && (
