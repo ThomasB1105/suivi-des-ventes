@@ -28,11 +28,44 @@ module.exports = async (req, res) => {
   try {
     const raw = (await cmd(["LRANGE", "iclosed:calls", "0", "4999"])) || [];
     const hashRaw = (await cmd(["HGETALL", "iclosed:calls_h"])) || [];
+    // Dédoublonnage par clé NATURELLE (email + horaire) et non par id : le webhook
+    // et l'import API attribuent des id différents au même appel, ce qui le comptait
+    // deux fois. On conserve à chaque fois l'enregistrement le plus informatif.
+    const natKey = (c) => {
+      const em = String(c.email || "").toLowerCase();
+      const dt = String(c.date || "").slice(0, 16); // YYYY-MM-DDTHH:MM
+      if (em && dt) return `${em}|${dt}`;
+      return c.id || `${em}|${c.date}|${c.status}`;
+    };
+    const rank = (s) => ({ won: 5, lost: 4, noshow: 4, cancelled: 3, show: 2, rescheduled: 2, pending: 1, booked: 1, other: 0 }[s] || 0);
+    const better = (a, b) => {
+      if (!a) return b;
+      const ra = rank(a.status) + (a.amount ? 1 : 0) + (a.reason || a.objection ? 1 : 0);
+      const rb = rank(b.status) + (b.amount ? 1 : 0) + (b.reason || b.objection ? 1 : 0);
+      return rb > ra ? b : a;
+    };
     const byId = new Map();
-    const add = (c) => { const k = c.id || `${c.email}|${c.date}|${c.status}`; byId.set(k, c); };
+    const add = (c) => { const k = natKey(c); byId.set(k, better(byId.get(k), c)); };
     raw.forEach((s) => { try { add(JSON.parse(s)); } catch {} });
     for (let i = 1; i < hashRaw.length; i += 2) { try { add(JSON.parse(hashRaw[i])); } catch {} }
     let calls = [...byId.values()];
+
+    // Résolution des noms de closers SUR LES DONNÉES DÉJÀ STOCKÉES (sans réimport).
+    // L'API iClosed n'expose pas les noms : on traduit "Closer <id>" via la carte
+    // configurable Vercel → ICLOSED_USER_MAP = {"22743":"Ecom ascension", ...}.
+    let NAMEMAP = {}; try { NAMEMAP = JSON.parse(process.env.ICLOSED_USER_MAP || "{}"); } catch {}
+    if (!NAMEMAP["22743"]) NAMEMAP["22743"] = "Ecom ascension";
+    const renameCloser = (name) => {
+      if (!name) return "Non attribué";
+      const m = /^Closer\s+(.+)$/i.exec(String(name));
+      const id = m ? m[1].trim() : null;
+      if (id && NAMEMAP[id]) return NAMEMAP[id];
+      if (NAMEMAP[name]) return NAMEMAP[name];
+      return String(name);
+    };
+    calls.forEach((c) => { c.closer = renameCloser(c.closer); });
+    // Exclut les données de test injectées manuellement lors du branchement webhook.
+    calls = calls.filter((c) => !/test\s*closer/i.test(String(c.closer || "")) && !/(^|@)test\b/i.test(String(c.email || "")));
 
     // Filtre par période (aligné sur le sélecteur de l'app) : ?from=YYYY-MM-DD&to=YYYY-MM-DD
     const from = req.query && req.query.from ? String(req.query.from).slice(0, 10) : null;
@@ -189,15 +222,17 @@ module.exports = async (req, res) => {
 
     const series = Object.values(weeks).sort((a, b) => a.week.localeCompare(b.week));
 
-    // Funnel de planification : Contacts -> Appels créés -> Appels honorés
+    // Funnel monotone (toujours décroissant) : Appels créés -> Honorés -> Ventes.
+    // (Les "contacts" du webhook sont partiels, on ne les met plus dans le funnel
+    //  pour éviter un taux >100%.)
     const scheduled = calls.length;
     const funnel = {
-      contacts: contactsCount,
-      calls: scheduled,
+      created: scheduled,
       held,
-      // taux de conversion étape par étape
-      contactToCall: contactsCount ? scheduled / contactsCount : 0,
-      callToHeld: scheduled ? held / scheduled : 0,
+      won: out.won,
+      createdToHeld: scheduled ? held / scheduled : 0,
+      heldToWon: held ? out.won / held : 0,
+      contacts: contactsCount, // info, non affiché dans le funnel
     };
 
     res.setHeader("Cache-Control", "s-maxage=20, stale-while-revalidate=120");

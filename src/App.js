@@ -1431,7 +1431,7 @@ export default function App() {
       {/* CLOSERS — reporting type iClosed Analytics (FR) */}
       {tab === "closers" && (() => {
         const o = callStats.outcomes || {};
-        const fn = callStats.funnel || { contacts: 0, calls: 0, held: 0 };
+        const fn = callStats.funnel || { created: 0, held: 0, won: 0 };
         const bd = callStats.breakdown || { revenue: 0, won: 0, deposits: 0, recurring: 0 };
         const series = (callStats.series || []).map((w) => ({ ...w, lbl: w.week ? `${w.week.slice(8, 10)}/${w.week.slice(5, 7)}` : "" }));
         const topMembers = (callStats.closers || []).slice(0, 3);
@@ -1444,11 +1444,11 @@ export default function App() {
         <div className="section-h"><TrendingUp size={15} /> Tunnel de planification</div>
         <div className="card funnel-card">
           <div className="funnel-row">
-            <div className="funnel-step"><div className="funnel-n">{fn.contacts || 0}</div><div className="funnel-l">Contacts</div></div>
-            <div className="funnel-arrow"><span>{pct(fn.contactToCall || 0)}</span><div className="funnel-line" /></div>
-            <div className="funnel-step"><div className="funnel-n">{fn.calls || 0}</div><div className="funnel-l">Appels créés</div></div>
-            <div className="funnel-arrow"><span>{pct(fn.callToHeld || 0)}</span><div className="funnel-line" /></div>
+            <div className="funnel-step"><div className="funnel-n">{fn.created || 0}</div><div className="funnel-l">Appels créés</div></div>
+            <div className="funnel-arrow"><span>{pct(fn.createdToHeld || 0)}</span><div className="funnel-line" /></div>
             <div className="funnel-step"><div className="funnel-n">{fn.held || 0}</div><div className="funnel-l">Appels honorés</div></div>
+            <div className="funnel-arrow"><span>{pct(fn.heldToWon || 0)}</span><div className="funnel-line" /></div>
+            <div className="funnel-step"><div className="funnel-n">{fn.won || 0}</div><div className="funnel-l">Ventes</div></div>
           </div>
         </div>
 
