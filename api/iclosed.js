@@ -86,27 +86,33 @@ module.exports = async (req, res) => {
     const objection = pick(data, "objection", "objections", "mainObjection");
     const eventName = pick(data, "event", "eventName", "callType", "eventType", "funnel");
     const amount = pick(data, "amount", "dealValue", "revenue", "price", "total", "value");
-    const isCall = rawStatus || answers || reason || objection || eventName;
+    const normStatus = (s) => {
+      const t = String(s || "").toLowerCase();
+      if (/no.?show|absent/.test(t)) return "noshow";
+      if (/won|gagn|closed.?won|sold|vente|signed|deposit|acompte/.test(t)) return "won";
+      if (/lost|perdu|closed.?lost|refus|no.?sale|pas de vente|disqualif|unqualif|not.?interest/.test(t)) return "lost";
+      if (/cancel|annul/.test(t)) return "cancelled";
+      if (/reschedul|replanif|report/.test(t)) return "rescheduled";
+      if (/show|present|complete|done|held|attended/.test(t)) return "show";
+      if (/pending|attente|follow|relance/.test(t)) return "pending";
+      if (/book|schedul|reserv|upcoming|planned/.test(t)) return "booked";
+      return t || "other";
+    };
+    const ns = normStatus(rawStatus);
+    // On ne crée un "appel" QUE sur un vrai résultat d'appel. Les changements de
+    // statut de contact (Strategy Call Booked / Disqualified / Potential...) NE sont
+    // PAS des appels : les bookings et annulations viennent de l'import (source de
+    // vérité), sinon le webhook gonflait le compte avec des faux appels.
+    const REAL_OUTCOME = ["noshow", "won", "lost", "show", "rescheduled", "cancelled"];
+    const isCall = (rawStatus && REAL_OUTCOME.includes(ns)) || !!reason || !!objection;
     let stored = false;
     if (isCall) {
-      const normStatus = (s) => {
-        const t = String(s || "").toLowerCase();
-        if (/no.?show|absent/.test(t)) return "noshow";
-        if (/won|gagn|closed.?won|sold|vente|signed|deposit|acompte/.test(t)) return "won";
-        if (/lost|perdu|closed.?lost|refus|no.?sale|pas de vente/.test(t)) return "lost";
-        if (/cancel|annul/.test(t)) return "cancelled";
-        if (/reschedul|replanif|report/.test(t)) return "rescheduled";
-        if (/pending|attente|follow|relance/.test(t)) return "pending";
-        if (/show|present|complete|done|held|attended/.test(t)) return "show";
-        if (/book|schedul|reserv|upcoming|planned/.test(t)) return "booked";
-        return t || "other";
-      };
       const num = (v) => { if (v == null) return 0; const n = parseFloat(String(v).replace(/[^\d.,-]/g, "").replace(",", ".")); return isNaN(n) ? 0 : n; };
-      const callId = "ic-" + (pick(data, "id", "callId", "eventCallId", "uuid", "_id") || `${email}-${pick(data, "date", "callDate", "scheduledAt", "createdAt") || ""}-${normStatus(rawStatus)}`);
+      const callId = "ic-" + (pick(data, "id", "callId", "eventCallId", "uuid", "_id") || `${email}-${pick(data, "date", "callDate", "scheduledAt", "createdAt") || ""}-${ns}`);
       const call = {
         id: callId,
         email, closer: closer ? String(closer) : "Non attribué",
-        status: normStatus(rawStatus), source: source ? String(source) : undefined,
+        status: ns, source: source ? String(source) : undefined,
         date: (pick(data, "date", "callDate", "scheduledAt", "createdAt") || new Date().toISOString()),
         answers: (answers && typeof answers === "object") ? answers : undefined,
         reason: reason ? String(reason) : undefined,
