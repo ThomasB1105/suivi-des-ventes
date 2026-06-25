@@ -32,11 +32,54 @@ module.exports = async (req, res) => {
     const add = (c) => { const k = c.id || `${c.email}|${c.date}|${c.status}`; byId.set(k, c); };
     raw.forEach((s) => { try { add(JSON.parse(s)); } catch {} });
     for (let i = 1; i < hashRaw.length; i += 2) { try { add(JSON.parse(hashRaw[i])); } catch {} }
-    const calls = [...byId.values()];
+    let calls = [...byId.values()];
+
+    // Filtre par période (aligné sur le sélecteur de l'app) : ?from=YYYY-MM-DD&to=YYYY-MM-DD
+    const from = req.query && req.query.from ? String(req.query.from).slice(0, 10) : null;
+    const to = req.query && req.query.to ? String(req.query.to).slice(0, 10) : null;
+    if (from || to) {
+      calls = calls.filter((c) => {
+        const d = String(c.date || "").slice(0, 10);
+        if (!d) return false;
+        if (from && d < from) return false;
+        if (to && d > to) return false;
+        return true;
+      });
+    }
 
     // Nb de contacts iClosed (haut du funnel)
     let contactsCount = 0;
     try { contactsCount = Number(await cmd(["HLEN", "iclosed:contacts"])) || 0; } catch {}
+
+    // Ventes systeme.io par email : sert de repli quand iClosed n'a pas le montant
+    // ni le résultat de l'appel. On matche l'email de l'appel avec celui de la vente.
+    const saleByEmail = {};
+    try {
+      const sFlat = (await cmd(["HGETALL", "sales:events"])) || [];
+      const seenPay = {}; // email -> Set(date|amount) pour dédupliquer
+      for (let i = 1; i < sFlat.length; i += 2) {
+        let e; try { e = JSON.parse(sFlat[i]); } catch { continue; }
+        const amount = Number(e.amount || 0);
+        if (!(amount > 0) || e.status === "cancelled") continue;
+        const em = String(e.email || "").toLowerCase();
+        if (!em) continue;
+        const k = `${e.date}|${Math.round(amount * 100)}`;
+        if (!seenPay[em]) seenPay[em] = new Set();
+        if (seenPay[em].has(k)) continue;
+        seenPay[em].add(k);
+        saleByEmail[em] = (saleByEmail[em] || 0) + amount;
+      }
+    } catch {}
+    // Montant d'un appel : iClosed en priorité, sinon la vente liée par email.
+    const usedEmail = new Set(); // n'attribue le total d'une vente qu'une fois
+    const callAmount = (c) => {
+      let a = Number(c.amount || 0);
+      const em = String(c.email || "").toLowerCase();
+      if (!a && em && saleByEmail[em] && !usedEmail.has(em)) { a = saleByEmail[em]; usedEmail.add(em); }
+      return a;
+    };
+    // Un appel est "gagné" si iClosed le dit OU si l'email a une vente associée.
+    const hasSale = (c) => { const em = String(c.email || "").toLowerCase(); return !!(em && saleByEmail[em]); };
 
     const bump = (obj, key, n = 1) => { const k = key || "—"; obj[k] = (obj[k] || 0) + n; };
 
@@ -49,10 +92,13 @@ module.exports = async (req, res) => {
     const weeks = {};   // weekKey -> { created, won, lost, pending, noshow, cancelled }
     let revenue = 0, deposits = 0, recurring = 0;
 
+    const UNFILLED = ["pending", "booked", "show", "other"]; // résultat iClosed non renseigné
     calls.forEach((c) => {
-      const st = c.status || "other";
+      let st = c.status || "other";
+      // Repli : iClosed non rempli mais l'email correspond à une vente -> gagné
+      if (UNFILLED.includes(st) && hasSale(c)) st = "won";
       if (out[st] !== undefined) out[st] += 1; else out.other += 1;
-      const amt = Number(c.amount || 0);
+      const amt = st === "won" ? callAmount(c) : Number(c.amount || 0);
       if (st === "won") {
         revenue += amt;
         // Acompte vs paiement intégral : heuristique sur le libellé d'outcome/réponses

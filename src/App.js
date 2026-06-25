@@ -283,7 +283,6 @@ export default function App() {
   const [costMonth, setCostMonth] = useState(() => toISO(today).slice(0, 7));
   const [metaSpend, setMetaSpend] = useState({ configured: false, spend: 0 });
   const [callStats, setCallStats] = useState({ closers: [], questions: [], totalCalls: 0 });
-  useEffect(() => { authFetch("/api/closers").then((r) => r.json()).then((d) => d && setCallStats(d)).catch(() => {}); }, []);
   // Budget Ads saisi à la main, par mois.
   const [adsByMonth, setAdsByMonth] = useState(() => { try { return JSON.parse(localStorage.getItem("melo_ads_v1") || "{}"); } catch (e) { return {}; } });
   const setAdsMonth = (month, val) => {
@@ -559,6 +558,12 @@ export default function App() {
   const kp = useMemo(() => metricsFor(periodRange.from, periodRange.to), [sales, periodRange]); // eslint-disable-line
   const kpPrev = useMemo(() => metricsFor(periodRange.prevFrom, periodRange.prevTo), [sales, periodRange]); // eslint-disable-line
   const kpYoy = useMemo(() => metricsFor(periodRange.yoyFrom, periodRange.yoyTo), [sales, periodRange]); // eslint-disable-line
+
+  // Stats closers iClosed — filtrées sur la période sélectionnée
+  useEffect(() => {
+    authFetch(`/api/closers?from=${periodRange.from}&to=${periodRange.to}`)
+      .then((r) => r.json()).then((d) => d && setCallStats(d)).catch(() => {});
+  }, [periodRange.from, periodRange.to]); // eslint-disable-line
 
   const Delta = (cur, prev, label) => {
     if (!prev && !cur) return null;
