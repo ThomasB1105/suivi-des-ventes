@@ -68,6 +68,29 @@ module.exports = async (req, res) => {
     // Exclut les données de test injectées manuellement lors du branchement webhook.
     calls = calls.filter((c) => !/test\s*closer/i.test(String(c.closer || "")) && !/(^|@)test\b/i.test(String(c.email || "")));
 
+    // Attribution automatique des closers restants, calculée sur TOUT l'historique
+    // (et non sur la période affichée) pour que l'identité d'un userId reste stable.
+    // Signal d'identification (indication utilisateur) : Diego n'est actif que
+    // récemment -> c'est le seul closer (hors Melo) à avoir des appels CETTE SEMAINE.
+    // Diego = "Closer <id>" non mappé le plus actif sur les 7 derniers jours ;
+    // Saphia = le suivant (par volume tout-historique). Surclassé par ICLOSED_USER_MAP.
+    const weekAgoISO = new Date(Date.now() - 7 * 864e5).toISOString().slice(0, 10);
+    const allTimeCnt = {}, weekCnt = {};
+    calls.forEach((c) => {
+      const lbl = String(c.closer || "");
+      if (!/^Closer\s+\d+/i.test(lbl)) return;
+      allTimeCnt[lbl] = (allTimeCnt[lbl] || 0) + 1;
+      if (String(c.date || "").slice(0, 10) >= weekAgoISO) weekCnt[lbl] = (weekCnt[lbl] || 0) + 1;
+    });
+    const autoMap = {};
+    // 1) Diego = le non-mappé le plus actif cette semaine (s'il y en a un)
+    const diego = Object.entries(weekCnt).sort((a, b) => b[1] - a[1])[0];
+    if (diego) autoMap[diego[0]] = "Diego";
+    // 2) Saphia = le non-mappé restant le plus actif tout-historique
+    const saphia = Object.entries(allTimeCnt).filter(([lbl]) => !autoMap[lbl]).sort((a, b) => b[1] - a[1])[0];
+    if (saphia) autoMap[saphia[0]] = "Saphia";
+    if (Object.keys(autoMap).length) calls.forEach((c) => { if (autoMap[c.closer]) c.closer = autoMap[c.closer]; });
+
     // Filtre par période (aligné sur le sélecteur de l'app) : ?from=YYYY-MM-DD&to=YYYY-MM-DD
     const from = req.query && req.query.from ? String(req.query.from).slice(0, 10) : null;
     const to = req.query && req.query.to ? String(req.query.to).slice(0, 10) : null;
@@ -80,16 +103,6 @@ module.exports = async (req, res) => {
         return true;
       });
     }
-
-    // Attribution automatique des closers restants par activité (indication user) :
-    // Melo (22743) déjà mappé ; parmi les "Closer <id>" restants, le plus actif = Diego,
-    // le suivant = Saphia. Surclassé par ICLOSED_USER_MAP si défini.
-    const AUTO_NAMES = ["Diego", "Saphia"];
-    const unmappedCnt = {};
-    calls.forEach((c) => { if (/^Closer\s+\d+/i.test(String(c.closer || ""))) unmappedCnt[c.closer] = (unmappedCnt[c.closer] || 0) + 1; });
-    const autoMap = {};
-    Object.entries(unmappedCnt).sort((a, b) => b[1] - a[1]).slice(0, AUTO_NAMES.length).forEach(([lbl], i) => { autoMap[lbl] = AUTO_NAMES[i]; });
-    if (Object.keys(autoMap).length) calls.forEach((c) => { if (autoMap[c.closer]) c.closer = autoMap[c.closer]; });
 
     // Nb de contacts iClosed (haut du funnel)
     let contactsCount = 0;
