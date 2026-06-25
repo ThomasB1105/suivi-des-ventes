@@ -228,7 +228,8 @@ module.exports = async (req, res) => {
         ...g,
         present: gHeld,
         showRate: (gHeld + g.noshow) ? gHeld / (gHeld + g.noshow) : 0,
-        closingRate: (g.won + g.lost) ? g.won / (g.won + g.lost) : 0,
+        // closing = ventes / TOUS les honorés (follow-up = pas gagné -> au dénominateur)
+        closingRate: gHeld ? g.won / gHeld : 0,
       };
     }).sort((a, b) => b.revenue - a.revenue || b.won - a.won);
 
@@ -280,7 +281,8 @@ module.exports = async (req, res) => {
         sales: out.won, noSale: out.lost, pending: out.pending,
         showRate: heldOrNo ? held / heldOrNo : 0,
         noShowRate: heldOrNo ? out.noshow / heldOrNo : 0,
-        closingRate: (out.won + out.lost) ? out.won / (out.won + out.lost) : 0,
+        // closing = ventes / honorés (les follow-up non aboutis comptent comme non gagnés)
+        closingRate: held ? out.won / held : 0,
         engagementRate: scheduled ? (held + out.rescheduled) / scheduled : 0,
         revenue,
         cashPerCall: scheduled ? revenue / scheduled : 0,   // cash par appel
