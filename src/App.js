@@ -361,9 +361,16 @@ export default function App() {
       if (!r.ok) throw new Error(data && data.error ? data.error : `Erreur ${r.status}`);
       const incoming = normalize(data.sales || []);
       applyDbSales(incoming);
+      // Rafraîchit aussi le reporting iClosed : purge + réimport (source de vérité)
+      // puis recalcul des stats sur la période courante.
+      try { await authFetch("/api/iclosed-import", { method: "POST" }); } catch (e) { /* import best-effort */ }
+      try {
+        const cr = await authFetch(`/api/closers?from=${periodRange.from}&to=${periodRange.to}`);
+        const cd = await cr.json(); if (cd && !cd.error) setCallStats(cd);
+      } catch (e) { /* ignore */ }
       if (!silent) flash(incoming.length
-        ? `${incoming.length} client(s) synchronisé(s) depuis systeme.io.`
-        : "Synchro OK — aucune vente en base pour l'instant (les webhooks alimentent au fil de l'eau).");
+        ? `${incoming.length} client(s) synchronisé(s) · reporting iClosed actualisé.`
+        : "Reporting iClosed actualisé (réimport iClosed effectué).");
     } catch (e) {
       if (!silent) flash(`Synchro impossible : ${e.message}`);
     } finally {
@@ -1439,11 +1446,11 @@ export default function App() {
         const reasonMax = Math.max(...(callStats.reasons || []).map((x) => x.n), 1);
         const tip = { background: "#0f1117", border: "1px solid #2a2f3a", borderRadius: 10, fontSize: 12, color: "#fff" };
         return (<>
-        {/* TUNNEL DE PLANIFICATION */}
-        <div className="section-h"><TrendingUp size={15} /> Tunnel de planification</div>
+        {/* TUNNEL : Strategy calls bookés -> Honorés -> Ventes */}
+        <div className="section-h"><TrendingUp size={15} /> Tunnel</div>
         <div className="card funnel-card">
           <div className="funnel-row">
-            <div className="funnel-step"><div className="funnel-n">{fn.created || 0}</div><div className="funnel-l">Appels créés</div></div>
+            <div className="funnel-step"><div className="funnel-n">{fn.created || 0}</div><div className="funnel-l">Strategy calls bookés</div></div>
             <div className="funnel-arrow"><span>{pct(fn.createdToHeld || 0)}</span><div className="funnel-line" /></div>
             <div className="funnel-step"><div className="funnel-n">{fn.held || 0}</div><div className="funnel-l">Appels honorés</div></div>
             <div className="funnel-arrow"><span>{pct(fn.heldToWon || 0)}</span><div className="funnel-line" /></div>
@@ -1451,14 +1458,14 @@ export default function App() {
           </div>
         </div>
 
-        {/* TAUX CLÉS */}
+        {/* KPI : strategy calls bookés · no-show · show-up · revenu · cash/appel · closing */}
         <div className="kpis kpis-home" style={{ marginTop: 4 }}>
-          <div className="card"><div className="kpi-label">Appels créés</div><div className="kpi-val">{callT.scheduled || 0}</div><div className="kpi-foot">{callT.upcoming || 0} à venir</div></div>
+          <div className="card"><div className="kpi-label">Strategy calls bookés</div><div className="kpi-val">{callT.scheduled || 0}</div><div className="kpi-foot">{callT.cancelled || 0} annulé{(callT.cancelled || 0) > 1 ? "s" : ""} · {callT.upcoming || 0} à venir</div></div>
+          <div className="card"><div className="kpi-label">No-show</div><div className="kpi-val" style={{ color: (callT.noShow || 0) > 0 ? "var(--red)" : "var(--text)" }}>{callT.noShow || 0}</div><div className="kpi-foot">{callStats.totalCalls ? pct(callT.noShowRate) : "—"} des honorés</div></div>
           <div className="card"><div className="kpi-label">Show-up</div><div className="kpi-val">{callStats.totalCalls ? pct(callT.showRate) : "—"}</div><div className="kpi-foot">présents / honorés</div></div>
-          <div className="card"><div className="kpi-label">Engagement</div><div className="kpi-val">{callStats.totalCalls ? pct(callT.engagementRate) : "—"}</div><div className="kpi-foot">ont interagi</div></div>
           <div className="card"><div className="kpi-label">Closing</div><div className="kpi-val green">{callStats.totalCalls ? pct(callT.closingRate) : "—"}</div><div className="kpi-foot">{callT.sales} / {callT.sales + callT.noSale} closés</div></div>
-          <div className="card"><div className="kpi-label">No-show</div><div className="kpi-val" style={{ color: callT.noShowRate > 0.3 ? "var(--red)" : "var(--text)" }}>{callStats.totalCalls ? pct(callT.noShowRate) : "—"}</div></div>
-          <div className="card"><div className="kpi-label">Revenu (iClosed)</div><div className="kpi-val green">{euro(callT.revenue || 0)}</div><div className="kpi-foot">deals gagnés</div></div>
+          <div className="card"><div className="kpi-label">Revenu (iClosed)</div><div className="kpi-val green">{euro(callT.revenue || 0)}</div><div className="kpi-foot">{callT.sales || 0} vente{(callT.sales || 0) > 1 ? "s" : ""}</div></div>
+          <div className="card"><div className="kpi-label">Cash / appel</div><div className="kpi-val">{euro(callT.cashPerCall || 0)}</div><div className="kpi-foot">revenu / appel créé</div></div>
         </div>
 
         {/* APPELS CRÉÉS PAR SEMAINE */}

@@ -73,8 +73,13 @@ module.exports = async (req, res) => {
       return NAMEMAP[key] || key;
     };
     calls.forEach((c) => { c.closer = renameCloser(c.closer); });
-    // Exclut les données de test injectées manuellement lors du branchement webhook.
-    calls = calls.filter((c) => !/test\s*closer/i.test(String(c.closer || "")) && !/(^|@)test\b/i.test(String(c.email || "")));
+    // Exclut les données de test ET les faux "appels" (changements de statut de
+    // contact stockés par l'ancien webhook : disqualified / potential / other...).
+    const JUNK_STATUS = new Set(["other", "disqualified", "potential", "qualified", "nurture", "new", "lead"]);
+    calls = calls.filter((c) =>
+      !/test\s*closer/i.test(String(c.closer || "")) &&
+      !/(^|@)test\b/i.test(String(c.email || "")) &&
+      !JUNK_STATUS.has(String(c.status || "")));
 
     // Filtre par période (aligné sur le sélecteur de l'app) : ?from=YYYY-MM-DD&to=YYYY-MM-DD
     const from = req.query && req.query.from ? String(req.query.from).slice(0, 10) : null;
@@ -259,15 +264,17 @@ module.exports = async (req, res) => {
       totalCalls: calls.length,
       outcomes: out,
       totals: {
-        scheduled,
+        scheduled,                       // = Strategy Calls booked (appels créés)
         upcoming: upcomingCount,
+        cancelled: out.cancelled,
+        noShow: out.noshow,
         sales: out.won, noSale: out.lost, pending: out.pending,
         showRate: heldOrNo ? held / heldOrNo : 0,
         noShowRate: heldOrNo ? out.noshow / heldOrNo : 0,
         closingRate: (out.won + out.lost) ? out.won / (out.won + out.lost) : 0,
-        // engagement = honorés + replanifiés (a interagi) / planifiés
         engagementRate: scheduled ? (held + out.rescheduled) / scheduled : 0,
         revenue,
+        cashPerCall: scheduled ? revenue / scheduled : 0,   // cash par appel
       },
       funnel,
       series,

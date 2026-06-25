@@ -6,6 +6,7 @@
 // Variables d'env : ICLOSED_API_KEY (clé iClosed, commence par iclosed_), INGEST_SECRET.
 
 const { cmd, isConfigured } = require("../lib/kv");
+const { checkAuth } = require("../lib/auth");
 
 const ICLOSED_BASE = "https://public.api.iclosed.io/v1";
 
@@ -87,9 +88,12 @@ function mapCall(c, userMap) {
 
 module.exports = async (req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
+  // Auth : soit le secret d'ingestion (URL/cron), soit un token d'app valide
+  // (bouton "Actualiser" dans l'interface, utilisateur connecté).
   const secret = process.env.INGEST_SECRET;
   const provided = (req.query && req.query.secret) || req.headers["x-ingest-secret"];
-  if (secret && provided !== secret) { res.status(401).json({ error: "Secret invalide." }); return; }
+  const okSecret = secret && provided === secret;
+  if (!okSecret && !checkAuth(req)) { res.status(401).json({ error: "Non autorisé." }); return; }
   const key = process.env.ICLOSED_API_KEY;
   if (!key) { res.status(500).json({ error: "ICLOSED_API_KEY manquante (Vercel → Settings → Environment Variables)." }); return; }
   if (!isConfigured()) { res.status(500).json({ error: "Base KV non configurée." }); return; }
