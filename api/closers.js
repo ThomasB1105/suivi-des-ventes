@@ -62,14 +62,14 @@ module.exports = async (req, res) => {
     // L'API iClosed n'expose pas les noms : on traduit "Closer <id>" via la carte
     // configurable Vercel → ICLOSED_USER_MAP = {"22743":"Melo", ...}.
     let NAMEMAP = {}; try { NAMEMAP = JSON.parse(process.env.ICLOSED_USER_MAP || "{}"); } catch {}
-    // Correspondance explicite (confirmée par l'utilisateur sur ses données) :
-    const SEED = { "22743": "Melo", "Ecom ascension": "Melo", "33880": "Saphia", "Non attribué": "Diego" };
+    // L'import lit désormais le vrai nom (c.user). On raccourcit juste l'affichage.
+    const SEED = { "Ecom ascension": "Melo", "22743": "Melo", "Diego Koutouan": "Diego", "saphia klai": "Saphia" };
     Object.entries(SEED).forEach(([k, v]) => { if (!NAMEMAP[k]) NAMEMAP[k] = v; });
     const renameCloser = (name) => {
       const m = /^Closer\s+(.+)$/i.exec(String(name || ""));
       const id = m ? m[1].trim() : null;
       if (id && NAMEMAP[id]) return NAMEMAP[id];
-      const key = name ? String(name) : "Non attribué"; // les appels sans closer sont attribués à Diego
+      const key = name ? String(name) : "Non attribué";
       return NAMEMAP[key] || key;
     };
     calls.forEach((c) => { c.closer = renameCloser(c.closer); });

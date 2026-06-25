@@ -43,45 +43,54 @@ const META_Q = ["Call Outcome", "Outcome", "No Sale Reason", "Objection", "Phone
 
 function mapCall(c, userMap) {
   const qa = collectQA(c);
-  const email = String(pick(c, "email", "contactEmail", "inviteeEmail") || deepEmail(c) || "").toLowerCase();
-  const uid = pick(c, "userId", "ownerId", "hostId");
-  const closer = (userMap && (userMap[uid] || userMap[String(uid)])) || pick(c, "closerName", "hostName", "ownerName") || (uid ? `Closer ${uid}` : "Non attribué");
+  const email = String(pick(c, "inviteeEmail", "email", "contactEmail") || deepEmail(c) || "").toLowerCase();
 
-  const outcomeAns = String(qa["Call Outcome"] || qa["Outcome"] || qa["Disposition"] || "").toUpperCase();
-  const topOutcome = String(pick(c, "outcome", "callOutcome", "disposition", "result", "status") || "").toUpperCase();
-  const schedStatus = String(pick(c, "schedulingStatus", "currentSchedulingStatus", "initialSchedulingStatus", "stage") || qa["Scheduling Status"] || "").toUpperCase();
-  const oc = `${outcomeAns} ${topOutcome} ${schedStatus}`;
+  // Closer : le nom réel est dans c.user (firstName/lastName) — plus fiable que l'id.
+  const u = c.user || {};
+  const uname = [u.firstName, u.lastName].filter(Boolean).join(" ").trim();
+  const uid = pick(c, "userId", "ownerId", "hostId") || u.id;
+  const closer = uname || (userMap && (userMap[uid] || userMap[String(uid)])) || pick(c, "closerName", "hostName") || (uid ? `Closer ${uid}` : "Non attribué");
+
+  // Résultat de l'appel : il est dans c.task[0] (outcome / noSaleReason / objection),
+  // PAS dans c.outcome. C'est ce qui empêchait les no-show/ventes de remonter.
+  const task = (Array.isArray(c.task) ? c.task[0] : c.task) || {};
+  const outcomeAns = String(task.outcome || qa["Call Outcome"] || qa["Outcome"] || "").toUpperCase();
+  const isCancelled = !!(c.cancelReason || c.cancelledBy);
+  const isRescheduled = !!(c.rescheduledBy || c.rescheduleReason);
   const isUpcoming = String(c.__eventType || c.eventType || "").toUpperCase() === "UPCOMING";
   let status;
-  if (/NO.?SHOW/.test(oc)) status = "noshow";
-  else if (/RESCHEDUL|REPLANIF|REPORT/.test(oc)) status = "rescheduled";
-  else if (/CANCEL|ANNUL/.test(oc) || topOutcome === "ADMIN_CANCELLED") status = "cancelled";
-  else if (/NO.?SALE|LOST|PERDU|REFUS|NOT.?INTEREST|UNQUALIF|DISQUALIF/.test(oc)) status = "lost";
-  else if (/\bSALE\b|WON|GAGN|DEPOSIT|ACOMPTE|CLOSED.?WON|PAID|CUSTOMER|WIN/.test(oc)) status = "won";
-  else if (/FOLLOW|RELANCE|SHOW.?UP|PRESENT|COMPLETE|ATTEND|HELD|DONE/.test(oc)) status = "show";
+  if (isCancelled) status = "cancelled";
+  else if (/NO.?SHOW/.test(outcomeAns)) status = "noshow";
+  else if (/NO.?SALE|LOST|PERDU|REFUS|NOT.?INTEREST|UNQUALIF|DISQUALIF/.test(outcomeAns)) status = "lost";
+  else if (/\bSALE\b|WON|GAGN|DEPOSIT|ACOMPTE|CLOSED.?WON|PAID|CUSTOMER|WIN/.test(outcomeAns)) status = "won";
+  else if (/FOLLOW|RELANCE|SHOW.?UP|PRESENT|COMPLETE|ATTEND|HELD|DONE/.test(outcomeAns)) status = "show";
+  else if (isRescheduled && !outcomeAns) status = "rescheduled";
   else if (isUpcoming) status = "booked";
-  else status = "pending";
+  else status = "pending"; // appel passé sans résultat renseigné
 
-  const reason = qa["No Sale Reason"] || pick(c, "noSaleReason") || undefined;
-  const objection = qa["Objection"] || pick(c, "objection") || undefined;
+  const reason = task.noSaleReason || qa["No Sale Reason"] || undefined;
+  const objection = task.objection || qa["Objection"] || undefined;
   // réponses de qualif (on retire les méta)
   const answers = {};
   Object.entries(qa).forEach(([k, v]) => { if (!META_Q.includes(k)) answers[k] = v; });
 
   const ev = c.event || {};
+  const callId = pick(c, "callId", "id", "uuid", "_id");
+  const date = pick(c, "dateTimeUTC", "dateTime", "startTime", "scheduledAt", "date", "createdAt") || new Date().toISOString();
   return {
-    id: "ic-" + (pick(c, "callId", "id", "uuid", "_id") || `${email}-${pick(c, "dateTime", "startTime", "date") || ""}`),
+    id: "ic-" + (callId || `${email}-${date}`),
     email,
     closer: String(closer),
     status,
-    date: pick(c, "dateTime", "startTime", "scheduledAt", "date", "createdAt") || new Date().toISOString(),
+    date,
+    callType: c.callType || undefined,        // STRATEGY_EVENT / DISCOVERY...
     answers: Object.keys(answers).length ? answers : undefined,
     reason: reason ? String(reason) : undefined,
     objection: objection ? String(objection) : undefined,
-    event: pick(ev, "name", "title") || pick(c, "eventName", "callType") || undefined,
-    amount: num(pick((c.deals && c.deals[0]) || {}, "amount", "value", "price") || pick(c, "amount", "dealValue", "revenue")) || undefined,
+    event: pick(ev, "name", "title") || c.callType || undefined,
+    amount: num(pick((c.deals && c.deals[0]) || {}, "amount", "value", "price", "dealValue") || pick(c, "amount", "dealValue", "revenue")) || undefined,
     upcoming: isUpcoming || undefined,
-    outcome: (outcomeAns || topOutcome) ? String(outcomeAns || topOutcome) : undefined, // libellé brut pour transparence
+    outcome: task.outcome ? String(task.outcome) : undefined, // libellé brut pour transparence
     at: new Date().toISOString(),
   };
 }
