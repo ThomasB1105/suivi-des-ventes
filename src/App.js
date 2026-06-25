@@ -575,8 +575,10 @@ export default function App() {
   const [closersSync, setClosersSync] = useState(false);
   const refreshClosers = async () => {
     setClosersSync(true);
+    const ctrl = new AbortController();
+    const to = setTimeout(() => ctrl.abort(), 75000); // anti "mouline dans le vide"
     try {
-      const ir = await authFetch("/api/iclosed-import", { method: "POST" });
+      const ir = await authFetch("/api/iclosed-import", { method: "POST", signal: ctrl.signal });
       const id = await ir.json().catch(() => ({}));
       if (!ir.ok) throw new Error(id && id.error ? id.error : `Erreur import ${ir.status}`);
       const cr = await authFetch(`/api/closers?from=${periodRange.from}&to=${periodRange.to}`);
@@ -584,8 +586,9 @@ export default function App() {
       if (cd && !cd.error) setCallStats(cd);
       flash(`iClosed actualisé : ${id.fetched || 0} appels importés, ${id.stored || 0} enregistrés.`);
     } catch (e) {
-      flash(`Import iClosed impossible : ${e.message}`);
+      flash(e.name === "AbortError" ? "Import trop long (interrompu). Réessaie." : `Import iClosed impossible : ${e.message}`);
     } finally {
+      clearTimeout(to);
       setClosersSync(false);
     }
   };

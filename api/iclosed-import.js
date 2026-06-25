@@ -150,17 +150,25 @@ module.exports = async (req, res) => {
 
     // Import complet (pagination défensive : limit + offset).
     const all = [];
+    const seenIds = new Set();
     let guard = 0;
     for (const et of ["PAST", "UPCOMING"]) {
-      let offset = 0, seen = -1;
-      while (guard++ < 300) {
+      let offset = 0;
+      while (guard++ < 40) {                 // garde-fou strict (anti-boucle infinie)
         let page; try { page = await icGet("/eventCalls", key, { eventType: et, limit: 100, offset }); } catch (e) { break; }
         const arr = Array.isArray(page) ? page : (page.eventCalls || (page.data && (page.data.eventCalls || page.data.items || (Array.isArray(page.data) ? page.data : null))) || page.items || page.results || []);
-        if (!Array.isArray(arr) || !arr.length || (arr.length === seen && offset === 0)) break;
-        arr.forEach((x) => { if (x && typeof x === "object") x.__eventType = et; }); // PAST / UPCOMING
-        all.push(...arr);
-        if (arr.length < 100) break;
-        offset += 100; seen = arr.length;
+        if (!Array.isArray(arr) || !arr.length) break;
+        // On n'ajoute que les NOUVEAUX ids. Si une page n'apporte rien de neuf
+        // (l'API ignore offset), on s'arrête -> plus de boucle de 300 requêtes.
+        let added = 0;
+        arr.forEach((x) => {
+          if (!x || typeof x !== "object") return;
+          const id = `${et}-${x.id || x.callId || x.uuid || x._id || ""}`;
+          if (seenIds.has(id)) return;
+          seenIds.add(id); x.__eventType = et; all.push(x); added += 1;
+        });
+        if (added === 0 || arr.length < 100) break;
+        offset += 100;
       }
     }
     const recs = all.map((c) => mapCall(c, userMap));
