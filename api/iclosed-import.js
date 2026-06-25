@@ -118,29 +118,14 @@ module.exports = async (req, res) => {
       return;
     }
 
-    // Carte userId -> nom du closer (best effort).
+    // Le nom du closer est lu directement dans c.user (cf. mapCall) — pas besoin
+    // d'interroger /users (ces endpoints renvoient 404 et faisaient timeout).
+    // Override optionnel : Vercel → ICLOSED_USER_MAP = {"22743":"Melo", ...}
     const userMap = {};
-    for (const p of ["/users", "/teamMembers", "/members", "/team", "/account/users"]) {
-      try {
-        const u = await icGet(p, key, { limit: 200 });
-        const list = Array.isArray(u) ? u : (u.users || u.members || u.teamMembers || u.team || (u.data && (u.data.users || u.data.members || u.data.teamMembers || u.data.team || u.data)) || []);
-        if (Array.isArray(list) && list.length) {
-          list.forEach((m) => {
-            const id = pick(m, "id", "userId", "_id", "uuid");
-            const nm = pick(m, "name", "fullName", "displayName") || [pick(m, "firstName", "first_name"), pick(m, "lastName", "last_name")].filter(Boolean).join(" ") || pick(m, "email");
-            if (id != null && nm) userMap[String(id)] = String(nm);
-          });
-          if (Object.keys(userMap).length) break;
-        }
-      } catch (e) { /* endpoint inconnu, on continue */ }
-    }
-    // Override manuel (l'API n'expose pas toujours les noms) :
-    // Vercel → ICLOSED_USER_MAP = {"22743":"Ecom ascension","123":"Diego","456":"saphia"}
     try {
       const ov = JSON.parse(process.env.ICLOSED_USER_MAP || "{}");
       Object.entries(ov).forEach(([id, nm]) => { if (nm) userMap[String(id)] = String(nm); });
     } catch (e) { /* JSON invalide -> ignoré */ }
-    if (!userMap["22743"]) userMap["22743"] = "Ecom ascension"; // compte principal connu
 
     // Import complet (pagination défensive : limit + offset).
     const all = [];

@@ -572,6 +572,24 @@ export default function App() {
       .then((r) => r.json()).then((d) => d && setCallStats(d)).catch(() => {});
   }, [periodRange.from, periodRange.to]); // eslint-disable-line
 
+  const [closersSync, setClosersSync] = useState(false);
+  const refreshClosers = async () => {
+    setClosersSync(true);
+    try {
+      const ir = await authFetch("/api/iclosed-import", { method: "POST" });
+      const id = await ir.json().catch(() => ({}));
+      if (!ir.ok) throw new Error(id && id.error ? id.error : `Erreur import ${ir.status}`);
+      const cr = await authFetch(`/api/closers?from=${periodRange.from}&to=${periodRange.to}`);
+      const cd = await cr.json();
+      if (cd && !cd.error) setCallStats(cd);
+      flash(`iClosed actualisé : ${id.fetched || 0} appels importés, ${id.stored || 0} enregistrés.`);
+    } catch (e) {
+      flash(`Import iClosed impossible : ${e.message}`);
+    } finally {
+      setClosersSync(false);
+    }
+  };
+
   const Delta = (cur, prev, label) => {
     if (!prev && !cur) return null;
     const up = cur >= prev;
@@ -1446,6 +1464,11 @@ export default function App() {
         const reasonMax = Math.max(...(callStats.reasons || []).map((x) => x.n), 1);
         const tip = { background: "#0f1117", border: "1px solid #2a2f3a", borderRadius: 10, fontSize: 12, color: "#fff" };
         return (<>
+        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
+          <button className="chip chip-btn" onClick={refreshClosers} disabled={closersSync} title="Réimporte les appels depuis iClosed (purge + reconstruction)">
+            <RotateCcw size={14} className={closersSync ? "spin" : ""} /> {closersSync ? "Import iClosed…" : "Réimporter iClosed"}
+          </button>
+        </div>
         {/* TUNNEL : Strategy calls bookés -> Honorés -> Ventes */}
         <div className="section-h"><TrendingUp size={15} /> Tunnel</div>
         <div className="card funnel-card">
