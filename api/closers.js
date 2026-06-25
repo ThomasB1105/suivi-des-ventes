@@ -26,8 +26,12 @@ module.exports = async (req, res) => {
   if (!isConfigured()) { res.status(200).json({ totalCalls: 0, configured: false }); return; }
 
   try {
-    const raw = (await cmd(["LRANGE", "iclosed:calls", "0", "4999"])) || [];
+    // On lit le hash propre (import API + webhook, dédupliqué par id). La vieille
+    // liste `iclosed:calls` n'est lue qu'en repli si le hash est vide : elle contient
+    // des données périmées (horodatage de booking, statuts d'avant les outcomes) qui
+    // gonflaient le compte et masquaient les vrais résultats.
     const hashRaw = (await cmd(["HGETALL", "iclosed:calls_h"])) || [];
+    const raw = hashRaw.length ? [] : ((await cmd(["LRANGE", "iclosed:calls", "0", "4999"])) || []);
     // Dédoublonnage par clé NATURELLE (email + horaire) et non par id : le webhook
     // et l'import API attribuent des id différents au même appel, ce qui le comptait
     // deux fois. On conserve à chaque fois l'enregistrement le plus informatif.
@@ -150,9 +154,10 @@ module.exports = async (req, res) => {
     const objections = {};
     const qmap = {};
     const weeks = {};   // weekKey -> { created, won, lost, pending, noshow, cancelled }
-    let revenue = 0, deposits = 0, recurring = 0;
+    let revenue = 0, deposits = 0, recurring = 0, upcomingCount = 0;
 
     calls.forEach((c) => {
+      if (c.upcoming || c.status === "booked") upcomingCount += 1;
       let st = c.status || "other";
       // L'appel gagnant d'un email ayant une vente est forcé "gagné" (même si
       // iClosed l'a marqué perdu/en attente) : le revenu doit aller au closer.
@@ -255,6 +260,7 @@ module.exports = async (req, res) => {
       outcomes: out,
       totals: {
         scheduled,
+        upcoming: upcomingCount,
         sales: out.won, noSale: out.lost, pending: out.pending,
         showRate: heldOrNo ? held / heldOrNo : 0,
         noShowRate: heldOrNo ? out.noshow / heldOrNo : 0,

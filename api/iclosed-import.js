@@ -46,15 +46,19 @@ function mapCall(c, userMap) {
   const uid = pick(c, "userId", "ownerId", "hostId");
   const closer = (userMap && (userMap[uid] || userMap[String(uid)])) || pick(c, "closerName", "hostName", "ownerName") || (uid ? `Closer ${uid}` : "Non attribué");
 
-  const outcomeAns = String(qa["Call Outcome"] || qa["Outcome"] || "").toUpperCase();
-  const topOutcome = String(pick(c, "outcome") || "").toUpperCase();
+  const outcomeAns = String(qa["Call Outcome"] || qa["Outcome"] || qa["Disposition"] || "").toUpperCase();
+  const topOutcome = String(pick(c, "outcome", "callOutcome", "disposition", "result", "status") || "").toUpperCase();
+  const schedStatus = String(pick(c, "schedulingStatus", "currentSchedulingStatus", "initialSchedulingStatus", "stage") || qa["Scheduling Status"] || "").toUpperCase();
+  const oc = `${outcomeAns} ${topOutcome} ${schedStatus}`;
+  const isUpcoming = String(c.__eventType || c.eventType || "").toUpperCase() === "UPCOMING";
   let status;
-  if (/NO.?SHOW/.test(outcomeAns) || /NO.?SHOW/.test(topOutcome)) status = "noshow";
-  else if (/NO.?SALE|LOST|REFUS/.test(outcomeAns)) status = "lost";
-  else if (/SALE|WON|GAGN|DEPOSIT|ACOMPTE|CLOSED.?WON/.test(outcomeAns)) status = "won";
-  else if (/CANCEL|ANNUL/.test(topOutcome)) status = "cancelled";
-  else if (String(c.eventType || "").toUpperCase() === "UPCOMING") status = "booked";
-  else if (topOutcome === "COMPLETED" || c.completed === true) status = "show";
+  if (/NO.?SHOW/.test(oc)) status = "noshow";
+  else if (/RESCHEDUL|REPLANIF|REPORT/.test(oc)) status = "rescheduled";
+  else if (/CANCEL|ANNUL/.test(oc) || topOutcome === "ADMIN_CANCELLED") status = "cancelled";
+  else if (/NO.?SALE|LOST|PERDU|REFUS|NOT.?INTEREST|UNQUALIF|DISQUALIF/.test(oc)) status = "lost";
+  else if (/\bSALE\b|WON|GAGN|DEPOSIT|ACOMPTE|CLOSED.?WON|PAID|CUSTOMER|WIN/.test(oc)) status = "won";
+  else if (/FOLLOW|RELANCE|SHOW.?UP|PRESENT|COMPLETE|ATTEND|HELD|DONE/.test(oc)) status = "show";
+  else if (isUpcoming) status = "booked";
   else status = "pending";
 
   const reason = qa["No Sale Reason"] || pick(c, "noSaleReason") || undefined;
@@ -75,6 +79,8 @@ function mapCall(c, userMap) {
     objection: objection ? String(objection) : undefined,
     event: pick(ev, "name", "title") || pick(c, "eventName", "callType") || undefined,
     amount: num(pick((c.deals && c.deals[0]) || {}, "amount", "value", "price") || pick(c, "amount", "dealValue", "revenue")) || undefined,
+    upcoming: isUpcoming || undefined,
+    outcome: (outcomeAns || topOutcome) ? String(outcomeAns || topOutcome) : undefined, // libellé brut pour transparence
     at: new Date().toISOString(),
   };
 }
@@ -132,12 +138,17 @@ module.exports = async (req, res) => {
         let page; try { page = await icGet("/eventCalls", key, { eventType: et, limit: 100, offset }); } catch (e) { break; }
         const arr = Array.isArray(page) ? page : (page.eventCalls || (page.data && (page.data.eventCalls || page.data.items || (Array.isArray(page.data) ? page.data : null))) || page.items || page.results || []);
         if (!Array.isArray(arr) || !arr.length || (arr.length === seen && offset === 0)) break;
+        arr.forEach((x) => { if (x && typeof x === "object") x.__eventType = et; }); // PAST / UPCOMING
         all.push(...arr);
         if (arr.length < 100) break;
         offset += 100; seen = arr.length;
       }
     }
     const recs = all.map((c) => mapCall(c, userMap));
+    // Purge avant réécriture : l'import est la source de vérité (toute l'historique
+    // iClosed). Sans ça, les anciens "à venir" devenus passés et les doublons
+    // s'accumulaient (ex. 9 "à venir" au lieu de 2). On repart d'une base propre.
+    if (recs.length) { try { await cmd(["DEL", "iclosed:calls_h"]); } catch (e) {} }
     let stored = 0;
     for (let i = 0; i < recs.length; i += 40) {
       const batch = recs.slice(i, i + 40);

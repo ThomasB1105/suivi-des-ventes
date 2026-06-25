@@ -1430,7 +1430,6 @@ export default function App() {
 
       {/* CLOSERS — reporting type iClosed Analytics (FR) */}
       {tab === "closers" && (() => {
-        const o = callStats.outcomes || {};
         const fn = callStats.funnel || { created: 0, held: 0, won: 0 };
         const bd = callStats.breakdown || { revenue: 0, won: 0, deposits: 0, recurring: 0 };
         const series = (callStats.series || []).map((w) => ({ ...w, lbl: w.week ? `${w.week.slice(8, 10)}/${w.week.slice(5, 7)}` : "" }));
@@ -1454,7 +1453,7 @@ export default function App() {
 
         {/* TAUX CLÉS */}
         <div className="kpis kpis-home" style={{ marginTop: 4 }}>
-          <div className="card"><div className="kpi-label">Appels créés</div><div className="kpi-val">{callT.scheduled || 0}</div><div className="kpi-foot">{o.booked || 0} à venir</div></div>
+          <div className="card"><div className="kpi-label">Appels créés</div><div className="kpi-val">{callT.scheduled || 0}</div><div className="kpi-foot">{callT.upcoming || 0} à venir</div></div>
           <div className="card"><div className="kpi-label">Show-up</div><div className="kpi-val">{callStats.totalCalls ? pct(callT.showRate) : "—"}</div><div className="kpi-foot">présents / honorés</div></div>
           <div className="card"><div className="kpi-label">Engagement</div><div className="kpi-val">{callStats.totalCalls ? pct(callT.engagementRate) : "—"}</div><div className="kpi-foot">ont interagi</div></div>
           <div className="card"><div className="kpi-label">Closing</div><div className="kpi-val green">{callStats.totalCalls ? pct(callT.closingRate) : "—"}</div><div className="kpi-foot">{callT.sales} / {callT.sales + callT.noSale} closés</div></div>
