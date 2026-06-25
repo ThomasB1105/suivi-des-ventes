@@ -33,8 +33,11 @@ module.exports = async (req, res) => {
     // deux fois. On conserve à chaque fois l'enregistrement le plus informatif.
     const natKey = (c) => {
       const em = String(c.email || "").toLowerCase();
-      const dt = String(c.date || "").slice(0, 16); // YYYY-MM-DDTHH:MM
-      if (em && dt) return `${em}|${dt}`;
+      // Normalisation en minute-epoch (UTC) pour neutraliser fuseau/secondes/format :
+      // le webhook et l'import peuvent écrire le même horaire avec un offset différent.
+      const t = Date.parse(c.date);
+      const dt = isNaN(t) ? String(c.date || "").slice(0, 16) : String(Math.round(t / 60000));
+      if (em && c.date) return `${em}|${dt}`;
       return c.id || `${em}|${c.date}|${c.status}`;
     };
     const rank = (s) => ({ won: 5, lost: 4, noshow: 4, cancelled: 3, show: 2, rescheduled: 2, pending: 1, booked: 1, other: 0 }[s] || 0);
@@ -45,6 +48,7 @@ module.exports = async (req, res) => {
       return rb > ra ? b : a;
     };
     const byId = new Map();
+    const nRaw = raw.length + Math.floor(hashRaw.length / 2);
     const add = (c) => { const k = natKey(c); byId.set(k, better(byId.get(k), c)); };
     raw.forEach((s) => { try { add(JSON.parse(s)); } catch {} });
     for (let i = 1; i < hashRaw.length; i += 2) { try { add(JSON.parse(hashRaw[i])); } catch {} }
@@ -54,42 +58,19 @@ module.exports = async (req, res) => {
     // L'API iClosed n'expose pas les noms : on traduit "Closer <id>" via la carte
     // configurable Vercel → ICLOSED_USER_MAP = {"22743":"Melo", ...}.
     let NAMEMAP = {}; try { NAMEMAP = JSON.parse(process.env.ICLOSED_USER_MAP || "{}"); } catch {}
-    if (!NAMEMAP["22743"]) NAMEMAP["22743"] = "Melo";          // compte principal (ex-"Ecom ascension")
-    if (!NAMEMAP["Ecom ascension"]) NAMEMAP["Ecom ascension"] = "Melo";
+    // Correspondance explicite (confirmée par l'utilisateur sur ses données) :
+    const SEED = { "22743": "Melo", "Ecom ascension": "Melo", "33880": "Saphia", "Non attribué": "Diego" };
+    Object.entries(SEED).forEach(([k, v]) => { if (!NAMEMAP[k]) NAMEMAP[k] = v; });
     const renameCloser = (name) => {
-      if (!name) return "Non attribué";
-      const m = /^Closer\s+(.+)$/i.exec(String(name));
+      const m = /^Closer\s+(.+)$/i.exec(String(name || ""));
       const id = m ? m[1].trim() : null;
       if (id && NAMEMAP[id]) return NAMEMAP[id];
-      if (NAMEMAP[name]) return NAMEMAP[name];
-      return String(name);
+      const key = name ? String(name) : "Non attribué"; // les appels sans closer sont attribués à Diego
+      return NAMEMAP[key] || key;
     };
     calls.forEach((c) => { c.closer = renameCloser(c.closer); });
     // Exclut les données de test injectées manuellement lors du branchement webhook.
     calls = calls.filter((c) => !/test\s*closer/i.test(String(c.closer || "")) && !/(^|@)test\b/i.test(String(c.email || "")));
-
-    // Attribution automatique des closers restants, calculée sur TOUT l'historique
-    // (et non sur la période affichée) pour que l'identité d'un userId reste stable.
-    // Signal d'identification (indication utilisateur) : Diego n'est actif que
-    // récemment -> c'est le seul closer (hors Melo) à avoir des appels CETTE SEMAINE.
-    // Diego = "Closer <id>" non mappé le plus actif sur les 7 derniers jours ;
-    // Saphia = le suivant (par volume tout-historique). Surclassé par ICLOSED_USER_MAP.
-    const weekAgoISO = new Date(Date.now() - 7 * 864e5).toISOString().slice(0, 10);
-    const allTimeCnt = {}, weekCnt = {};
-    calls.forEach((c) => {
-      const lbl = String(c.closer || "");
-      if (!/^Closer\s+\d+/i.test(lbl)) return;
-      allTimeCnt[lbl] = (allTimeCnt[lbl] || 0) + 1;
-      if (String(c.date || "").slice(0, 10) >= weekAgoISO) weekCnt[lbl] = (weekCnt[lbl] || 0) + 1;
-    });
-    const autoMap = {};
-    // 1) Diego = le non-mappé le plus actif cette semaine (s'il y en a un)
-    const diego = Object.entries(weekCnt).sort((a, b) => b[1] - a[1])[0];
-    if (diego) autoMap[diego[0]] = "Diego";
-    // 2) Saphia = le non-mappé restant le plus actif tout-historique
-    const saphia = Object.entries(allTimeCnt).filter(([lbl]) => !autoMap[lbl]).sort((a, b) => b[1] - a[1])[0];
-    if (saphia) autoMap[saphia[0]] = "Saphia";
-    if (Object.keys(autoMap).length) calls.forEach((c) => { if (autoMap[c.closer]) c.closer = autoMap[c.closer]; });
 
     // Filtre par période (aligné sur le sélecteur de l'app) : ?from=YYYY-MM-DD&to=YYYY-MM-DD
     const from = req.query && req.query.from ? String(req.query.from).slice(0, 10) : null;
@@ -102,6 +83,15 @@ module.exports = async (req, res) => {
         if (to && d > to) return false;
         return true;
       });
+    }
+
+    // Diagnostic : GET /api/closers?debug=1&from&to -> liste brute pour repérer les doublons.
+    if (req.query && (req.query.debug === "1" || req.query.debug === "true")) {
+      const byStatus = {}, byCloser = {};
+      calls.forEach((c) => { byStatus[c.status] = (byStatus[c.status] || 0) + 1; byCloser[c.closer] = (byCloser[c.closer] || 0) + 1; });
+      const list = calls.map((c) => ({ id: c.id, email: c.email, date: c.date, status: c.status, closer: c.closer, source: c.source })).sort((a, b) => String(a.email).localeCompare(String(b.email)) || String(a.date).localeCompare(String(b.date)));
+      res.status(200).json({ debug: true, nRaw, nDedup: calls.length, period: { from, to }, byStatus, byCloser, list });
+      return;
     }
 
     // Nb de contacts iClosed (haut du funnel)
