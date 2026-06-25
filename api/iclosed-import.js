@@ -51,24 +51,30 @@ function mapCall(c, userMap) {
   const uid = pick(c, "userId", "ownerId", "hostId") || u.id;
   const closer = uname || (userMap && (userMap[uid] || userMap[String(uid)])) || pick(c, "closerName", "hostName") || (uid ? `Closer ${uid}` : "Non attribué");
 
-  // Résultat de l'appel : il est dans c.task[0] (outcome / noSaleReason / objection),
-  // PAS dans c.outcome. C'est ce qui empêchait les no-show/ventes de remonter.
+  // Résultat de l'appel : la disposition iClosed vit dans c.task[0]. L'enum est
+  // réparti entre task.outcome ET task.noSaleReason (ex. NO_SHOW / FOLLOW_UP_SCHEDULED
+  // / UNQUALIFIED / SALE). On combine les deux pour décider le statut.
   const task = (Array.isArray(c.task) ? c.task[0] : c.task) || {};
-  const outcomeAns = String(task.outcome || qa["Call Outcome"] || qa["Outcome"] || "").toUpperCase();
+  const outcome = String(task.outcome || qa["Call Outcome"] || qa["Outcome"] || "").toUpperCase();
+  const nsr = String(task.noSaleReason || qa["No Sale Reason"] || "").toUpperCase();
+  const dispo = `${outcome} ${nsr}`;
   const isCancelled = !!(c.cancelReason || c.cancelledBy);
   const isRescheduled = !!(c.rescheduledBy || c.rescheduleReason);
   const isUpcoming = String(c.__eventType || c.eventType || "").toUpperCase() === "UPCOMING";
   let status;
   if (isCancelled) status = "cancelled";
-  else if (/NO.?SHOW/.test(outcomeAns)) status = "noshow";
-  else if (/NO.?SALE|LOST|PERDU|REFUS|NOT.?INTEREST|UNQUALIF|DISQUALIF/.test(outcomeAns)) status = "lost";
-  else if (/\bSALE\b|WON|GAGN|DEPOSIT|ACOMPTE|CLOSED.?WON|PAID|CUSTOMER|WIN/.test(outcomeAns)) status = "won";
-  else if (/FOLLOW|RELANCE|SHOW.?UP|PRESENT|COMPLETE|ATTEND|HELD|DONE/.test(outcomeAns)) status = "show";
-  else if (isRescheduled && !outcomeAns) status = "rescheduled";
+  else if (/NO.?SHOW/.test(dispo)) status = "noshow";
+  else if (/\bSALE\b|WON|GAGN|DEPOSIT|ACOMPTE|CLOSED.?WON|PAID|WIN/.test(outcome) && !/NO.?SALE/.test(outcome)) status = "won";
+  else if (/FOLLOW.?UP|RELANCE/.test(dispo)) status = "show";        // follow-up = a eu lieu
+  else if (/NO.?SALE|LOST|PERDU|REFUS|NOT.?INTEREST|UNQUALIF|DISQUALIF/.test(dispo)) status = "lost";
+  else if (/SHOW.?UP|PRESENT|COMPLETE|ATTEND|HELD|DONE/.test(dispo)) status = "show";
+  else if (isRescheduled && !outcome && !nsr) status = "rescheduled";
   else if (isUpcoming) status = "booked";
-  else status = "pending"; // appel passé sans résultat renseigné
+  else status = "pending"; // appel passé sans résultat renseigné = considéré présent
 
-  const reason = task.noSaleReason || qa["No Sale Reason"] || undefined;
+  // Vraie raison de non-vente : on exclut les valeurs qui sont en fait des statuts.
+  const realReason = /NO.?SHOW|FOLLOW.?UP|SHOW.?UP|PRESENT/.test(nsr) ? "" : (task.noSaleReason || qa["No Sale Reason"] || "");
+  const reason = realReason || undefined;
   const objection = task.objection || qa["Objection"] || undefined;
   // réponses de qualif (on retire les méta)
   const answers = {};
@@ -90,7 +96,7 @@ function mapCall(c, userMap) {
     event: pick(ev, "name", "title") || c.callType || undefined,
     amount: num(pick((c.deals && c.deals[0]) || {}, "amount", "value", "price", "dealValue") || pick(c, "amount", "dealValue", "revenue")) || undefined,
     upcoming: isUpcoming || undefined,
-    outcome: task.outcome ? String(task.outcome) : undefined, // libellé brut pour transparence
+    outcome: (task.outcome || task.noSaleReason) ? String(task.outcome || task.noSaleReason) : undefined, // libellé brut
     at: new Date().toISOString(),
   };
 }
@@ -109,12 +115,27 @@ module.exports = async (req, res) => {
 
   try {
     if (req.query && (req.query.debug === "1" || req.query.debug === "true")) {
-      const samples = {};
-      for (const et of ["PAST", "UPCOMING", ""]) {
-        try { samples[et || "ALL"] = await icGet("/eventCalls", key, { limit: 3, eventType: et || undefined }); }
-        catch (e) { samples[et || "ALL"] = { _error: e.status, _body: e.body }; }
-      }
-      res.status(200).json({ debug: true, samples });
+      // Vue compacte : pour 30 appels passés, on montre où vit le résultat
+      // (task, outcome, statuts divers) afin de caler la détection no-show/vente.
+      let page;
+      try { page = await icGet("/eventCalls", key, { eventType: "PAST", limit: 30 }); }
+      catch (e) { res.status(200).json({ debug: true, _error: e.status, _body: e.body }); return; }
+      const arr = (page && page.data && page.data.eventCalls) || page.eventCalls || [];
+      const compact = arr.map((c) => ({
+        name: c.inviteeName, date: c.dateTime,
+        callType: c.callType,
+        task: c.task,                      // outcome / noSaleReason / objection
+        outcome: c.outcome, status: c.status, callStatus: c.callStatus,
+        cancelledBy: c.cancelledBy, rescheduledBy: c.rescheduledBy,
+        deals: c.deals,
+        topLevelKeys: Object.keys(c),
+      }));
+      res.status(200).json({ debug: true, count: arr.length, compact });
+      return;
+    }
+    if (req.query && req.query.debug === "raw") {
+      let page; try { page = await icGet("/eventCalls", key, { eventType: "PAST", limit: 5 }); } catch (e) { page = { _error: e.status, _body: e.body }; }
+      res.status(200).json({ debug: "raw", page });
       return;
     }
 
