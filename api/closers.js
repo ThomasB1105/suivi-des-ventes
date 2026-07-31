@@ -158,6 +158,7 @@ module.exports = async (req, res) => {
     const reasons = {};
     const objections = {};
     const qmap = {};
+    const noShows = [];   // liste des appels no-show (qui a posé un lapin)
     const weeks = {};   // weekKey -> { created, won, lost, pending, noshow, cancelled }
     let revenue = 0, deposits = 0, recurring = 0, upcomingCount = 0;
 
@@ -205,14 +206,29 @@ module.exports = async (req, res) => {
       if (st === "lost" && c.reason) bump(reasons, c.reason);
       if (c.objection) bump(objections, c.objection);
 
-      // cohorte : conversion par réponse aux questions
+      // liste des no-show (avec le contexte : âge / budget lus dans les réponses)
+      if (st === "noshow") {
+        noShows.push({
+          email: c.email || "—",
+          closer: c.closer || "Non attribué",
+          date: c.date,
+          event: c.event || "—",
+          answers: c.answers && typeof c.answers === "object" ? c.answers : undefined,
+        });
+      }
+
+      // cohorte : conversion par réponse aux questions (nb / no-show / présents / ventes / revenu)
+      const isPresent = st === "won" || st === "lost" || st === "show" || st === "pending";
       if (c.answers && typeof c.answers === "object") {
         Object.entries(c.answers).forEach(([q, a]) => {
           const ans = String(a == null ? "—" : a);
           if (!qmap[q]) qmap[q] = {};
-          if (!qmap[q][ans]) qmap[q][ans] = { answer: ans, n: 0, won: 0 };
-          qmap[q][ans].n += 1;
-          if (st === "won") qmap[q][ans].won += 1;
+          if (!qmap[q][ans]) qmap[q][ans] = { answer: ans, n: 0, won: 0, noshow: 0, present: 0, revenue: 0 };
+          const cell = qmap[q][ans];
+          cell.n += 1;
+          if (st === "noshow") cell.noshow += 1;
+          if (isPresent) cell.present += 1;
+          if (st === "won") { cell.won += 1; cell.revenue += amt; }
         });
       }
     });
@@ -243,13 +259,17 @@ module.exports = async (req, res) => {
       const vals = Object.values(ans);
       const total = vals.reduce((a, v) => a + v.n, 0);
       if (total < 3) return false;                       // pas assez de volume
-      if (vals.length > 8) return false;                 // trop d'options = liste de leads, pas une cohorte
+      if (vals.length > 10) return false;                // trop d'options = liste de leads, pas une cohorte
       if (vals.length / total > 0.6) return false;       // surtout du texte libre / réponses uniques
       return true;
     }).map(([q, ans]) => ({
       question: q,
       total: Object.values(ans).reduce((a, v) => a + v.n, 0),
-      answers: Object.values(ans).map((a) => ({ ...a, rate: a.n ? a.won / a.n : 0 })).sort((x, y) => y.n - x.n).slice(0, 8),
+      answers: Object.values(ans).map((a) => ({
+        answer: a.answer, n: a.n, noshow: a.noshow, present: a.present, won: a.won, revenue: a.revenue,
+        showRate: (a.present + a.noshow) ? a.present / (a.present + a.noshow) : 0,   // présents / planifiés
+        rate: a.present ? a.won / a.present : 0,                                     // closing = ventes / honorés
+      })).sort((x, y) => y.n - x.n).slice(0, 10),
     }));
 
     const series = Object.values(weeks).sort((a, b) => a.week.localeCompare(b.week));
@@ -295,6 +315,7 @@ module.exports = async (req, res) => {
       reasons: toArr(reasons),
       objections: toArr(objections),
       questions,
+      noShows: noShows.sort((a, b) => String(b.date).localeCompare(String(a.date))),
     });
   } catch (e) {
     res.status(200).json({ totalCalls: 0, error: String(e.message || e) });

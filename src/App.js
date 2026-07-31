@@ -1670,29 +1670,52 @@ export default function App() {
           )}
         </div>
 
-        {/* COHORTE DE PLANIFICATION (question × réponse) — datavis */}
-        {(callStats.questions || []).length > 0 && (<>
-          <div className="section-h"><Grid3x3 size={15} /> Cohorte · conversion par réponse</div>
-          <div className="two-col">
-            {callStats.questions.map((q) => {
-              const mx = Math.max(...q.answers.map((a) => a.n), 1);
-              return (
-                <div className="card" style={{ padding: "12px 14px", marginBottom: 0 }} key={q.question}>
-                  <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 10 }}>{q.question} <span className="mut" style={{ fontWeight: 500 }}>· {q.total} appels</span></div>
-                  {q.answers.map((a) => {
-                    const rc = a.rate >= 0.4 ? "#00B894" : a.rate >= 0.2 ? "#FDCB6E" : a.n && a.won === 0 ? "#636E72" : "#7C5CFF";
-                    return (
-                      <div className="cohrow" key={a.answer}>
-                        <span className="cohlbl" title={a.answer}>{a.answer}</span>
-                        <span className="cohbar"><span className="cohbar-fill" style={{ width: `${(a.n / mx) * 100}%`, background: "rgba(124,92,255,.35)" }} /><span className="cohbar-n">{a.n}</span></span>
-                        <span className="cohrate" style={{ color: rc }}>{pct(a.rate)}</span>
-                      </div>
-                    );
-                  })}
-                </div>
-              );
-            })}
+        {/* QUI A NO-SHOW */}
+        {(callStats.noShows || []).length > 0 && (<>
+          <div className="section-h"><AlertTriangle size={15} /> No-show · qui a posé un lapin ({callStats.noShows.length})</div>
+          <div className="card" style={{ padding: 6 }}>
+            <table className="tbl">
+              <thead><tr><th>Contact</th><th>Closer</th><th>Date</th><th>Événement</th></tr></thead>
+              <tbody>
+                {callStats.noShows.map((n, i) => (
+                  <tr key={i}>
+                    <td className="lab">{n.email}</td>
+                    <td>{n.closer}</td>
+                    <td className="mut">{String(n.date || "").slice(0, 10)}</td>
+                    <td className="mut">{n.event}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
+        </>)}
+
+        {/* COHORTES (âge, budget…) : Nb / No-show / Show-up / Closing / Revenu par réponse */}
+        {(callStats.questions || []).length > 0 && (<>
+          <div className="section-h"><Grid3x3 size={15} /> Cohortes · par réponse (âge, budget…)</div>
+          {callStats.questions.map((q) => (
+            <div className="card" style={{ padding: 6, marginBottom: 12 }} key={q.question}>
+              <div style={{ padding: "8px 12px", fontWeight: 700, fontSize: 13 }}>{q.question} <span className="mut" style={{ fontWeight: 500 }}>· {q.total} appels</span></div>
+              <table className="tbl">
+                <thead><tr>
+                  <th>Réponse</th><th className="num">Nb</th><th className="num">No-show</th><th className="num">Show-up</th><th className="num">Ventes</th><th className="num">Closing</th><th className="num">Revenu</th>
+                </tr></thead>
+                <tbody>
+                  {q.answers.map((a) => (
+                    <tr key={a.answer}>
+                      <td className="lab">{a.answer}</td>
+                      <td className="num">{a.n}</td>
+                      <td className="num" style={{ color: a.noshow > 0 ? "var(--red)" : "var(--muted)" }}>{a.noshow || 0}</td>
+                      <td className="num">{pct(a.showRate)}</td>
+                      <td className="num">{a.won || 0}</td>
+                      <td className={`num ${a.rate >= 0.3 ? "green" : ""}`}>{pct(a.rate)}</td>
+                      <td className="num green">{euro(a.revenue || 0)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ))}
         </>)}
 
         {callStats.totalCalls === 0 && (
