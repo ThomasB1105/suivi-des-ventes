@@ -352,8 +352,11 @@ export default function App() {
         const total = schedule.reduce((a, i) => a + (i.cancelled || i.refunded ? 0 : i.amount), 0);
         return { ...inc, client: loc.client, phone: loc.phone || inc.phone, email: loc.email || inc.email, closer: loc.closer, source: loc.source, channel: loc.channel, ov, deletedInsts: loc.deletedInsts || [], schedule, total };
       });
-      // conserver les ventes purement manuelles (ajoutées via "Ajouter une vente")
-      prev.forEach((s) => { if (!incIds.has(s.id)) merged.push(s); });
+      // conserver les ventes purement manuelles (ajoutées via "Ajouter une vente").
+      // Les fiches d'origine serveur (id "sio-…") absentes de la réponse ont été
+      // purgées côté base -> on les laisse mourir, sinon elles reviennent à vie
+      // depuis le cache local (ex. la fausse fiche "Client Stripe").
+      prev.forEach((s) => { if (!incIds.has(s.id) && !String(s.id).startsWith("sio-")) merged.push(s); });
       try { localStorage.setItem(STORAGE_KEY, JSON.stringify(merged)); } catch (e) { /* quota */ }
       return merged;
     });
