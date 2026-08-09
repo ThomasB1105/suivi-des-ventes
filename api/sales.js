@@ -57,6 +57,10 @@ function groupIntoSales(events) {
         else kept[i] = richer(kept[i], e);   // même paiement en double -> on garde le plus complet
       });
     const evs = kept.sort((a, b) => String(a.date).localeCompare(String(b.date)));
+    // Client dont TOUS les paiements sont annulés/remboursés (ex. remboursement
+    // Stripe importé) : rien d'encaissé -> on ne crée pas de fiche (une fiche
+    // sans échéance datée faisait crasher l'app).
+    if (!evs.length) return null;
 
     // 1) échéances réellement encaissées (une par transaction)
     const schedule = evs.map((e) => ({
@@ -102,9 +106,9 @@ function groupIntoSales(events) {
       offer: c.offer || "—",
       closeDate: (evs[0] && evs[0].date) || (schedule[0] && schedule[0].dueDate),
       total,
-      schedule: schedule.length ? schedule : [{ id: `inst-${slug(c.email)}-0`, dueDate: (evs[0] && evs[0].date), amount: 0, paid: false, method: "auto" }],
+      schedule: schedule.length ? schedule : [{ id: `inst-${slug(c.email)}-0`, dueDate: evs[0].date, amount: 0, paid: false, method: "auto" }],
     };
-  });
+  }).filter(Boolean);
 }
 
 module.exports = async (req, res) => {

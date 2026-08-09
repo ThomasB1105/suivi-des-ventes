@@ -19,7 +19,7 @@ const euro2 = (n) =>
 const round2 = (x) => Math.round(x * 100) / 100;
 const pad = (n) => String(n).padStart(2, "0");
 const toISO = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-const parseLocal = (iso) => { const [y, m, d] = iso.split("-").map(Number); return new Date(y, m - 1, d); };
+const parseLocal = (iso) => { const [y, m, d] = String(iso || "").split("-").map(Number); return y ? new Date(y, m - 1, d || 1) : new Date(); };
 const addMonths = (date, n) => new Date(date.getFullYear(), date.getMonth() + n, date.getDate());
 
 const today = new Date();
@@ -49,7 +49,7 @@ const PRESETS = [
   ["year", "Cette année"], ["lastyear", "Année dernière"], ["all", "Tout"],
 ];
 
-const monthKey = (iso) => iso.slice(0, 7);
+const monthKey = (iso) => String(iso || "").slice(0, 7);
 const monthLabel = (key) => {
   const [y, m] = key.split("-").map(Number);
   return new Date(y, m - 1, 1).toLocaleDateString("fr-FR", { month: "short", year: "2-digit" }).replace(".", "");
@@ -62,13 +62,20 @@ const isActive = (inst) => !inst.cancelled && !inst.refunded; // compte dans les
 
 
 const normalize = (list) =>
-  list.map((s, i) => ({
-    id: s.id || `s${i}-${Math.random().toString(36).slice(2, 7)}`,
-    source: "—", channel: "organic", ...s,
-    schedule: s.schedule.map((inst, j) => ({
-      id: inst.id || `i${i}-${j}-${Math.random().toString(36).slice(2, 7)}`, method: null, ...inst,
-    })),
-  }));
+  (list || []).map((s, i) => {
+    // Garde-fou universel : aucune vente/échéance sans date ne doit entrer dans
+    // le state (une dueDate undefined faisait crasher tout le rendu -> écran noir).
+    const fallbackDate = s.closeDate || toISO(today);
+    return {
+      id: s.id || `s${i}-${Math.random().toString(36).slice(2, 7)}`,
+      source: "—", channel: "organic", ...s,
+      closeDate: s.closeDate || fallbackDate,
+      schedule: (s.schedule || []).map((inst, j) => ({
+        id: inst.id || `i${i}-${j}-${Math.random().toString(36).slice(2, 7)}`, method: null, ...inst,
+        dueDate: inst.dueDate || fallbackDate,
+      })),
+    };
+  });
 
 const STORAGE_KEY = "melo_sales_v5";
 
@@ -396,7 +403,7 @@ export default function App() {
       signed, collected, manual,
       overdueAmt: overdue.reduce((a, i) => a + i.amount, 0), overdueCount: overdue.length,
       outstanding: allInst.filter((i) => i.st !== "paid").reduce((a, i) => a + i.amount, 0),
-      dueThisMonth: allInst.filter((i) => i.st !== "paid" && i.dueDate.slice(0, 7) === cm).reduce((a, i) => a + i.amount, 0),
+      dueThisMonth: allInst.filter((i) => i.st !== "paid" && String(i.dueDate || "").slice(0, 7) === cm).reduce((a, i) => a + i.amount, 0),
     };
   }, [sales, allInst]);
 
