@@ -593,6 +593,27 @@ export default function App() {
     }
   };
 
+  const [stripeSync, setStripeSync] = useState(false);
+  const importStripe = async () => {
+    setStripeSync(true);
+    const ctrl = new AbortController();
+    const to = setTimeout(() => ctrl.abort(), 75000);
+    try {
+      const ir = await authFetch("/api/stripe-import", { method: "POST", signal: ctrl.signal });
+      const id = await ir.json().catch(() => ({}));
+      if (!ir.ok) throw new Error(id && id.error ? id.error : `Erreur import ${ir.status}`);
+      // rafraîchit les ventes (acomptes Stripe) + le reporting closers
+      try { const sr = await authFetch("/api/sales"); const sd = await sr.json(); if (sd && sd.sales) applyDbSales(normalize(sd.sales)); } catch (e2) {}
+      try { const cr = await authFetch(`/api/closers?from=${periodRange.from}&to=${periodRange.to}`); const cd = await cr.json(); if (cd && !cd.error) setCallStats(cd); } catch (e2) {}
+      flash(`Stripe importé : ${id.fetched || 0} paiements, ${id.stored || 0} enregistrés.`);
+    } catch (e) {
+      flash(e.name === "AbortError" ? "Import Stripe trop long (interrompu)." : `Import Stripe impossible : ${e.message}`);
+    } finally {
+      clearTimeout(to);
+      setStripeSync(false);
+    }
+  };
+
   const Delta = (cur, prev, label) => {
     if (!prev && !cur) return null;
     const up = cur >= prev;
@@ -1485,9 +1506,14 @@ export default function App() {
         return (<>
         <div className="closers-head">
           <div className="closers-title"><Phone size={16} /> Reporting des appels</div>
-          <button className={`refresh-btn ${closersSync ? "is-loading" : ""}`} onClick={refreshClosers} disabled={closersSync} title="Réimporte les appels depuis iClosed (purge + reconstruction)">
-            <RotateCcw size={15} className={closersSync ? "spin" : ""} /> {closersSync ? "Import iClosed en cours…" : "Réimporter iClosed"}
-          </button>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button className={`refresh-btn ${stripeSync ? "is-loading" : ""}`} onClick={importStripe} disabled={stripeSync} style={{ background: "linear-gradient(135deg,#635BFF,#8B84FF)", borderColor: "rgba(99,91,255,.5)", boxShadow: "0 4px 14px rgba(99,91,255,.35)" }} title="Importe l'historique des paiements Stripe (acomptes)">
+              <RotateCcw size={15} className={stripeSync ? "spin" : ""} /> {stripeSync ? "Import Stripe en cours…" : "Importer Stripe"}
+            </button>
+            <button className={`refresh-btn ${closersSync ? "is-loading" : ""}`} onClick={refreshClosers} disabled={closersSync} title="Réimporte les appels depuis iClosed (purge + reconstruction)">
+              <RotateCcw size={15} className={closersSync ? "spin" : ""} /> {closersSync ? "Import iClosed en cours…" : "Réimporter iClosed"}
+            </button>
+          </div>
         </div>
 
         {/* TUNNEL : Strategy calls bookés -> Honorés -> Ventes */}
