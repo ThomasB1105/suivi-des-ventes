@@ -22,13 +22,19 @@ const addMonthsISO = (iso, n) => {
   return `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}`;
 };
 
+// Libellés d'offre "génériques" (processeur) qu'on ne veut PAS garder si une
+// vraie offre existe pour le même client (ex. un acompte Stripe hérite de
+// l'offre systeme.io via l'email).
+const GENERIC_OFFER = /^(stripe|whop|import|client|—|-|)$/i;
+
 function groupIntoSales(events) {
   const byClient = {};
   events.filter((e) => Number(e.amount) > 0).forEach((e) => {
-    const key = e.email || e.name || e.id;
+    const key = (e.email || e.name || e.id || "").toLowerCase();
     if (!byClient[key]) byClient[key] = { email: e.email, name: e.name, offer: e.offer, events: [] };
     byClient[key].events.push(e);
-    if (e.offer) byClient[key].offer = e.offer; // dernier libellé d'offre connu
+    // On matche l'email à la vraie offre : une offre réelle prime sur "Stripe"/"Whop".
+    if (e.offer && !GENERIC_OFFER.test(String(e.offer).trim())) byClient[key].offer = e.offer;
   });
 
   return Object.values(byClient).map((c, idx) => {
