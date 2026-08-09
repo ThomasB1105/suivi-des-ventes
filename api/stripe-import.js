@@ -29,12 +29,17 @@ const toISODate = (unix) => { const d = new Date(Number(unix) * 1000); return is
 
 function mapCharge(ch) {
   const bd = ch.billing_details || {};
-  const email = String(bd.email || ch.receipt_email || (ch.customer && ch.customer.email) || "").toLowerCase();
+  const cust = (ch.customer && typeof ch.customer === "object") ? ch.customer : {};
+  const email = String(bd.email || ch.receipt_email || cust.email || "").toLowerCase();
+  // Sans email, impossible de rattacher le paiement à un client : on IGNORE la
+  // charge (sinon tout finissait aggloméré dans une fausse fiche "Client Stripe",
+  // en doublon des paiements systeme.io qui passent par le même compte Stripe).
+  if (!email) return null;
   const refunded = ch.refunded || (ch.amount_refunded && ch.amount_refunded >= ch.amount);
   return {
     id: "stripe-" + ch.id,
     email,
-    name: bd.name || email || "Client Stripe",
+    name: bd.name || cust.name || email,
     amount: Number(ch.amount || 0) / 100,           // BRUT, centimes -> euros/devise
     currency: String(ch.currency || "").toUpperCase() || undefined,
     date: toISODate(ch.created) || toISODate(Date.now() / 1000),
@@ -65,10 +70,12 @@ module.exports = async (req, res) => {
     }
 
     // Pagination par curseur (starting_after), garde-fou strict.
+    // expand=data.customer : l'email est souvent absent de la charge elle-même,
+    // il faut le lire sur le customer -> c'est LA clé du matching par email.
     const all = [];
     let startingAfter = null, guard = 0;
     while (guard++ < 200) {
-      const params = { limit: 100 };
+      const params = { limit: 100, "expand[]": "data.customer" };
       if (startingAfter) params.starting_after = startingAfter;
       let page; try { page = await stripeGet("/charges", key, params); } catch (e) { if (guard === 1) throw e; break; }
       const data = (page && page.data) || [];
@@ -78,8 +85,19 @@ module.exports = async (req, res) => {
       if (!page.has_more) break;
     }
 
-    // On ne garde que les paiements réellement encaissés (ou remboursés -> annulé).
-    const recs = all.filter((ch) => ch.paid && ch.status === "succeeded").map(mapCharge);
+    // On ne garde que les paiements réellement encaissés (ou remboursés -> annulé),
+    // ET rattachables à un email (sinon fiche poubelle + doublons systeme.io).
+    const recs = all.filter((ch) => ch.paid && ch.status === "succeeded").map(mapCharge).filter(Boolean);
+
+    // Purge des anciennes entrées Stripe avant réécriture (l'import est la source
+    // de vérité pour Stripe) : élimine la fausse fiche "Client Stripe" cumulée.
+    try {
+      const keys = (await cmd(["HKEYS", "sales:events"])) || [];
+      const toDel = keys.filter((k) => String(k).startsWith("stripe-"));
+      for (let i = 0; i < toDel.length; i += 100) {
+        await cmd(["HDEL", "sales:events", ...toDel.slice(i, i + 100)]);
+      }
+    } catch (e) { /* purge best-effort */ }
     let stored = 0;
     for (let i = 0; i < recs.length; i += 40) {
       const batch = recs.slice(i, i + 40);
@@ -87,7 +105,8 @@ module.exports = async (req, res) => {
       batch.forEach((r) => { args.push(r.id, JSON.stringify(r)); });
       if (args.length > 2) { await cmd(args); stored += batch.length; }
     }
-    res.status(200).json({ ok: true, fetched: all.length, stored, sample: recs[0] || null });
+    const eligible = all.filter((ch) => ch.paid && ch.status === "succeeded").length;
+    res.status(200).json({ ok: true, fetched: all.length, stored, skippedNoEmail: eligible - recs.length, sample: recs[0] || null });
   } catch (e) {
     res.status(e.status || 500).json({ error: String(e.message || e), detail: e.body });
   }
