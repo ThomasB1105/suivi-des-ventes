@@ -32,18 +32,25 @@ function groupIntoSales(events) {
   });
 
   return Object.values(byClient).map((c, idx) => {
-    // Déduplication : un même paiement peut arriver 2× (webhook + import) avec des
-    // id différents → on dédoublonne par (date + montant).
-    const seenKey = new Set();
-    const evs = c.events
+    // Déduplication cross-source : un même paiement peut arriver via systeme.io
+    // (import/webhook) ET via Stripe/Whop (systeme.io encaisse d'ailleurs via Stripe).
+    // On dédoublonne par MÊME MONTANT à ±1 jour (Stripe date en UTC, systeme.io en
+    // local → parfois un jour d'écart pour la même transaction). En cas de doublon,
+    // on garde l'enregistrement le plus riche (celui qui porte le plan échelonné).
+    const cents = (e) => Math.round((Number(e.amount) || 0) * 100);
+    const dayNum = (e) => { const [y, m, d] = String(e.date || "").split("-").map(Number); return y ? Math.round(Date.UTC(y, m - 1, d || 1) / 864e5) : NaN; };
+    const richer = (a, b) => (((b.planCount > 1 ? 2 : 0) + (b.planAmount > 0 ? 1 : 0)) > ((a.planCount > 1 ? 2 : 0) + (a.planAmount > 0 ? 1 : 0)) ? b : a);
+    const kept = [];
+    c.events
       .filter((e) => e.status !== "cancelled")
-      .filter((e) => {
-        const k = `${e.date}|${Math.round((Number(e.amount) || 0) * 100)}`;
-        if (seenKey.has(k)) return false;
-        seenKey.add(k);
-        return true;
-      })
-      .sort((a, b) => String(a.date).localeCompare(String(b.date)));
+      .sort((a, b) => String(a.date).localeCompare(String(b.date)))
+      .forEach((e) => {
+        const dn = dayNum(e), ct = cents(e);
+        const i = kept.findIndex((k) => cents(k) === ct && Math.abs(dayNum(k) - dn) <= 1);
+        if (i === -1) kept.push(e);
+        else kept[i] = richer(kept[i], e);   // même paiement en double -> on garde le plus complet
+      });
+    const evs = kept.sort((a, b) => String(a.date).localeCompare(String(b.date)));
 
     // 1) échéances réellement encaissées (une par transaction)
     const schedule = evs.map((e) => ({

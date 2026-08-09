@@ -112,17 +112,19 @@ module.exports = async (req, res) => {
     const saleByEmail = {};
     try {
       const sFlat = (await cmd(["HGETALL", "sales:events"])) || [];
-      const seenPay = {}; // email -> Set(date|amount) pour dédupliquer
+      const dayN = (d) => { const [y, m, dd] = String(d || "").split("-").map(Number); return y ? Math.round(Date.UTC(y, m - 1, dd || 1) / 864e5) : NaN; };
+      const paid = {}; // email -> [{cents, day}] déjà comptés (dédup cross-source ±1 jour)
       for (let i = 1; i < sFlat.length; i += 2) {
         let e; try { e = JSON.parse(sFlat[i]); } catch { continue; }
         const amount = Number(e.amount || 0);
         if (!(amount > 0) || e.status === "cancelled") continue;
         const em = String(e.email || "").toLowerCase();
         if (!em) continue;
-        const k = `${e.date}|${Math.round(amount * 100)}`;
-        if (!seenPay[em]) seenPay[em] = new Set();
-        if (seenPay[em].has(k)) continue;
-        seenPay[em].add(k);
+        const ct = Math.round(amount * 100), dn = dayN(e.date);
+        if (!paid[em]) paid[em] = [];
+        // même montant à ±1 jour = même paiement (systeme.io ET Stripe) -> ne compte qu'une fois
+        if (paid[em].some((p) => p.cents === ct && Math.abs(p.day - dn) <= 1)) continue;
+        paid[em].push({ cents: ct, day: dn });
         saleByEmail[em] = (saleByEmail[em] || 0) + amount;
       }
     } catch {}
