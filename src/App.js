@@ -1152,6 +1152,11 @@ export default function App() {
           </>)}
         </div>
             </div>
+            {tab === "clients" && (
+              <button className="chip chip-btn" onClick={importStripe} disabled={stripeSync} title="Importer l'historique des paiements Stripe (acomptes)" style={{ borderColor: "rgba(99,91,255,.6)" }}>
+                <RotateCcw size={13} className={stripeSync ? "spin" : ""} /> {stripeSync ? "Stripe…" : "Importer Stripe"}
+              </button>
+            )}
             <button className="chip chip-btn" onClick={() => syncSio()} disabled={syncing} title="Forcer la récupération des nouvelles ventes">
               <RotateCcw size={13} className={syncing ? "spin" : ""} /> {syncing ? "Actu…" : "Actualiser"}
             </button>
