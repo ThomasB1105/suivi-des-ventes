@@ -98,7 +98,13 @@ module.exports = async (req, res) => {
         const j = await whopGet(`${c.base}?${c.pageParam}=1&per=50`, key);
         const arr = extract(j);
         if (Array.isArray(arr)) { chosen = c; firstPage = j; break; }
-      } catch (e) { errors[c.base] = e.status || String(e.message); }
+      } catch (e) {
+        // On garde le message renvoyé par Whop : il dit exactement ce qui manque
+        // (scope, company id, type de clé...).
+        let msg = "";
+        try { const b = e.body; msg = (b && (b.message || (b.error && (b.error.message || b.error)) || b.detail)) || ""; } catch {}
+        errors[c.base] = `${e.status || "ERR"}${msg ? ` « ${String(msg).slice(0, 120)} »` : ""}`;
+      }
     }
     if (!chosen) {
       // On remonte le statut HTTP de chaque endpoint directement dans le message :
