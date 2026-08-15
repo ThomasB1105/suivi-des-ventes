@@ -603,26 +603,31 @@ export default function App() {
     }
   };
 
-  const [stripeSync, setStripeSync] = useState(false);
-  const importStripe = async () => {
-    setStripeSync(true);
+  // Import générique d'un historique de paiements (Stripe, Whop, …) :
+  // lance l'endpoint d'import puis rafraîchit ventes + reporting closers.
+  const [paySync, setPaySync] = useState(null); // "stripe" | "whop" | null
+  const importPayments = async (src, url) => {
+    setPaySync(src);
     const ctrl = new AbortController();
     const to = setTimeout(() => ctrl.abort(), 75000);
     try {
-      const ir = await authFetch("/api/stripe-import", { method: "POST", signal: ctrl.signal });
+      const ir = await authFetch(url, { method: "POST", signal: ctrl.signal });
       const id = await ir.json().catch(() => ({}));
       if (!ir.ok) throw new Error(id && id.error ? id.error : `Erreur import ${ir.status}`);
-      // rafraîchit les ventes (acomptes Stripe) + le reporting closers
       try { const sr = await authFetch("/api/sales"); const sd = await sr.json(); if (sd && sd.sales) applyDbSales(normalize(sd.sales)); } catch (e2) {}
       try { const cr = await authFetch(`/api/closers?from=${periodRange.from}&to=${periodRange.to}`); const cd = await cr.json(); if (cd && !cd.error) setCallStats(cd); } catch (e2) {}
-      flash(`Stripe importé : ${id.fetched || 0} paiements, ${id.stored || 0} enregistrés.`);
+      flash(`${src === "whop" ? "Whop" : "Stripe"} importé : ${id.fetched || 0} paiements, ${id.stored || 0} enregistrés${id.skipped || id.skippedNoEmail ? ` (${id.skipped || id.skippedNoEmail} ignorés sans email)` : ""}.`);
     } catch (e) {
-      flash(e.name === "AbortError" ? "Import Stripe trop long (interrompu)." : `Import Stripe impossible : ${e.message}`);
+      flash(e.name === "AbortError" ? "Import trop long (interrompu)." : `Import ${src} impossible : ${e.message}`);
     } finally {
       clearTimeout(to);
-      setStripeSync(false);
+      setPaySync(null);
     }
   };
+  const stripeSync = paySync === "stripe";
+  const importStripe = () => importPayments("stripe", "/api/stripe-import");
+  const whopSync = paySync === "whop";
+  const importWhop = () => importPayments("whop", "/api/whop-import");
 
   const Delta = (cur, prev, label) => {
     if (!prev && !cur) return null;
@@ -1162,11 +1167,14 @@ export default function App() {
           </>)}
         </div>
             </div>
-            {tab === "clients" && (
-              <button className="chip chip-btn" onClick={importStripe} disabled={stripeSync} title="Importer l'historique des paiements Stripe (acomptes)" style={{ borderColor: "rgba(99,91,255,.6)" }}>
+            {tab === "clients" && (<>
+              <button className="chip chip-btn" onClick={importWhop} disabled={!!paySync} title="Importer l'historique des paiements Whop" style={{ borderColor: "rgba(255,110,64,.6)" }}>
+                <RotateCcw size={13} className={whopSync ? "spin" : ""} /> {whopSync ? "Whop…" : "Importer Whop"}
+              </button>
+              <button className="chip chip-btn" onClick={importStripe} disabled={!!paySync} title="Importer l'historique des paiements Stripe (acomptes)" style={{ borderColor: "rgba(99,91,255,.6)" }}>
                 <RotateCcw size={13} className={stripeSync ? "spin" : ""} /> {stripeSync ? "Stripe…" : "Importer Stripe"}
               </button>
-            )}
+            </>)}
             <button className="chip chip-btn" onClick={() => syncSio()} disabled={syncing} title="Forcer la récupération des nouvelles ventes">
               <RotateCcw size={13} className={syncing ? "spin" : ""} /> {syncing ? "Actu…" : "Actualiser"}
             </button>
