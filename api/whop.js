@@ -36,13 +36,6 @@ const toISODate = (v) => {
   else d = new Date(v);
   return isNaN(d) ? undefined : d.toISOString().slice(0, 10);
 };
-function classify(type) {
-  const t = String(type || "").toLowerCase();
-  if (/(refund|rembours|dispute|chargeback|cancel|annul)/.test(t)) return "cancelled";
-  if (/(fail|declin|refus|unpaid)/.test(t)) return "failed";
-  return "paid";
-}
-
 module.exports = async (req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
@@ -85,11 +78,16 @@ module.exports = async (req, res) => {
     const type = pick(body, "type", "action", "event") || "";
     const data = body.data || body.payload || body;
 
-    // On ne crée une vente que pour un paiement (succeeded) ou un remboursement.
-    const isPayment = /payment/i.test(String(type)) || deepFind(data, ["final_amount", "amount", "subtotal", "amount_after_fees"]) !== undefined;
-    if (!isPayment) { res.status(200).json({ ok: true, ignored: "non-payment", type }); return; }
+    // On ne crée une vente que pour un paiement RÉELLEMENT encaissé ou un
+    // remboursement/litige. Les autres événements (payment_created,
+    // payment_pending, payment_failed, chat, membership…) sont ignorés :
+    // un paiement "créé" ou "en attente" n'est PAS du revenu.
+    const t = String(type).toLowerCase();
+    const isRefund = /(refund|dispute|chargeback)/.test(t);
+    const isSucceeded = /succeed|success|paid/.test(t);
+    if (!isRefund && !isSucceeded) { res.status(200).json({ ok: true, ignored: "event non encaissé", type }); return; }
 
-    const status = classify(type);
+    const status = isRefund ? "cancelled" : "paid";
     const email = String(pick(data, "email", "user_email") || deepEmail(data) || deepEmail(body) || "").toLowerCase();
     const name = pick(data, "name", "username", "full_name") || deepFind(data, ["name", "username", "full_name"]) || email || "Client Whop";
     // Montant BRUT (avant frais Whop) : final_amount / amount / subtotal en priorité.
@@ -99,8 +97,6 @@ module.exports = async (req, res) => {
     const date = toISODate(pick(body, "timestamp") || deepFind(data, ["created_at", "paid_at", "createdAt", "date", "timestamp"])) || toISODate(Date.now());
     const offer = pick(data, "product", "plan", "product_name", "plan_name") || deepFind(data, ["product_title", "plan_name", "product_name", "title", "name"]) || "Whop";
     const id = "whop-" + (pick(data, "id", "payment_id", "receipt_id") || deepFind(body, ["id"]) || `${email}-${date}-${Math.round(amount * 100)}`);
-
-    if (status === "failed") { res.status(200).json({ ok: true, ignored: "failed" }); return; }
 
     const rec = {
       id,
