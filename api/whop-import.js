@@ -53,13 +53,32 @@ const toISODate = (v) => {
 };
 const extract = (j) => Array.isArray(j) ? j : ((j && (j.data || j.payments || j.items || j.results)) || []);
 
-function mapPayment(p) {
-  const user = p.user || p.member || p.customer || {};
-  const email = String(pick(user, "email") || pick(p, "email", "user_email") || deepEmail(p) || "").toLowerCase();
+// Ids de référence d'un paiement (le payload ne porte souvent que des ids user/membership).
+const refIds = (p) => {
+  const ids = [];
+  ["user", "member", "customer", "membership"].forEach((k) => {
+    const v = p && p[k];
+    if (typeof v === "string") ids.push(v);
+    else if (v && typeof v === "object" && v.id) ids.push(v.id);
+  });
+  if (p && p.user_id) ids.push(p.user_id);
+  if (p && p.membership_id) ids.push(p.membership_id);
+  return ids;
+};
+
+function mapPayment(p, emailById) {
+  const user = (typeof p.user === "object" && p.user) || (typeof p.member === "object" && p.member) || {};
+  let email = String(pick(user, "email") || pick(p, "email", "user_email") || deepEmail(p) || "").toLowerCase();
+  if (!email && emailById) { for (const id of refIds(p)) { if (emailById[id]) { email = emailById[id]; break; } } }
   if (!email) return null; // sans email, pas de rattachement client -> ignoré
+
+  // WHITELIST des statuts encaissés : on ne compte que le réussi (le dashboard
+  // Whop montre aussi "Incomplet", tentatives, pending... -> exclus).
   const st = String(pick(p, "status", "state") || "").toLowerCase();
-  if (/(fail|declin|unpaid|open|draft|pending)/.test(st)) return null; // pas encaissé
   const refunded = /refund|revers/.test(st) || p.refunded === true || Number(p.refunded_amount || 0) > 0;
+  const okStatus = ["paid", "successful", "succeeded", "success", "completed"].includes(st);
+  if (!okStatus && !refunded) return null;
+
   // Montant BRUT : final_amount / total / amount (Whop renvoie des décimaux, pas des cents)
   const amount = num(pick(p, "final_amount", "total", "amount", "subtotal", "usd_amount"));
   if (!(amount > 0)) return null;
@@ -136,7 +155,32 @@ module.exports = async (req, res) => {
       if (arr.length < 50) break;
     }
 
-    const recs = all.map(mapPayment).filter(Boolean);
+    // Enrichissement des emails : les paiements ne portent souvent que des ids
+    // (user_XXX / mem_XXX). On lit les memberships pour construire id -> email.
+    const emailById = {};
+    const hasDirectEmail = (p) => !!deepEmail(p);
+    if (all.some((p) => !hasDirectEmail(p))) {
+      const memBase = chosen.base.replace(/payments|receipts/, "memberships");
+      let g2 = 0;
+      while (g2++ < 60) {
+        let j; try { j = await whopGet(`${memBase}?${chosen.pageParam}=${g2}&per=50`, key); } catch (e) { break; }
+        const arr = extract(j);
+        if (!arr.length) break;
+        let newIds = 0;
+        arr.forEach((m) => {
+          if (!m || typeof m !== "object") return;
+          const em = String(deepEmail(m) || "").toLowerCase();
+          if (!em) return;
+          [m.id, (typeof m.user === "string" ? m.user : (m.user && m.user.id)), m.user_id].forEach((id) => {
+            if (id && !emailById[id]) { emailById[id] = em; newIds += 1; }
+          });
+        });
+        if (newIds === 0 && g2 > 1) break;
+        if (arr.length < 50) break;
+      }
+    }
+
+    const recs = all.map((p) => mapPayment(p, emailById)).filter(Boolean);
 
     // 3) purge des anciennes entrées Whop avant réécriture (import = source de vérité)
     try {
