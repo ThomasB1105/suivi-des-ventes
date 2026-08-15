@@ -24,7 +24,11 @@ const CANDIDATES = [
 ];
 
 async function whopGet(url, key) {
-  const r = await fetch(url, { headers: { Authorization: `Bearer ${key}`, Accept: "application/json" } });
+  const headers = { Authorization: `Bearer ${key}`, Accept: "application/json" };
+  // L'API v5 exige le contexte entreprise : Vercel → WHOP_COMPANY_ID = biz_XXXX
+  // (visible dans l'URL du dashboard Whop). Sans lui -> 403 sur /v5/company/*.
+  if (process.env.WHOP_COMPANY_ID) headers["x-company-id"] = process.env.WHOP_COMPANY_ID;
+  const r = await fetch(url, { headers });
   const t = await r.text(); let b; try { b = JSON.parse(t); } catch { b = t; }
   if (!r.ok) { const e = new Error("Whop " + r.status); e.status = r.status; e.body = b; throw e; }
   return b;
@@ -100,7 +104,10 @@ module.exports = async (req, res) => {
       // On remonte le statut HTTP de chaque endpoint directement dans le message :
       // 401/403 = clé invalide ou mauvais type de clé, 404 = chemin inexistant.
       const summary = Object.entries(errors).map(([u, s]) => `${u.replace("https://api.whop.com", "")}: ${s}`).join(" · ");
-      res.status(502).json({ error: `Aucun endpoint Whop ne répond (${summary})`, detail: errors });
+      const hint = !process.env.WHOP_COMPANY_ID && Object.values(errors).some((s) => s === 403)
+        ? " — 403 : ajoute WHOP_COMPANY_ID (biz_…) dans Vercel puis redéploie."
+        : "";
+      res.status(502).json({ error: `Aucun endpoint Whop ne répond (${summary})${hint}`, detail: errors });
       return;
     }
 
