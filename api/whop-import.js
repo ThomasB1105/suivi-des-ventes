@@ -16,8 +16,11 @@ const { checkAuth } = require("../lib/auth");
 // Endpoints candidats (l'API Whop a plusieurs versions ; on prend le 1er qui répond).
 const CANDIDATES = [
   { base: "https://api.whop.com/api/v2/payments", pageParam: "page" },
+  { base: "https://api.whop.com/v2/payments", pageParam: "page" },
   { base: "https://api.whop.com/api/v5/company/payments", pageParam: "page" },
   { base: "https://api.whop.com/v5/company/payments", pageParam: "page" },
+  { base: "https://api.whop.com/api/v5/payments", pageParam: "page" },
+  { base: "https://api.whop.com/api/v2/receipts", pageParam: "page" },
 ];
 
 async function whopGet(url, key) {
@@ -93,7 +96,13 @@ module.exports = async (req, res) => {
         if (Array.isArray(arr)) { chosen = c; firstPage = j; break; }
       } catch (e) { errors[c.base] = e.status || String(e.message); }
     }
-    if (!chosen) { res.status(502).json({ error: "Aucun endpoint Whop ne répond avec cette clé.", detail: errors }); return; }
+    if (!chosen) {
+      // On remonte le statut HTTP de chaque endpoint directement dans le message :
+      // 401/403 = clé invalide ou mauvais type de clé, 404 = chemin inexistant.
+      const summary = Object.entries(errors).map(([u, s]) => `${u.replace("https://api.whop.com", "")}: ${s}`).join(" · ");
+      res.status(502).json({ error: `Aucun endpoint Whop ne répond (${summary})`, detail: errors });
+      return;
+    }
 
     if (req.query && (req.query.debug === "1" || req.query.debug === "true")) {
       res.status(200).json({ debug: true, endpoint: chosen.base, sample: firstPage });
