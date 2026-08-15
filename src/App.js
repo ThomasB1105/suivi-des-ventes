@@ -857,6 +857,13 @@ export default function App() {
         .chip-btn{cursor:pointer;}
         .chip-btn:hover{border-color:var(--cyan);}
         .chip-btn:disabled{opacity:.6;cursor:default;}
+        /* Boutons d'action topbar — contrastés et lisibles */
+        .act-btn{display:inline-flex;align-items:center;gap:7px;padding:9px 14px;border-radius:10px;border:none;font-family:'Inter';font-size:12.5px;font-weight:700;color:#fff;cursor:pointer;transition:transform .1s,opacity .2s;white-space:nowrap;}
+        .act-btn:hover:not(:disabled){transform:translateY(-1px);filter:brightness(1.08);}
+        .act-btn:disabled{opacity:.55;cursor:wait;}
+        .act-whop{background:linear-gradient(135deg,#FF6E40,#FF9349);box-shadow:0 4px 14px rgba(255,110,64,.3);}
+        .act-stripe{background:linear-gradient(135deg,#635BFF,#8B84FF);box-shadow:0 4px 14px rgba(99,91,255,.3);}
+        .act-sync{background:var(--panel2);border:1px solid rgba(255,255,255,.18);color:var(--text);}
         .spin{animation:spin 1s linear infinite;}
         @keyframes spin{to{transform:rotate(360deg);}}
 
@@ -1168,15 +1175,15 @@ export default function App() {
         </div>
             </div>
             {tab === "clients" && (<>
-              <button className="chip chip-btn" onClick={importWhop} disabled={!!paySync} title="Importer l'historique des paiements Whop" style={{ borderColor: "rgba(255,110,64,.6)" }}>
-                <RotateCcw size={13} className={whopSync ? "spin" : ""} /> {whopSync ? "Whop…" : "Importer Whop"}
+              <button className="act-btn act-whop" onClick={importWhop} disabled={!!paySync} title="Importer l'historique des paiements Whop">
+                <RotateCcw size={14} className={whopSync ? "spin" : ""} /> {whopSync ? "Whop…" : "Importer Whop"}
               </button>
-              <button className="chip chip-btn" onClick={importStripe} disabled={!!paySync} title="Importer l'historique des paiements Stripe (acomptes)" style={{ borderColor: "rgba(99,91,255,.6)" }}>
-                <RotateCcw size={13} className={stripeSync ? "spin" : ""} /> {stripeSync ? "Stripe…" : "Importer Stripe"}
+              <button className="act-btn act-stripe" onClick={importStripe} disabled={!!paySync} title="Importer l'historique des paiements Stripe (acomptes)">
+                <RotateCcw size={14} className={stripeSync ? "spin" : ""} /> {stripeSync ? "Stripe…" : "Importer Stripe"}
               </button>
             </>)}
-            <button className="chip chip-btn" onClick={() => syncSio()} disabled={syncing} title="Forcer la récupération des nouvelles ventes">
-              <RotateCcw size={13} className={syncing ? "spin" : ""} /> {syncing ? "Actu…" : "Actualiser"}
+            <button className="act-btn act-sync" onClick={() => syncSio()} disabled={syncing} title="Forcer la récupération des nouvelles ventes">
+              <RotateCcw size={14} className={syncing ? "spin" : ""} /> {syncing ? "Actu…" : "Actualiser"}
             </button>
             <button className="btn-primary" onClick={() => setShowAdd(true)}><Plus size={17} /> Ajouter une vente</button>
           </div>
