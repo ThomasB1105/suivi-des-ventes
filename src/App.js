@@ -5,7 +5,7 @@ import {
 } from "recharts";
 import {
   AlertTriangle, Check, Plus, X, Calendar, TrendingUp, Trash2, Landmark,
-  RotateCcw, Users, UserCheck, Phone, Mail, Leaf, Megaphone, Grid3x3, Search, Pencil, Wallet, Eye, EyeOff,
+  RotateCcw, Users, UserCheck, Phone, Mail, Leaf, Megaphone, Grid3x3, Search, Pencil, Wallet, Eye, EyeOff, Download,
 } from "lucide-react";
 
 /* ------------------------------ helpers ------------------------------ */
@@ -629,6 +629,58 @@ export default function App() {
   const whopSync = paySync === "whop";
   const importWhop = () => importPayments("whop", "/api/whop-import");
 
+  // Export Excel (CSV ;) : suivi des paiements par cohorte — qui a tout payé
+  // (et depuis quand), qui est en retard, qui a encore des mensualités (et
+  // combien), date de fin prévue. + synthèse par cohorte (mois de signature).
+  const exportCohorts = () => {
+    const fmtN = (v) => (typeof v === "number" ? String(Math.round(v * 100) / 100).replace(".", ",") : String(v == null ? "" : v));
+    const rows = [[
+      "Cohorte", "Client", "Email", "Offre", "Total contracté (€)", "Encaissé (€)", "Restant (€)",
+      "Éch. payées", "Éch. restantes", "Statut", "Fini de payer le", "Payé depuis (jours)",
+      "Prochaine échéance", "Montant prochaine (€)", "Dernière échéance prévue",
+    ]];
+    const coh = {};
+    [...sales]
+      .sort((a, b) => String(a.closeDate).localeCompare(String(b.closeDate)) || String(a.client).localeCompare(String(b.client)))
+      .forEach((s) => {
+        const act = s.schedule.filter(isActive);
+        const paidInst = act.filter((i) => i.paid);
+        const unpaid = act.filter((i) => !i.paid).sort((a, b) => String(a.dueDate).localeCompare(String(b.dueDate)));
+        const overdue = unpaid.filter((i) => statusOf(i) === "overdue");
+        const paidAmt = paidInst.reduce((a, i) => a + i.amount, 0);
+        const restant = unpaid.reduce((a, i) => a + i.amount, 0);
+        const next = unpaid[0];
+        const lastPlanned = act.map((i) => i.dueDate).sort().pop() || "";
+        const lastPaid = paidInst.map((i) => i.dueDate).sort().pop() || "";
+        const done = unpaid.length === 0;
+        const statut = done ? "Soldé" : (overdue.length ? "En retard" : "En cours");
+        const cohort = monthKey(s.closeDate) || "—";
+        const days = done && lastPaid ? Math.max(0, Math.round((today - parseLocal(lastPaid)) / 864e5)) : "";
+        rows.push([cohort, s.client, s.email || "", s.offer || "", s.total, paidAmt, restant,
+          paidInst.length, unpaid.length, statut, done ? lastPaid : "", days,
+          next ? next.dueDate : "", next ? next.amount : "", lastPlanned]);
+        if (!coh[cohort]) coh[cohort] = { n: 0, soldes: 0, retard: 0, total: 0, enc: 0, rest: 0 };
+        const c = coh[cohort];
+        c.n += 1; if (done) c.soldes += 1; if (overdue.length) c.retard += 1;
+        c.total += s.total; c.enc += paidAmt; c.rest += restant;
+      });
+    rows.push([]);
+    rows.push(["SYNTHÈSE PAR COHORTE"]);
+    rows.push(["Cohorte", "Clients", "Soldés", "En retard", "Total contracté (€)", "Encaissé (€)", "Restant (€)"]);
+    Object.keys(coh).sort().forEach((k) => { const c = coh[k]; rows.push([k, c.n, c.soldes, c.retard, c.total, c.enc, c.rest]); });
+    const csv = "\uFEFF" + rows.map((r) => r.map((v) => {
+      const sv = fmtN(v).replace(/"/g, '""');
+      return /[;"\n]/.test(sv) ? `"${sv}"` : sv;
+    }).join(";")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `cohortes-paiements-${toISO(today)}.csv`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+    flash("Export téléchargé — ouvre-le dans Excel.");
+  };
+
   const Delta = (cur, prev, label) => {
     if (!prev && !cur) return null;
     const up = cur >= prev;
@@ -1184,6 +1236,9 @@ export default function App() {
             </>)}
             <button className="act-btn act-sync" onClick={() => syncSio()} disabled={syncing} title="Forcer la récupération des nouvelles ventes">
               <RotateCcw size={14} className={syncing ? "spin" : ""} /> {syncing ? "Actu…" : "Actualiser"}
+            </button>
+            <button className="act-btn act-sync" onClick={exportCohorts} title="Télécharger le suivi des paiements par cohorte (Excel/CSV) : soldés, en retard, mensualités restantes, dates de fin">
+              <Download size={14} /> Export Excel
             </button>
             <button className="btn-primary" onClick={() => setShowAdd(true)}><Plus size={17} /> Ajouter une vente</button>
           </div>
