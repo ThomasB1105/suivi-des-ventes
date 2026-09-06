@@ -5,7 +5,7 @@ import {
 } from "recharts";
 import {
   AlertTriangle, Check, Plus, X, Calendar, TrendingUp, Trash2, Landmark,
-  RotateCcw, Users, UserCheck, Phone, Mail, Leaf, Megaphone, Grid3x3, Search, Pencil, Wallet, Eye, EyeOff, Download,
+  RotateCcw, Users, UserCheck, Phone, Mail, Leaf, Megaphone, Grid3x3, Search, Pencil, Wallet, Eye, EyeOff, Download, ClipboardList,
 } from "lucide-react";
 
 /* ------------------------------ helpers ------------------------------ */
@@ -629,6 +629,26 @@ export default function App() {
   const whopSync = paySync === "whop";
   const importWhop = () => importPayments("whop", "/api/whop-import");
 
+  // ---- CRM (leads VSL + Calendly + iClosed + ventes) ----
+  const [crm, setCrm] = useState({ leads: [] });
+  const [crmLoading, setCrmLoading] = useState(false);
+  const [crmStage, setCrmStage] = useState("all");
+  const [crmQ, setCrmQ] = useState("");
+  const loadCrm = async () => {
+    setCrmLoading(true);
+    try { const r = await authFetch("/api/crm"); const d = await r.json(); if (d && d.leads) setCrm(d); } catch (e) { /* ignore */ }
+    setCrmLoading(false);
+  };
+  useEffect(() => { if (tab === "crm") loadCrm(); }, [tab]); // eslint-disable-line
+  // Mise à jour optimiste + sauvegarde serveur (stage/setter/closer/notes).
+  const updateLead = async (email, patch) => {
+    setCrm((p) => ({ ...p, leads: p.leads.map((l) => (l.email === email ? { ...l, ...patch, manualStage: patch.stage !== undefined ? true : l.manualStage } : l)) }));
+    try {
+      const r = await authFetch("/api/crm", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, ...patch }) });
+      if (!r.ok) throw new Error(`Erreur ${r.status}`);
+    } catch (e) { flash(`Sauvegarde CRM impossible : ${e.message}`); }
+  };
+
   // Export Excel (CSV ;) : suivi des paiements par cohorte — qui a tout payé
   // (et depuis quand), qui est en retard, qui a encore des mensualités (et
   // combien), date de fin prévue. + synthèse par cohorte (mois de signature).
@@ -810,7 +830,7 @@ export default function App() {
   const overduesF = sortOverdue((impAll ? allOverdue : overdues).filter((i) => matchQ(i.sale)));
   const periodListF = periodList.filter((i) => matchQ(i.sale));
 
-  const SECTION = { clients: "Tableau de bord", cohortes: "Cohortes", mois: "Par mois", collecte: "À collecter", impayes: "Impayés", couts: "Coûts", closers: "Closers" };
+  const SECTION = { clients: "Tableau de bord", cohortes: "Cohortes", mois: "Par mois", collecte: "À collecter", impayes: "Impayés", couts: "Coûts", closers: "Closers", crm: "CRM" };
   const go = (t) => { setTab(t); setNavOpen(false); };
   const navCls = (t) => `nav-item ${tab === t ? "active" : ""}`;
   const logout = () => { try { localStorage.removeItem("melo_token"); } catch (e) { /* ignore */ } window.location.reload(); };
@@ -1146,6 +1166,20 @@ export default function App() {
         .kcard-v{font-size:30px;font-weight:800;line-height:1.1;margin-top:6px;color:var(--text);}
         .kcard-v.green{color:#00E0A4;}
         .kcard-f{font-size:12px;color:var(--muted);margin-top:4px;}
+        /* CRM */
+        .crm-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:14px 0 10px;flex-wrap:wrap;}
+        .crm-chips{display:flex;gap:6px;flex-wrap:wrap;}
+        .crm-chip{display:inline-flex;align-items:center;gap:6px;padding:6px 11px;border-radius:999px;border:1px solid var(--line);background:var(--panel);color:var(--text);font-size:12px;cursor:pointer;font-family:'Inter';}
+        .crm-chip b{font-weight:800;}
+        .crm-chip.on{border-color:var(--cyan);background:rgba(124,92,255,.14);}
+        .stage-dot{width:8px;height:8px;border-radius:50%;display:inline-block;}
+        .crm-search{display:inline-flex;align-items:center;gap:7px;padding:7px 12px;border-radius:10px;border:1px solid var(--line);background:var(--panel);color:var(--muted);}
+        .crm-search input{background:none;border:none;outline:none;color:var(--text);font-family:'Inter';font-size:13px;min-width:210px;}
+        .crm-select{background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:5px 8px;font-family:'Inter';font-size:12px;cursor:pointer;}
+        .crm-input{background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:5px 8px;font-family:'Inter';font-size:12px;width:96px;}
+        .crm-input:focus,.crm-select:focus{outline:none;border-color:var(--cyan);}
+        .crm-notes{width:150px;}
+        .crm-tbl td{vertical-align:middle;}
       `}</style>
 
       <aside className={`sidebar ${navOpen ? "open" : ""}`}>
@@ -1160,6 +1194,7 @@ export default function App() {
           <button className={navCls("impayes")} onClick={() => go("impayes")}><AlertTriangle size={16} /> Impayés{allOverdue.length ? <span className="nav-badge">{allOverdue.length}</span> : null}</button>
           <button className={navCls("couts")} onClick={() => go("couts")}><Wallet size={16} /> Coûts</button>
           <button className={navCls("closers")} onClick={() => go("closers")}><UserCheck size={16} /> Closers</button>
+          <button className={navCls("crm")} onClick={() => go("crm")}><ClipboardList size={16} /> CRM</button>
         </nav>
         <div className="side-foot">
           <div className="side-user"><div className="side-ava">A</div><div className="side-user-info"><div className="side-user-name">ANG Industries</div><div className="mut">FOR Melo</div></div></div>
@@ -1832,6 +1867,155 @@ export default function App() {
         {callStats.totalCalls === 0 && (
           <div className="empty" style={{ padding: "16px 20px", fontSize: 13 }}>💡 Ce reporting se remplit dès que les appels iClosed sont importés (<code>/api/iclosed-import</code>) ou reçus par webhook (<code>/api/iclosed</code>).</div>
         )}
+        </>);
+      })()}
+
+      {/* CRM — pipeline setting/closing (VSL + Calendly + iClosed + ventes) */}
+      {tab === "crm" && (() => {
+        const STAGE_META = {
+          new: ["Nouveau", "#7C5CFF"], setting: ["En setting", "#22D3EE"], booked: ["Call booké", "#FDCB6E"],
+          show: ["Présent", "#00B894"], noshow: ["No-show", "#FF4D5E"], won: ["Closé", "#2BD9A0"],
+          lost: ["Perdu", "#8895AA"], unqualified: ["Non qualifié", "#636E72"],
+        };
+        const ORDER = ["new", "setting", "booked", "show", "noshow", "won", "lost", "unqualified"];
+        const all = crm.leads || [];
+        const counts = {}; ORDER.forEach((s) => { counts[s] = 0; }); all.forEach((l) => { counts[l.stage] = (counts[l.stage] || 0) + 1; });
+        const q = crmQ.trim().toLowerCase();
+        const shown = all
+          .filter((l) => crmStage === "all" || l.stage === crmStage)
+          .filter((l) => !q || `${l.email} ${l.name || ""} ${l.closer || ""} ${l.setter || ""}`.toLowerCase().includes(q));
+        const nBooked = all.filter((l) => ["booked", "show", "noshow", "won", "lost"].includes(l.stage)).length;
+        const nShow = all.filter((l) => ["show", "won", "lost"].includes(l.stage)).length;
+        const nWon = counts.won || 0;
+        const revenue = all.reduce((a, l) => a + (l.amount || 0), 0);
+        const closerNames = [...new Set([...(callStats.closers || []).map((c) => c.closer), ...all.map((l) => l.closer).filter(Boolean)])];
+        const setterNames = [...new Set(all.map((l) => l.setter).filter(Boolean))];
+        const perf = (field, numStages, denStages) => {
+          const m = {};
+          all.forEach((l) => {
+            const p = l[field]; if (!p) return;
+            if (!m[p]) m[p] = { name: p, den: 0, num: 0, won: 0, revenue: 0 };
+            if (denStages.includes(l.stage) || denStages === "all") m[p].den += 1;
+            if (numStages.includes(l.stage)) m[p].num += 1;
+            if (l.stage === "won") { m[p].won += 1; m[p].revenue += l.amount || 0; }
+          });
+          return Object.values(m).sort((a, b) => b.num - a.num);
+        };
+        const setterPerf = perf("setter", ["booked", "show", "noshow", "won", "lost"], "all");
+        const closerPerf = perf("closer", ["won"], ["show", "won", "lost"]);
+        const sigOf = (l) => l.lastCall ? `Appel ${String(l.lastCall.date || "").slice(0, 10)} · ${(STAGE_META[({ won: "won", lost: "lost", noshow: "noshow", show: "show", pending: "show", booked: "booked" })[l.lastCall.status]] || ["?"])[0]}`
+          : l.bookedAt ? `RDV ${String(l.bookedAt).slice(0, 10)}` : (l.createdAt ? `Entré le ${String(l.createdAt).slice(0, 10)}` : "—");
+        return (<>
+        <div className="closers-head">
+          <div className="closers-title"><ClipboardList size={16} /> Pipeline · {all.length} leads</div>
+          <button className={`refresh-btn ${crmLoading ? "is-loading" : ""}`} onClick={loadCrm} disabled={crmLoading}>
+            <RotateCcw size={15} className={crmLoading ? "spin" : ""} /> {crmLoading ? "Chargement…" : "Actualiser le CRM"}
+          </button>
+        </div>
+
+        {/* FUNNEL SETTING -> CLOSING */}
+        <div className="kpi-grid">
+          <div className="kcard"><div className="kcard-l">Leads entrants</div><div className="kcard-v">{all.length}</div><div className="kcard-f">VSL · Calendly · iClosed</div></div>
+          <div className="kcard"><div className="kcard-l">Calls bookés</div><div className="kcard-v">{nBooked}</div><div className="kcard-f">taux de setting {all.length ? pct(nBooked / all.length) : "—"}</div></div>
+          <div className="kcard"><div className="kcard-l">Présents</div><div className="kcard-v">{nShow}</div><div className="kcard-f">show-up {nBooked ? pct(nShow / nBooked) : "—"}</div></div>
+          <div className="kcard"><div className="kcard-l">Closés</div><div className="kcard-v green">{nWon}</div><div className="kcard-f">closing {nShow ? pct(nWon / nShow) : "—"} · {euro(revenue)}</div></div>
+        </div>
+
+        {/* FILTRES */}
+        <div className="crm-bar">
+          <div className="crm-chips">
+            <button className={`crm-chip ${crmStage === "all" ? "on" : ""}`} onClick={() => setCrmStage("all")}>Tous <b>{all.length}</b></button>
+            {ORDER.map((s) => (
+              <button key={s} className={`crm-chip ${crmStage === s ? "on" : ""}`} onClick={() => setCrmStage(s)}>
+                <span className="stage-dot" style={{ background: STAGE_META[s][1] }} /> {STAGE_META[s][0]} <b>{counts[s] || 0}</b>
+              </button>
+            ))}
+          </div>
+          <div className="crm-search"><Search size={14} /><input value={crmQ} onChange={(e) => setCrmQ(e.target.value)} placeholder="Rechercher (nom, email, closer…)" /></div>
+        </div>
+
+        {/* TABLE PIPELINE */}
+        <div className="card" style={{ padding: 6, overflowX: "auto" }}>
+          {shown.length === 0 ? (
+            <div className="empty" style={{ padding: 24 }}>
+              {all.length === 0 ? (<>
+                Aucun lead pour l'instant. Branche tes sources :<br />
+                <b>VSL (opt-in systeme.io)</b> → règle d'automatisation « webhook » vers <code>/api/lead?secret=…</code><br />
+                <b>Calendly</b> → Webhooks (invitee.created / canceled) vers la même URL.<br />
+                Les emails iClosed et les ventes remontent déjà automatiquement.
+              </>) : "Aucun lead ne correspond au filtre."}
+            </div>
+          ) : (
+            <table className="tbl crm-tbl">
+              <thead><tr>
+                <th>Lead</th><th>Source</th><th>Étape</th><th>Setter</th><th>Closer</th>
+                <th className="num">Encaissé</th><th>Dernier signal</th><th>Notes</th>
+              </tr></thead>
+              <tbody>
+                {shown.slice(0, 200).map((l) => (
+                  <tr key={l.email}>
+                    <td className="lab"><div>{l.name && l.name !== l.email ? l.name : l.email}</div><div className="mut" style={{ fontSize: 11 }}>{l.email}{l.phone ? ` · ${l.phone}` : ""}</div></td>
+                    <td className="mut">{l.source || "—"}</td>
+                    <td>
+                      <select className="crm-select" value={l.stage} style={{ borderColor: STAGE_META[l.stage] ? STAGE_META[l.stage][1] : undefined }}
+                        onChange={(e) => updateLead(l.email, { stage: e.target.value })}>
+                        {ORDER.map((s) => <option key={s} value={s}>{STAGE_META[s][0]}</option>)}
+                      </select>
+                      {l.manualStage && <span className="mut" title="Étape fixée à la main (l'auto ne l'écrase plus)" style={{ marginLeft: 4 }}>✎</span>}
+                    </td>
+                    <td>
+                      <input className="crm-input" defaultValue={l.setter || ""} list="crm-setters" placeholder="—"
+                        onBlur={(e) => { const v = e.target.value.trim(); if (v !== (l.setter || "")) updateLead(l.email, { setter: v }); }} />
+                    </td>
+                    <td>
+                      <input className="crm-input" defaultValue={l.closer || ""} list="crm-closers" placeholder="—"
+                        onBlur={(e) => { const v = e.target.value.trim(); if (v !== (l.closer || "")) updateLead(l.email, { closer: v }); }} />
+                    </td>
+                    <td className="num green">{l.amount ? euro(l.amount) : "—"}</td>
+                    <td className="mut" style={{ fontSize: 12 }}>{sigOf(l)}</td>
+                    <td>
+                      <input className="crm-input crm-notes" defaultValue={l.notes || ""} placeholder="note…"
+                        onBlur={(e) => { const v = e.target.value; if (v !== (l.notes || "")) updateLead(l.email, { notes: v }); }} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+          <datalist id="crm-closers">{closerNames.map((n) => <option key={n} value={n} />)}</datalist>
+          <datalist id="crm-setters">{setterNames.map((n) => <option key={n} value={n} />)}</datalist>
+          {shown.length > 200 && <div className="empty" style={{ padding: 10 }}>+{shown.length - 200} leads — affine le filtre ou la recherche.</div>}
+        </div>
+
+        {/* PERFS SETTING / CLOSING */}
+        <div className="two-col">
+          <div>
+            <div className="section-h"><Phone size={15} /> Setting · par setter</div>
+            <div className="card" style={{ padding: 6 }}>
+              {setterPerf.length === 0 ? <div className="empty" style={{ padding: 18 }}>Assigne un setter aux leads pour voir leurs taux.</div> : (
+                <table className="tbl">
+                  <thead><tr><th>Setter</th><th className="num">Leads</th><th className="num">Bookés</th><th className="num">Taux setting</th></tr></thead>
+                  <tbody>{setterPerf.map((p) => (
+                    <tr key={p.name}><td className="lab">{p.name}</td><td className="num">{p.den}</td><td className="num">{p.num}</td><td className="num">{p.den ? pct(p.num / p.den) : "—"}</td></tr>
+                  ))}</tbody>
+                </table>
+              )}
+            </div>
+          </div>
+          <div>
+            <div className="section-h"><UserCheck size={15} /> Closing · par closer</div>
+            <div className="card" style={{ padding: 6 }}>
+              {closerPerf.length === 0 ? <div className="empty" style={{ padding: 18 }}>Assigne un closer aux leads pour voir leurs taux.</div> : (
+                <table className="tbl">
+                  <thead><tr><th>Closer</th><th className="num">Présents</th><th className="num">Closés</th><th className="num">Taux closing</th><th className="num">Revenu</th></tr></thead>
+                  <tbody>{closerPerf.map((p) => (
+                    <tr key={p.name}><td className="lab">{p.name}</td><td className="num">{p.den}</td><td className="num">{p.num}</td><td className="num">{p.den ? pct(p.num / p.den) : "—"}</td><td className="num green">{euro(p.revenue)}</td></tr>
+                  ))}</tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        </div>
         </>);
       })()}
 
