@@ -632,7 +632,6 @@ export default function App() {
   // ---- CRM (leads VSL + Calendly + iClosed + ventes) ----
   const [crm, setCrm] = useState({ leads: [] });
   const [crmLoading, setCrmLoading] = useState(false);
-  const [crmStage, setCrmStage] = useState("all");
   const [crmQ, setCrmQ] = useState("");
   const loadCrm = async () => {
     setCrmLoading(true);
@@ -1180,6 +1179,16 @@ export default function App() {
         .crm-input:focus,.crm-select:focus{outline:none;border-color:var(--cyan);}
         .crm-notes{width:150px;}
         .crm-tbl td{vertical-align:middle;}
+        /* Board style Monday */
+        .mnd-group{margin-bottom:22px;}
+        .mnd-ghead{display:flex;align-items:center;gap:9px;font-family:'Montserrat';font-weight:800;font-size:14.5px;margin:16px 0 8px;}
+        .mnd-gbar{width:5px;height:18px;border-radius:3px;display:inline-block;}
+        .mnd-gcount{color:var(--muted);font-weight:600;font-size:12.5px;}
+        .mnd-tbl td{vertical-align:middle;}
+        .mnd-tbl tr:hover td{background:rgba(255,255,255,.025);}
+        .mnd-status{border:none;border-radius:7px;color:#fff;font-weight:800;font-size:12px;padding:8px 26px 8px 12px;min-width:150px;text-align:center;text-align-last:center;cursor:pointer;font-family:'Inter';-webkit-appearance:none;appearance:none;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M1 1l4 4 4-4' stroke='white' stroke-width='1.6' fill='none' stroke-linecap='round'/></svg>");background-repeat:no-repeat;background-position:right 9px center;box-shadow:0 2px 6px rgba(0,0,0,.25);}
+        .mnd-status option{color:#111;background:#fff;font-weight:600;}
+        .mnd-src{display:inline-flex;padding:3px 10px;border-radius:999px;border:1px solid var(--line);font-size:11px;color:var(--muted);background:var(--panel2);}
       `}</style>
 
       <aside className={`sidebar ${navOpen ? "open" : ""}`}>
@@ -1870,152 +1879,117 @@ export default function App() {
         </>);
       })()}
 
-      {/* CRM — pipeline setting/closing (VSL + Calendly + iClosed + ventes) */}
+      {/* CRM — board des calls (Calendly + iClosed), style Monday */}
       {tab === "crm" && (() => {
-        const STAGE_META = {
-          new: ["Nouveau", "#7C5CFF"], setting: ["En setting", "#22D3EE"], booked: ["Call booké", "#FDCB6E"],
-          show: ["Présent", "#00B894"], noshow: ["No-show", "#FF4D5E"], won: ["Closé", "#2BD9A0"],
-          lost: ["Perdu", "#8895AA"], unqualified: ["Non qualifié", "#636E72"],
+        const META = {
+          booked: ["Call booké", "#579BFC"], show: ["Call fait · en cours", "#FDAB3D"], won: ["Closé", "#00C875"],
+          noshow: ["No-show", "#E2445C"], lost: ["Perdu", "#808080"], setting: ["À replanifier", "#A25DDC"],
+          unqualified: ["Non qualifié", "#676879"], new: ["Nouveau", "#66B2FF"],
         };
-        const ORDER = ["new", "setting", "booked", "show", "noshow", "won", "lost", "unqualified"];
+        const ORDER = ["booked", "show", "won", "noshow", "lost", "setting", "unqualified"];
         const all = crm.leads || [];
-        const counts = {}; ORDER.forEach((s) => { counts[s] = 0; }); all.forEach((l) => { counts[l.stage] = (counts[l.stage] || 0) + 1; });
         const q = crmQ.trim().toLowerCase();
-        const shown = all
-          .filter((l) => crmStage === "all" || l.stage === crmStage)
-          .filter((l) => !q || `${l.email} ${l.name || ""} ${l.closer || ""} ${l.setter || ""}`.toLowerCase().includes(q));
-        const nBooked = all.filter((l) => ["booked", "show", "noshow", "won", "lost"].includes(l.stage)).length;
+        const rows = all.filter((l) => !q || `${l.email} ${l.name || ""} ${l.closer || ""}`.toLowerCase().includes(q));
+        const groups = ORDER.map((s) => ({ s, items: rows.filter((l) => l.stage === s) })).filter((g) => g.items.length);
+        const others = rows.filter((l) => !ORDER.includes(l.stage));
+        if (others.length) groups.push({ s: "new", items: others });
         const nShow = all.filter((l) => ["show", "won", "lost"].includes(l.stage)).length;
-        const nWon = counts.won || 0;
+        const nNoShow = all.filter((l) => l.stage === "noshow").length;
+        const nWon = all.filter((l) => l.stage === "won").length;
         const revenue = all.reduce((a, l) => a + (l.amount || 0), 0);
         const closerNames = [...new Set([...(callStats.closers || []).map((c) => c.closer), ...all.map((l) => l.closer).filter(Boolean)])];
-        const setterNames = [...new Set(all.map((l) => l.setter).filter(Boolean))];
-        const perf = (field, numStages, denStages) => {
+        const closerPerf = (() => {
           const m = {};
           all.forEach((l) => {
-            const p = l[field]; if (!p) return;
-            if (!m[p]) m[p] = { name: p, den: 0, num: 0, won: 0, revenue: 0 };
-            if (denStages.includes(l.stage) || denStages === "all") m[p].den += 1;
-            if (numStages.includes(l.stage)) m[p].num += 1;
+            const p = l.closer; if (!p) return;
+            if (!m[p]) m[p] = { name: p, den: 0, won: 0, revenue: 0 };
+            if (["show", "won", "lost"].includes(l.stage)) m[p].den += 1;
             if (l.stage === "won") { m[p].won += 1; m[p].revenue += l.amount || 0; }
           });
-          return Object.values(m).sort((a, b) => b.num - a.num);
-        };
-        const setterPerf = perf("setter", ["booked", "show", "noshow", "won", "lost"], "all");
-        const closerPerf = perf("closer", ["won"], ["show", "won", "lost"]);
-        const sigOf = (l) => l.lastCall ? `Appel ${String(l.lastCall.date || "").slice(0, 10)} · ${(STAGE_META[({ won: "won", lost: "lost", noshow: "noshow", show: "show", pending: "show", booked: "booked" })[l.lastCall.status]] || ["?"])[0]}`
-          : l.bookedAt ? `RDV ${String(l.bookedAt).slice(0, 10)}` : (l.createdAt ? `Entré le ${String(l.createdAt).slice(0, 10)}` : "—");
+          return Object.values(m).sort((a, b) => b.won - a.won || b.den - a.den);
+        })();
+        const srcOf = (l) => (l.lastCall ? "iClosed" : (l.bookedAt ? "Calendly" : "—"));
+        const callOf = (l) => l.lastCall
+          ? `${String(l.lastCall.date || "").slice(0, 10)}${l.lastCall.event ? ` · ${l.lastCall.event}` : ""}`
+          : (l.bookedAt ? `${String(l.bookedAt).slice(0, 10)}${l.bookedEvent ? ` · ${l.bookedEvent}` : ""}` : "—");
         return (<>
         <div className="closers-head">
-          <div className="closers-title"><ClipboardList size={16} /> Pipeline · {all.length} leads</div>
-          <button className={`refresh-btn ${crmLoading ? "is-loading" : ""}`} onClick={loadCrm} disabled={crmLoading}>
-            <RotateCcw size={15} className={crmLoading ? "spin" : ""} /> {crmLoading ? "Chargement…" : "Actualiser le CRM"}
-          </button>
+          <div className="closers-title"><ClipboardList size={16} /> Calls · {all.length}</div>
+          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+            <div className="crm-search"><Search size={14} /><input value={crmQ} onChange={(e) => setCrmQ(e.target.value)} placeholder="Rechercher (nom, email, closer…)" /></div>
+            <button className={`refresh-btn ${crmLoading ? "is-loading" : ""}`} onClick={loadCrm} disabled={crmLoading}>
+              <RotateCcw size={15} className={crmLoading ? "spin" : ""} /> {crmLoading ? "Chargement…" : "Actualiser"}
+            </button>
+          </div>
         </div>
 
-        {/* FUNNEL SETTING -> CLOSING */}
         <div className="kpi-grid">
-          <div className="kcard"><div className="kcard-l">Leads entrants</div><div className="kcard-v">{all.length}</div><div className="kcard-f">VSL · Calendly · iClosed</div></div>
-          <div className="kcard"><div className="kcard-l">Calls bookés</div><div className="kcard-v">{nBooked}</div><div className="kcard-f">taux de setting {all.length ? pct(nBooked / all.length) : "—"}</div></div>
-          <div className="kcard"><div className="kcard-l">Présents</div><div className="kcard-v">{nShow}</div><div className="kcard-f">show-up {nBooked ? pct(nShow / nBooked) : "—"}</div></div>
-          <div className="kcard"><div className="kcard-l">Closés</div><div className="kcard-v green">{nWon}</div><div className="kcard-f">closing {nShow ? pct(nWon / nShow) : "—"} · {euro(revenue)}</div></div>
+          <div className="kcard"><div className="kcard-l">Calls pris</div><div className="kcard-v">{all.length}</div><div className="kcard-f">Calendly + iClosed</div></div>
+          <div className="kcard"><div className="kcard-l">Show-up</div><div className="kcard-v">{(nShow + nNoShow) ? pct(nShow / (nShow + nNoShow)) : "—"}</div><div className="kcard-f">{nNoShow} no-show</div></div>
+          <div className="kcard"><div className="kcard-l">Closing</div><div className="kcard-v green">{nShow ? pct(nWon / nShow) : "—"}</div><div className="kcard-f">{nWon} closés / {nShow} présents</div></div>
+          <div className="kcard"><div className="kcard-l">Revenu</div><div className="kcard-v green">{euro(revenue)}</div><div className="kcard-f">encaissé sur ces calls</div></div>
         </div>
 
-        {/* FILTRES */}
-        <div className="crm-bar">
-          <div className="crm-chips">
-            <button className={`crm-chip ${crmStage === "all" ? "on" : ""}`} onClick={() => setCrmStage("all")}>Tous <b>{all.length}</b></button>
-            {ORDER.map((s) => (
-              <button key={s} className={`crm-chip ${crmStage === s ? "on" : ""}`} onClick={() => setCrmStage(s)}>
-                <span className="stage-dot" style={{ background: STAGE_META[s][1] }} /> {STAGE_META[s][0]} <b>{counts[s] || 0}</b>
-              </button>
-            ))}
+        {groups.length === 0 && (
+          <div className="empty" style={{ padding: 24 }}>
+            Aucun call pour l'instant. Les appels iClosed remontent automatiquement ; pour Calendly, branche le webhook (invitee.created / canceled) vers <code>/api/lead?secret=…</code>.
           </div>
-          <div className="crm-search"><Search size={14} /><input value={crmQ} onChange={(e) => setCrmQ(e.target.value)} placeholder="Rechercher (nom, email, closer…)" /></div>
-        </div>
+        )}
 
-        {/* TABLE PIPELINE */}
-        <div className="card" style={{ padding: 6, overflowX: "auto" }}>
-          {shown.length === 0 ? (
-            <div className="empty" style={{ padding: 24 }}>
-              {all.length === 0 ? (<>
-                Aucun lead pour l'instant. Branche tes sources :<br />
-                <b>VSL (opt-in systeme.io)</b> → règle d'automatisation « webhook » vers <code>/api/lead?secret=…</code><br />
-                <b>Calendly</b> → Webhooks (invitee.created / canceled) vers la même URL.<br />
-                Les emails iClosed et les ventes remontent déjà automatiquement.
-              </>) : "Aucun lead ne correspond au filtre."}
+        {groups.map((g) => (
+          <div className="mnd-group" key={g.s}>
+            <div className="mnd-ghead" style={{ color: META[g.s][1] }}>
+              <span className="mnd-gbar" style={{ background: META[g.s][1] }} />
+              {META[g.s][0]} <span className="mnd-gcount">{g.items.length}</span>
             </div>
-          ) : (
-            <table className="tbl crm-tbl">
-              <thead><tr>
-                <th>Lead</th><th>Source</th><th>Étape</th><th>Setter</th><th>Closer</th>
-                <th className="num">Encaissé</th><th>Dernier signal</th><th>Notes</th>
-              </tr></thead>
-              <tbody>
-                {shown.slice(0, 200).map((l) => (
-                  <tr key={l.email}>
-                    <td className="lab"><div>{l.name && l.name !== l.email ? l.name : l.email}</div><div className="mut" style={{ fontSize: 11 }}>{l.email}{l.phone ? ` · ${l.phone}` : ""}</div></td>
-                    <td className="mut">{l.source || "—"}</td>
-                    <td>
-                      <select className="crm-select" value={l.stage} style={{ borderColor: STAGE_META[l.stage] ? STAGE_META[l.stage][1] : undefined }}
-                        onChange={(e) => updateLead(l.email, { stage: e.target.value })}>
-                        {ORDER.map((s) => <option key={s} value={s}>{STAGE_META[s][0]}</option>)}
-                      </select>
-                      {l.manualStage && <span className="mut" title="Étape fixée à la main (l'auto ne l'écrase plus)" style={{ marginLeft: 4 }}>✎</span>}
-                    </td>
-                    <td>
-                      <input className="crm-input" defaultValue={l.setter || ""} list="crm-setters" placeholder="—"
-                        onBlur={(e) => { const v = e.target.value.trim(); if (v !== (l.setter || "")) updateLead(l.email, { setter: v }); }} />
-                    </td>
-                    <td>
-                      <input className="crm-input" defaultValue={l.closer || ""} list="crm-closers" placeholder="—"
-                        onBlur={(e) => { const v = e.target.value.trim(); if (v !== (l.closer || "")) updateLead(l.email, { closer: v }); }} />
-                    </td>
-                    <td className="num green">{l.amount ? euro(l.amount) : "—"}</td>
-                    <td className="mut" style={{ fontSize: 12 }}>{sigOf(l)}</td>
-                    <td>
-                      <input className="crm-input crm-notes" defaultValue={l.notes || ""} placeholder="note…"
-                        onBlur={(e) => { const v = e.target.value; if (v !== (l.notes || "")) updateLead(l.email, { notes: v }); }} />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
+            <div className="card" style={{ padding: 0, overflowX: "auto" }}>
+              <table className="tbl mnd-tbl">
+                <thead><tr><th>Lead</th><th>Call</th><th>Source</th><th>Closer</th><th>Statut</th><th className="num">Encaissé</th><th>Notes</th></tr></thead>
+                <tbody>
+                  {g.items.slice(0, 100).map((l) => (
+                    <tr key={l.email}>
+                      <td className="lab" style={{ borderLeft: `4px solid ${META[g.s][1]}` }}>
+                        <div>{l.name && l.name !== l.email ? l.name : l.email}</div>
+                        <div className="mut" style={{ fontSize: 11 }}>{l.email}</div>
+                      </td>
+                      <td className="mut" style={{ fontSize: 12 }}>{callOf(l)}</td>
+                      <td><span className="mnd-src">{srcOf(l)}</span></td>
+                      <td>
+                        <input className="crm-input" defaultValue={l.closer || ""} list="crm-closers" placeholder="—"
+                          onBlur={(e) => { const v = e.target.value.trim(); if (v !== (l.closer || "")) updateLead(l.email, { closer: v }); }} />
+                      </td>
+                      <td>
+                        <select className="mnd-status" value={l.stage} style={{ backgroundColor: (META[l.stage] || ["", "#666"])[1] }}
+                          onChange={(e) => updateLead(l.email, { stage: e.target.value })}>
+                          {Object.keys(META).map((s) => <option key={s} value={s}>{META[s][0]}</option>)}
+                        </select>
+                      </td>
+                      <td className="num green">{l.amount ? euro(l.amount) : "—"}</td>
+                      <td>
+                        <input className="crm-input crm-notes" defaultValue={l.notes || ""} placeholder="note…"
+                          onBlur={(e) => { const v = e.target.value; if (v !== (l.notes || "")) updateLead(l.email, { notes: v }); }} />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {g.items.length > 100 && <div className="empty" style={{ padding: 8 }}>+{g.items.length - 100} — affine la recherche.</div>}
+            </div>
+          </div>
+        ))}
+        <datalist id="crm-closers">{closerNames.map((n) => <option key={n} value={n} />)}</datalist>
+
+        {closerPerf.length > 0 && (<>
+          <div className="section-h"><UserCheck size={15} /> Closing · par closer</div>
+          <div className="card" style={{ padding: 6 }}>
+            <table className="tbl">
+              <thead><tr><th>Closer</th><th className="num">Présents</th><th className="num">Closés</th><th className="num">Taux closing</th><th className="num">Revenu</th></tr></thead>
+              <tbody>{closerPerf.map((p) => (
+                <tr key={p.name}><td className="lab">{p.name}</td><td className="num">{p.den}</td><td className="num">{p.won}</td><td className="num">{p.den ? pct(p.won / p.den) : "—"}</td><td className="num green">{euro(p.revenue)}</td></tr>
+              ))}</tbody>
             </table>
-          )}
-          <datalist id="crm-closers">{closerNames.map((n) => <option key={n} value={n} />)}</datalist>
-          <datalist id="crm-setters">{setterNames.map((n) => <option key={n} value={n} />)}</datalist>
-          {shown.length > 200 && <div className="empty" style={{ padding: 10 }}>+{shown.length - 200} leads — affine le filtre ou la recherche.</div>}
-        </div>
-
-        {/* PERFS SETTING / CLOSING */}
-        <div className="two-col">
-          <div>
-            <div className="section-h"><Phone size={15} /> Setting · par setter</div>
-            <div className="card" style={{ padding: 6 }}>
-              {setterPerf.length === 0 ? <div className="empty" style={{ padding: 18 }}>Assigne un setter aux leads pour voir leurs taux.</div> : (
-                <table className="tbl">
-                  <thead><tr><th>Setter</th><th className="num">Leads</th><th className="num">Bookés</th><th className="num">Taux setting</th></tr></thead>
-                  <tbody>{setterPerf.map((p) => (
-                    <tr key={p.name}><td className="lab">{p.name}</td><td className="num">{p.den}</td><td className="num">{p.num}</td><td className="num">{p.den ? pct(p.num / p.den) : "—"}</td></tr>
-                  ))}</tbody>
-                </table>
-              )}
-            </div>
           </div>
-          <div>
-            <div className="section-h"><UserCheck size={15} /> Closing · par closer</div>
-            <div className="card" style={{ padding: 6 }}>
-              {closerPerf.length === 0 ? <div className="empty" style={{ padding: 18 }}>Assigne un closer aux leads pour voir leurs taux.</div> : (
-                <table className="tbl">
-                  <thead><tr><th>Closer</th><th className="num">Présents</th><th className="num">Closés</th><th className="num">Taux closing</th><th className="num">Revenu</th></tr></thead>
-                  <tbody>{closerPerf.map((p) => (
-                    <tr key={p.name}><td className="lab">{p.name}</td><td className="num">{p.den}</td><td className="num">{p.num}</td><td className="num">{p.den ? pct(p.num / p.den) : "—"}</td><td className="num green">{euro(p.revenue)}</td></tr>
-                  ))}</tbody>
-                </table>
-              )}
-            </div>
-          </div>
-        </div>
+        </>)}
         </>);
       })()}
 

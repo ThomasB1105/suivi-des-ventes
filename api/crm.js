@@ -124,12 +124,17 @@ module.exports = async (req, res) => {
         notes: l.notes || undefined,
         amount: paid || undefined,
         bookedAt: l.bookedAt || undefined,
+        bookedEvent: l.bookedEvent || undefined,
         lastCall: call ? { date: call.date, status: call.status, event: call.event } : undefined,
         createdAt: l.createdAt || (call && call.date) || undefined,
         lastActivity,
         history: l.history || undefined,
       };
-    }).sort((a, b) => String(b.lastActivity || "").localeCompare(String(a.lastActivity || "")));
+    })
+      // Périmètre du board : UNIQUEMENT les calls pris (iClosed ou RDV Calendly),
+      // + les payeurs (un paiement implique un call). Les opt-ins VSL bruts sont exclus.
+      .filter((l) => l.lastCall || l.bookedAt || (l.amount || 0) > 0)
+      .sort((a, b) => String(b.lastActivity || "").localeCompare(String(a.lastActivity || "")));
 
     // ---- Stats pipeline ----
     const stages = {};
