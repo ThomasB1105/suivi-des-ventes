@@ -218,7 +218,7 @@ const authFetch = (url, opts = {}) => fetch(url, { ...opts, headers: { ...(opts.
 
 export default function App() {
   const [sales, setSales] = useState([]);
-  const [tab, setTab] = useState(() => { try { const r = localStorage.getItem("melo_role"); return r && r !== "admin" ? "crm" : "clients"; } catch (e) { return "clients"; } });
+  const [tab, setTab] = useState(() => { try { const r = localStorage.getItem("melo_role"); return r && r !== "admin" ? "calendrier" : "clients"; } catch (e) { return "clients"; } });
   const [showAdd, setShowAdd] = useState(false);
   const [menu, setMenu] = useState(null);
   const [toast, setToast] = useState(null);
@@ -655,7 +655,6 @@ export default function App() {
   const [crmQ, setCrmQ] = useState("");
   const [crmView, setCrmView] = useState(() => { try { const r = localStorage.getItem("melo_role"); return r && r !== "admin" ? "today" : "all"; } catch (e) { return "all"; } }); // "today" | "week" | "all"
   const [leadOpen, setLeadOpen] = useState(null); // email de la fiche lead ouverte
-  const [crmMode, setCrmMode] = useState(() => { try { const r = localStorage.getItem("melo_role"); return r && r !== "admin" ? "cal" : "board"; } catch (e) { return "board"; } }); // "board" | "cal"
   const loadCrm = async () => {
     setCrmLoading(true);
     try { const r = await authFetch("/api/crm"); const d = await r.json(); if (d && d.leads) setCrm(d); } catch (e) { /* ignore */ }
@@ -677,7 +676,7 @@ export default function App() {
       flash(e.name === "AbortError" ? "Connexion Calendly trop longue (interrompue)." : `Calendly : ${e.message}`);
     } finally { clearTimeout(to); setCalSync(false); }
   };
-  useEffect(() => { if (tab === "crm") { loadCrm(); if (isAdmin) loadTeam(); } }, [tab]); // eslint-disable-line
+  useEffect(() => { if (tab === "crm" || tab === "calendrier") { loadCrm(); if (isAdmin) loadTeam(); } }, [tab]); // eslint-disable-line
   // Mise à jour optimiste + sauvegarde serveur (stage/setter/closer/notes).
   const updateLead = async (email, patch) => {
     setCrm((p) => ({ ...p, leads: p.leads.map((l) => (l.email === email ? { ...l, ...patch, manualStage: patch.stage !== undefined ? true : l.manualStage } : l)) }));
@@ -897,7 +896,7 @@ export default function App() {
   const overduesF = sortOverdue((impAll ? allOverdue : overdues).filter((i) => matchQ(i.sale)));
   const periodListF = periodList.filter((i) => matchQ(i.sale));
 
-  const SECTION = { clients: "Tableau de bord", cohortes: "Cohortes", mois: "Par mois", collecte: "À collecter", impayes: "Impayés", couts: "Coûts", closers: "Closers", crm: "CRM", equipe: "Équipe" };
+  const SECTION = { clients: "Tableau de bord", cohortes: "Cohortes", mois: "Par mois", collecte: "À collecter", impayes: "Impayés", couts: "Coûts", closers: "Closers", crm: "CRM", calendrier: "Calendrier", equipe: "Équipe" };
   const go = (t) => { setTab(t); setNavOpen(false); };
   const navCls = (t) => `nav-item ${tab === t ? "active" : ""}`;
   const logout = () => { try { localStorage.removeItem("melo_token"); localStorage.removeItem("melo_role"); localStorage.removeItem("melo_name"); } catch (e) { /* ignore */ } window.location.reload(); };
@@ -1333,10 +1332,12 @@ export default function App() {
             <button className={navCls("closers")} onClick={() => go("closers")}><UserCheck size={16} /> Closers</button>
             <div className="nav-label">CRM</div>
             <button className={navCls("crm")} onClick={() => go("crm")}><ClipboardList size={16} /> CRM</button>
+            <button className={navCls("calendrier")} onClick={() => go("calendrier")}><Calendar size={16} /> Calendrier</button>
             <button className={navCls("equipe")} onClick={() => go("equipe")}><Users size={16} /> Équipe</button>
           </>) : (<>
             <div className="nav-label">Mon espace</div>
-            <button className={navCls("crm")} onClick={() => go("crm")}><ClipboardList size={16} /> Ma journée & mes calls</button>
+            <button className={navCls("calendrier")} onClick={() => go("calendrier")}><Calendar size={16} /> Ma journée</button>
+            <button className={navCls("crm")} onClick={() => go("crm")}><ClipboardList size={16} /> Mes calls</button>
           </>)}
         </nav>
         <div className="side-foot">
@@ -2015,8 +2016,9 @@ export default function App() {
         </>);
       })()}
 
-      {/* CRM — board des calls (Calendly + iClosed), style Monday */}
-      {tab === "crm" && (() => {
+      {/* CRM (board) & CALENDRIER (agenda) — calls Calendly + iClosed */}
+      {(tab === "crm" || tab === "calendrier") && (() => {
+        const crmMode = tab === "calendrier" ? "cal" : "board";
         const META = CRM_META;
         const ORDER = ["booked", "show", "won", "noshow", "lost", "setting", "unqualified"];
         const all = crm.leads || [];
@@ -2037,10 +2039,13 @@ export default function App() {
         const groups = ORDER.map((s) => ({ s, items: rows.filter((l) => l.stage === s).sort(bySort) })).filter((g) => g.items.length);
         const others = rows.filter((l) => !ORDER.includes(l.stage));
         if (others.length) groups.push({ s: "new", items: others });
-        const nShow = all.filter((l) => ["show", "won", "lost"].includes(l.stage)).length;
-        const nNoShow = all.filter((l) => l.stage === "noshow").length;
-        const nWon = all.filter((l) => l.stage === "won").length;
-        const revenue = all.reduce((a, l) => a + (l.amount || 0), 0);
+        // KPI sur la période sélectionnée (Aujourd'hui / Cette semaine / Tout)
+        const scoped = all.filter(inView);
+        const periodLbl = crmView === "today" ? "aujourd'hui" : (crmView === "week" ? "cette semaine" : "toutes périodes");
+        const nShow = scoped.filter((l) => ["show", "won", "lost"].includes(l.stage)).length;
+        const nNoShow = scoped.filter((l) => l.stage === "noshow").length;
+        const nWon = scoped.filter((l) => l.stage === "won").length;
+        const revenue = scoped.reduce((a, l) => a + (l.amount || 0), 0);
         const closerNames = [...new Set([...(callStats.closers || []).map((c) => c.closer), ...(team || []).filter((u) => u.role !== "setter").map((u) => u.name), ...all.map((l) => l.closer).filter(Boolean)])];
         const setterNames = [...new Set([...(team || []).filter((u) => u.role === "setter").map((u) => u.name), ...all.map((l) => l.setter).filter(Boolean)])];
         const closerPerf = (() => {
@@ -2062,12 +2067,12 @@ export default function App() {
         const callEvent = (l) => (l.lastCall && l.lastCall.event) || l.bookedEvent || "";
         return (<>
         <div className="closers-head">
-          <div className="closers-title"><ClipboardList size={16} /> {isAdmin ? `Calls · ${all.length}` : `Ma journée · ${me.name}`}</div>
+          <div className="closers-title">
+            {tab === "calendrier" ? <Calendar size={16} /> : <ClipboardList size={16} />}{" "}
+            {tab === "calendrier" ? (isAdmin ? "Calendrier des calls" : `Ma journée · ${me.name}`) : (isAdmin ? `Calls · ${all.length}` : `Mes calls · ${me.name}`)}
+          </div>
           <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
             <div className="crm-views">
-              <button className={`crm-chip ${crmMode === "board" ? "on" : ""}`} onClick={() => setCrmMode("board")} title="Vue board (groupes par statut)"><ClipboardList size={14} /> Board</button>
-              <button className={`crm-chip ${crmMode === "cal" ? "on" : ""}`} onClick={() => setCrmMode("cal")} title="Vue agenda (par jour et heure)"><Calendar size={14} /> Calendrier</button>
-              <span style={{ width: 8 }} />
               <button className={`crm-chip ${crmView === "today" ? "on" : ""}`} onClick={() => setCrmView("today")}>Aujourd'hui <b>{nToday}</b></button>
               <button className={`crm-chip ${crmView === "week" ? "on" : ""}`} onClick={() => setCrmView("week")}>Cette semaine <b>{nWeek}</b></button>
               <button className={`crm-chip ${crmView === "all" ? "on" : ""}`} onClick={() => setCrmView("all")}>Tout <b>{all.length}</b></button>
@@ -2094,10 +2099,10 @@ export default function App() {
         )}
         {isAdmin && (
         <div className="kpi-grid">
-          <div className="kcard"><div className="kcard-l">Calls pris</div><div className="kcard-v">{all.length}</div><div className="kcard-f">Calendly + iClosed</div></div>
+          <div className="kcard"><div className="kcard-l">Calls pris</div><div className="kcard-v">{scoped.length}</div><div className="kcard-f">{periodLbl} · Calendly + iClosed</div></div>
           <div className="kcard"><div className="kcard-l">Show-up</div><div className="kcard-v">{(nShow + nNoShow) ? pct(nShow / (nShow + nNoShow)) : "—"}</div><div className="kcard-f">{nNoShow} no-show</div></div>
           <div className="kcard"><div className="kcard-l">Closing</div><div className="kcard-v green">{nShow ? pct(nWon / nShow) : "—"}</div><div className="kcard-f">{nWon} closés / {nShow} présents</div></div>
-          <div className="kcard"><div className="kcard-l">Revenu</div><div className="kcard-v green">{euro(revenue)}</div><div className="kcard-f">encaissé sur ces calls</div></div>
+          <div className="kcard"><div className="kcard-l">Revenu</div><div className="kcard-v green">{euro(revenue)}</div><div className="kcard-f">encaissé · {periodLbl}</div></div>
         </div>
         )}
 
