@@ -46,6 +46,12 @@ module.exports = async (req, res) => {
       if (body.setter !== undefined) { lead.setter = String(body.setter || "") || undefined; lead.setterAuto = false; }
       if (body.closer !== undefined) { lead.closer = String(body.closer || "") || undefined; lead.closerAuto = false; }
       if (body.notes !== undefined) lead.notes = String(body.notes || "") || undefined;
+      // Lien Fathom (enregistrement du call) : saisi par le closer sur SA ligne.
+      if (body.fathom !== undefined) {
+        let v = String(body.fathom || "").trim();
+        if (v && !/^https?:\/\//i.test(v)) v = "https://" + v;
+        lead.fathom = v || undefined;
+      }
       // Dimensions du résultat de call (synchronisent le statut quand pertinent)
       if (body.callResult !== undefined) {
         const v = ["won", "lost", ""].includes(body.callResult) ? body.callResult : "";
@@ -55,6 +61,7 @@ module.exports = async (req, res) => {
       if (body.showUp !== undefined) {
         const v = ["present", "noshow", "cancelled", ""].includes(body.showUp) ? body.showUp : "";
         lead.showUp = v || undefined;
+        lead.showUpAuto = false; // saisie manuelle : la synchro plateformes ne l'écrase plus
         if (v === "noshow") { lead.stage = "noshow"; lead.manualStage = true; }
         if (v === "present" && !["won", "lost"].includes(lead.stage)) { lead.stage = "show"; lead.manualStage = true; }
       }

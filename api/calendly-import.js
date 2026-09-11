@@ -89,19 +89,42 @@ module.exports = async (req, res) => {
       if (!pageUrl || !col.length) break;
     }
 
-    // Invités de chaque RDV actif -> upsert crm:leads (borne : 150 RDV / run)
+    // Invités de chaque RDV (actif OU annulé) -> upsert crm:leads (borne : 150 RDV / run).
+    // Les RDV sont triés par date croissante : un re-booking postérieur écrase
+    // proprement une annulation antérieure.
     const roleMap = await buildRoleMap(cmd); // rôle des hôtes (Qui est qui / comptes)
-    let stored = 0, skipped = 0;
-    const active = events.filter((ev) => ev.status === "active").slice(0, 150);
-    for (const ev of active) {
+    let stored = 0, skipped = 0, cancelledSeen = 0;
+    for (const ev of events.slice(0, 150)) {
       const uuid = String(ev.uri || "").split("/").pop();
       if (!uuid) continue;
       let inv;
       try { inv = await cGet(`/scheduled_events/${uuid}/invitees`, tok, { count: 100 }); } catch (e) { continue; }
       for (const p of (inv && inv.collection) || []) {
-        if (p.status !== "active") { skipped += 1; continue; }
         const email = String(p.email || "").toLowerCase();
         if (!email) { skipped += 1; continue; }
+
+        // ---- RDV annulé côté Calendly (annulation ou replanification) ----
+        if (p.status !== "active") {
+          if (p.rescheduled === true) { skipped += 1; continue; } // le nouveau créneau arrive comme RDV actif
+          let lead = null;
+          try { const s = await cmd(["HGET", "crm:leads", email]); lead = s ? JSON.parse(s) : null; } catch {}
+          if (!lead) lead = { email, createdAt: new Date().toISOString(), stage: "new", history: [] };
+          // On ne marque annulé que si ce RDV est la référence la plus récente du lead.
+          if (!lead.bookedAt || String(ev.start_time) >= String(lead.bookedAt)) {
+            lead.name = lead.name || p.name || email;
+            lead.source = lead.source || "Calendly";
+            lead.bookedAt = ev.start_time;
+            lead.bookedEvent = ev.name || "Calendly";
+            if (!lead.manualStage && !["won", "lost"].includes(lead.stage)) lead.stage = "setting";
+            if (!lead.showUp || lead.showUpAuto !== false) { lead.showUp = "cancelled"; lead.showUpAuto = true; }
+            lead.updatedAt = new Date().toISOString();
+            lead.history = [...(lead.history || []), { at: lead.updatedAt, type: "calendly_cancel", label: `RDV annulé · ${ev.name || "Calendly"} (${String(ev.start_time).slice(0, 10)})` }].slice(-12);
+            await cmd(["HSET", "crm:leads", email, JSON.stringify(lead)]);
+            cancelledSeen += 1;
+          } else skipped += 1;
+          continue;
+        }
+
         let lead = null;
         try { const s = await cmd(["HGET", "crm:leads", email]); lead = s ? JSON.parse(s) : null; } catch {}
         if (!lead) lead = { email, createdAt: new Date().toISOString(), stage: "new", history: [] };
@@ -130,6 +153,8 @@ module.exports = async (req, res) => {
         if (!lead.bookedAt || String(ev.start_time) >= String(lead.bookedAt)) {
           lead.bookedAt = ev.start_time;
           lead.bookedEvent = ev.name || "Calendly";
+          // Ce RDV actif est la nouvelle référence : une annulation auto antérieure ne tient plus.
+          if (lead.showUp === "cancelled" && lead.showUpAuto !== false) { delete lead.showUp; delete lead.showUpAuto; }
           const locUrl = ev.location && (ev.location.join_url || ev.location.location);
           const links = {
             join: /^https?:/.test(String(locUrl || "")) ? locUrl : undefined,   // URL uniquement (pas un n° de tel)
@@ -224,6 +249,7 @@ module.exports = async (req, res) => {
       account: user.email,
       events: events.length,
       imported: stored,
+      cancelled: cancelledSeen,
       skipped,
       formsSeen,
       formSubmissions: subsSeen,

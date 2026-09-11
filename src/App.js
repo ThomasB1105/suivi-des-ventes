@@ -1283,6 +1283,8 @@ export default function App() {
         .mnd-mail{font-size:11.5px;color:var(--muted);margin-top:3px;}
         .mnd-phone{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;color:var(--cyan);margin-top:3px;text-decoration:none;}
         .mnd-phone:hover{text-decoration:underline;}
+        .mnd-fathom{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;color:var(--cyan);margin-top:3px;text-decoration:none;font-weight:600;}
+        .mnd-fathom:hover{text-decoration:underline;}
         .mnd-status{border:none;border-radius:10px;color:#fff;font-weight:800;font-size:12.5px;padding:11px 26px 11px 12px;min-width:150px;text-align:center;text-align-last:center;cursor:pointer;font-family:'Inter';-webkit-appearance:none;appearance:none;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M1 1l4 4 4-4' stroke='white' stroke-width='1.6' fill='none' stroke-linecap='round'/></svg>");background-repeat:no-repeat;background-position:right 12px center;box-shadow:0 2px 8px rgba(16,24,40,.06);transition:filter .12s;}
         .mnd-status:hover{filter:brightness(1.08);}
         .mnd-status option{color:#111;background:#fff;font-weight:600;}
@@ -2207,7 +2209,7 @@ export default function App() {
                           </div>
                         </div>
                       </td>
-                      <td><div className="mnd-call"><div className="d">{callDate(l)}{callTime(l) ? ` · ${callTime(l)}` : ""}</div>{callEvent(l) ? <div className="e">{callEvent(l)}</div> : null}</div></td>
+                      <td><div className="mnd-call"><div className="d">{callDate(l)}{callTime(l) ? ` · ${callTime(l)}` : ""}</div>{callEvent(l) ? <div className="e">{callEvent(l)}</div> : null}{l.fathom ? <a className="mnd-fathom" href={l.fathom} target="_blank" rel="noreferrer">🎥 Fathom</a> : null}</div></td>
                       <td><span className="mnd-src">{srcOf(l)}</span></td>
                       <td>
                         {isAdmin ? (
@@ -2273,6 +2275,7 @@ export default function App() {
                       <div className="cal-sub">{callEvent(l) || srcOf(l)}{l.phone ? ` · ${l.phone}` : ""}</div>
                     </div>
                     {l.links && l.links.join ? <button className="ls-link ls-join" onClick={(e) => { e.stopPropagation(); try { navigator.clipboard.writeText(l.links.join); flash("Lien du call copié 📋"); } catch (e2) { window.prompt("Copie le lien :", l.links.join); } }}>📋 Copier lien</button> : null}
+                    {l.fathom ? <a className="ls-link ls-join" href={l.fathom} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>🎥 Fathom</a> : null}
                     <span className="mnd-src">{srcOf(l)}</span>
                     <div className="out-row">{outSelects(l)}</div>
                     {l.followUp === "yes" ? <span title="À follow-up" style={{ fontSize: 15 }}>🔁</span> : null}
@@ -2416,9 +2419,10 @@ export default function App() {
                 </select>
               </div>
 
-              {L.links && L.links.join ? (
+              {(L.links && L.links.join) || L.fathom ? (
                 <div className="ls-links">
-                  <button className="ls-link ls-join" onClick={() => { try { navigator.clipboard.writeText(L.links.join); flash("Lien du call copié 📋"); } catch (e) { window.prompt("Copie le lien :", L.links.join); } }}>📋 Copier le lien du call</button>
+                  {L.links && L.links.join ? <button className="ls-link ls-join" onClick={() => { try { navigator.clipboard.writeText(L.links.join); flash("Lien du call copié 📋"); } catch (e) { window.prompt("Copie le lien :", L.links.join); } }}>📋 Copier le lien du call</button> : null}
+                  {L.fathom ? <a className="ls-link ls-join" href={L.fathom} target="_blank" rel="noreferrer">🎥 Enregistrement Fathom</a> : null}
                 </div>
               ) : null}
               <div className="ls-grid">
@@ -2454,6 +2458,14 @@ export default function App() {
                     <option value="no">Non</option>
                   </select>
                 </label>
+              </div>
+
+              <div className="ls-sec">Enregistrement du call (Fathom)</div>
+              <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 4 }}>
+                <input className="crm-input" style={{ flex: 1, width: "auto" }} placeholder="Colle ici le lien Fathom de l'enregistrement…"
+                  defaultValue={L.fathom || ""} key={L.email + "|f|" + (L.fathom || "")}
+                  onBlur={(e) => { const v = e.target.value.trim(); if (v !== (L.fathom || "")) updateLead(L.email, { fathom: v }); }} />
+                {L.fathom ? <a className="ls-link ls-join" href={L.fathom} target="_blank" rel="noreferrer" style={{ flex: "none" }}>🎥 Ouvrir</a> : null}
               </div>
 
               <div className="ls-sec">Réponses aux questions</div>

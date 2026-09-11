@@ -107,10 +107,20 @@ module.exports = async (req, res) => {
       }
       const canceled = /canceled/.test(calendlyEvent) || p.status === "canceled";
       if (canceled) {
-        if (!lead.manualStage) lead.stage = "setting"; // le RDV saute -> retour en setting
-        pushHistory(lead, "calendly_cancel", `RDV annulé${ev.name ? ` · ${ev.name}` : ""}`);
+        // Replanification Calendly = invitee.canceled avec rescheduled:true,
+        // suivi d'un invitee.created pour le nouveau créneau -> on ne marque
+        // PAS annulé, on trace juste l'historique.
+        if (p.rescheduled === true) {
+          pushHistory(lead, "calendly_resched", `RDV replanifié${ev.name ? ` · ${ev.name}` : ""}`);
+        } else {
+          if (!lead.manualStage) lead.stage = "setting"; // le RDV saute -> retour en setting
+          if (!lead.showUp || lead.showUpAuto !== false) { lead.showUp = "cancelled"; lead.showUpAuto = true; }
+          pushHistory(lead, "calendly_cancel", `RDV annulé${ev.name ? ` · ${ev.name}` : ""}`);
+        }
       } else {
         if (!lead.manualStage && !["won", "lost"].includes(lead.stage)) lead.stage = "booked";
+        // Nouveau créneau : une annulation auto précédente ne tient plus.
+        if (lead.showUp === "cancelled" && lead.showUpAuto !== false) { delete lead.showUp; delete lead.showUpAuto; }
         lead.bookedAt = ev.start_time || new Date().toISOString();
         lead.bookedEvent = ev.name || "Calendly";
         // Liens Calendly : visio (Meet/Zoom) + replanifier / annuler côté invité
