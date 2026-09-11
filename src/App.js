@@ -1265,7 +1265,13 @@ export default function App() {
         .mnd-gbar{width:6px;height:22px;border-radius:4px;display:inline-block;}
         .mnd-gcount{color:var(--muted);font-weight:700;font-size:12px;background:rgba(15,23,42,.06);padding:3px 11px;border-radius:999px;font-family:'Inter';}
         .mnd-card{padding:0;overflow-x:auto;border-radius:14px;}
-        .mnd-tbl{width:100%;border-collapse:collapse;min-width:1020px;}
+        .mnd-card::-webkit-scrollbar{height:10px;}
+        .mnd-card::-webkit-scrollbar-track{background:transparent;}
+        .mnd-card::-webkit-scrollbar-thumb{background:#D0D5DD;border-radius:999px;border:2px solid #fff;}
+        .mnd-card::-webkit-scrollbar-thumb:hover{background:#B6BEC9;}
+        .mnd-tbl{width:100%;border-collapse:separate;border-spacing:0;min-width:1560px;}
+        .mnd-tbl th:first-child, .mnd-tbl td:first-child{position:sticky;left:0;z-index:2;background:#fff;box-shadow:inset -1px 0 0 rgba(15,23,42,.07);}
+        .mnd-tbl tr:hover td:first-child{background:#F6F7F9;}
         .mnd-tbl th{font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:700;text-align:left;padding:13px 14px 9px;border-bottom:1px solid rgba(15,23,42,.06);}
         .mnd-tbl th.num, .mnd-tbl td.num{text-align:right;}
         .mnd-tbl td{padding:13px 14px;vertical-align:middle;border-top:1px solid rgba(15,23,42,.05);font-size:13.5px;}
@@ -1282,15 +1288,16 @@ export default function App() {
         .mnd-status option{color:#111;background:#fff;font-weight:600;}
         .mnd-src{display:inline-flex;padding:5px 13px;border-radius:999px;border:1px solid var(--line);font-size:11.5px;font-weight:600;color:var(--text);background:var(--panel2);white-space:nowrap;}
         /* édition inline discrète (façon Monday : invisible tant qu'on ne survole pas) */
-        .crm-input{background:#fff;color:var(--text);border:1px solid #E3E6EA;border-radius:8px;padding:8px 10px;font-family:'Inter';font-size:13px;width:104px;transition:border-color .12s, box-shadow .12s;}
+        .crm-input{background:#fff;color:var(--text);border:1px solid #E3E6EA;border-radius:8px;padding:8px 10px;font-family:'Inter';font-size:13px;width:132px;transition:border-color .12s, box-shadow .12s;}
         .crm-input:hover{border-color:#C6CCD6;}
         .crm-input:focus{outline:none;border-color:var(--cyan);box-shadow:0 0 0 3px rgba(108,92,231,.12);}
         .crm-input::placeholder{color:#98A2B3;}
+        .crm-notes{width:240px;}
         .mnd-foot{display:flex;gap:22px;align-items:center;padding:12px 18px;border-top:1px solid rgba(15,23,42,.06);color:var(--muted);font-size:12.5px;}
         .mnd-foot b{color:var(--text);font-weight:700;}
         .mnd-call{line-height:1.35;}
         .mnd-call .d{font-weight:600;font-size:13px;color:var(--text);white-space:nowrap;}
-        .mnd-call .e{font-size:11.5px;color:var(--muted);margin-top:2px;white-space:nowrap;max-width:190px;overflow:hidden;text-overflow:ellipsis;}
+        .mnd-call .e{font-size:11.5px;color:var(--muted);margin-top:2px;white-space:nowrap;max-width:260px;overflow:hidden;text-overflow:ellipsis;}
         .crm-select{background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:7px 10px;font-family:'Inter';font-size:12.5px;cursor:pointer;}
         .crm-select:focus{outline:none;border-color:var(--cyan);}
         /* Vue calendrier (agenda) */
@@ -2184,7 +2191,7 @@ export default function App() {
             </div>
             <div className="card mnd-card" style={{ borderLeft: `6px solid ${META[g.s][1]}` }}>
               <table className="mnd-tbl">
-                <thead><tr><th>Lead</th><th>Call</th><th>Setter</th><th>Closer</th><th>Statut</th><th>Résultat du call</th><th className="num">Encaissé</th></tr></thead>
+                <thead><tr><th>Lead</th><th>Call</th><th>Source</th><th>Setter</th><th>Closer</th><th>Statut</th><th>Résultat du call</th><th className="num">Encaissé</th><th>Notes</th></tr></thead>
                 <tbody>
                   {g.items.slice(0, 100).map((l) => {
                     const nm = l.name && l.name !== l.email ? l.name : l.email;
@@ -2200,7 +2207,8 @@ export default function App() {
                           </div>
                         </div>
                       </td>
-                      <td><div className="mnd-call"><div className="d">{callDate(l)}{callTime(l) ? ` · ${callTime(l)}` : ""}</div><div className="e">{srcOf(l)}{callEvent(l) ? ` · ${callEvent(l)}` : ""}</div></div></td>
+                      <td><div className="mnd-call"><div className="d">{callDate(l)}{callTime(l) ? ` · ${callTime(l)}` : ""}</div>{callEvent(l) ? <div className="e">{callEvent(l)}</div> : null}</div></td>
+                      <td><span className="mnd-src">{srcOf(l)}</span></td>
                       <td>
                         {isAdmin ? (
                           <input className="crm-input" defaultValue={l.setter || ""} list="crm-setters" placeholder="Assigner…"
@@ -2221,6 +2229,10 @@ export default function App() {
                       </td>
                       <td><div className="out-row">{outSelects(l)}</div></td>
                       <td className="num green" style={{ fontWeight: 700 }}>{l.amount ? euro(l.amount) : "—"}</td>
+                      <td>
+                        <input className="crm-input crm-notes" defaultValue={l.notes || ""} placeholder="Ajouter une note…"
+                          onBlur={(e) => { const v = e.target.value; if (v !== (l.notes || "")) updateLead(l.email, { notes: v }); }} />
+                      </td>
                     </tr>
                   ); })}
                 </tbody>
