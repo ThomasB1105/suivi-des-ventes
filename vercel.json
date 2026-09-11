@@ -1,5 +1,8 @@
 {
   "functions": {
-    "api/iclosed-import.js": { "maxDuration": 60 }
+    "api/iclosed-import.js": { "maxDuration": 60 },
+    "api/stripe-import.js": { "maxDuration": 60 },
+    "api/whop-import.js": { "maxDuration": 60 },
+    "api/calendly-import.js": { "maxDuration": 60 }
   }
 }

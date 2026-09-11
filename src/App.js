@@ -652,6 +652,22 @@ export default function App() {
     try { const r = await authFetch("/api/crm"); const d = await r.json(); if (d && d.leads) setCrm(d); } catch (e) { /* ignore */ }
     setCrmLoading(false);
   };
+  const [calSync, setCalSync] = useState(false);
+  // Connecte Calendly : importe l'historique des RDV + active le webhook temps réel.
+  const connectCalendly = async () => {
+    setCalSync(true);
+    const ctrl = new AbortController();
+    const to = setTimeout(() => ctrl.abort(), 75000);
+    try {
+      const r = await authFetch("/api/calendly-import?setup=1", { method: "POST", signal: ctrl.signal });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d && d.error ? d.error : `Erreur ${r.status}`);
+      flash(`Calendly (${d.account}) : ${d.imported || 0} RDV importés · webhook ${d.webhook}.`);
+      loadCrm();
+    } catch (e) {
+      flash(e.name === "AbortError" ? "Connexion Calendly trop longue (interrompue)." : `Calendly : ${e.message}`);
+    } finally { clearTimeout(to); setCalSync(false); }
+  };
   useEffect(() => { if (tab === "crm") loadCrm(); }, [tab]); // eslint-disable-line
   // Mise à jour optimiste + sauvegarde serveur (stage/setter/closer/notes).
   const updateLead = async (email, patch) => {
@@ -2015,6 +2031,11 @@ export default function App() {
               <button className={`crm-chip ${crmView === "all" ? "on" : ""}`} onClick={() => setCrmView("all")}>Tout <b>{all.length}</b></button>
             </div>
             <div className="crm-search"><Search size={14} /><input value={crmQ} onChange={(e) => setCrmQ(e.target.value)} placeholder="Rechercher (nom, email, closer…)" /></div>
+            {isAdmin && (
+              <button className={`refresh-btn ${calSync ? "is-loading" : ""}`} onClick={connectCalendly} disabled={calSync} style={{ background: "linear-gradient(135deg,#006BFF,#4D9AFF)", boxShadow: "0 4px 14px rgba(0,107,255,.3)" }} title="Importe les RDV Calendly (90 jours + à venir) et active le webhook temps réel">
+                <Calendar size={15} className={calSync ? "spin" : ""} /> {calSync ? "Calendly…" : "Connecter Calendly"}
+              </button>
+            )}
             <button className={`refresh-btn ${crmLoading ? "is-loading" : ""}`} onClick={loadCrm} disabled={crmLoading}>
               <RotateCcw size={15} className={crmLoading ? "spin" : ""} /> {crmLoading ? "Chargement…" : "Actualiser"}
             </button>
