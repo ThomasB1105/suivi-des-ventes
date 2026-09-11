@@ -150,21 +150,23 @@ module.exports = async (req, res) => {
     // Les questions type "Quel âge as-tu / budget..." vivent dans les routing
     // forms, pas dans le formulaire de réservation. On rattache chaque
     // soumission à son invité (submitter) -> email -> fiche lead.
-    let formAnswers = 0, formSubs = 0;
+    let formAnswers = 0, formsSeen = 0, subsSeen = 0, formsError = null;
     try {
       const rf = await cGet("/routing_forms", tok, { organization, count: 20 });
       const minTs = new Date(Date.now() - days * 864e5).toISOString();
       let lookups = 0;
       for (const form of (rf && rf.collection) || []) {
+        formsSeen += 1;
         let pageUrl2 = null, g2 = 0;
         while (g2++ < 5 && lookups < 100) {
           const page = pageUrl2
             ? await cGet(pageUrl2, tok)
-            : await cGet("/routing_form_submissions", tok, { form: form.uri, count: 100, sort: "created_at:desc" });
+            : await cGet("/routing_form_submissions", tok, { form: form.uri, count: 100 });
           const subs = (page && page.collection) || [];
           for (const sub of subs) {
-            if (String(sub.created_at || "") < minTs) { g2 = 99; break; } // trop ancien -> stop ce formulaire
-            if (!sub.submitter || sub.submitter_type !== "Invitee") continue;
+            subsSeen += 1;
+            if (String(sub.created_at || "") < minTs) continue;           // hors fenêtre -> on saute (sans stopper)
+            if (!sub.submitter) continue;                                  // pas rattachable à un invité
             if (lookups >= 100) break;
             lookups += 1;
             let invR; try { invR = await cGet(sub.submitter, tok); } catch (e) { continue; }
@@ -182,8 +184,8 @@ module.exports = async (req, res) => {
               if (!q || a == null || String(a) === "") return;
               lead.answers = { ...(lead.answers || {}), [String(q)]: Array.isArray(a) ? a.join(", ") : String(a) };
               touched = true;
-              if (!lead.phone && /phone|t[ée]l|num[ée]ro|whatsapp/i.test(String(q)) ) lead.phone = String(a);
-              if (!lead.name || lead.name === email) { if (/pr[ée]nom|^nom$|name/i.test(String(q))) lead.name = String(a); }
+              if (!lead.phone && /phone|t[ée]l|num[ée]ro|whatsapp/i.test(String(q))) lead.phone = String(a);
+              if ((!lead.name || lead.name === email) && /pr[ée]nom|^nom$|name/i.test(String(q))) lead.name = String(a);
             });
             if (touched) {
               lead.source = lead.source || "Calendly";
@@ -191,13 +193,17 @@ module.exports = async (req, res) => {
               await cmd(["HSET", "crm:leads", email, JSON.stringify(lead)]);
               formAnswers += 1;
             }
-            formSubs += 1;
           }
           pageUrl2 = page && page.pagination && page.pagination.next_page;
           if (!pageUrl2 || !subs.length) break;
         }
       }
-    } catch (e) { /* routing forms optionnels */ }
+    } catch (e) {
+      // On REMONTE l'erreur au lieu de l'avaler : indispensable pour diagnostiquer
+      // (403 = scope du token, 400 = paramètre refusé, etc.)
+      let msg = ""; try { msg = (e.body && (e.body.message || e.body.title)) || ""; } catch {}
+      formsError = `${e.status || e.message}${msg ? ` « ${msg} »` : ""}`;
+    }
 
     res.status(200).json({
       ok: true,
@@ -205,7 +211,10 @@ module.exports = async (req, res) => {
       events: events.length,
       imported: stored,
       skipped,
+      formsSeen,
+      formSubmissions: subsSeen,
       formResponses: formAnswers,
+      formsError,
       webhook: webhook || "non demandé (ajoute ?setup=1)",
     });
   } catch (e) {

@@ -671,7 +671,7 @@ export default function App() {
       const r = await authFetch("/api/calendly-import?setup=1", { method: "POST", signal: ctrl.signal });
       const d = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(d && d.error ? d.error : `Erreur ${r.status}`);
-      flash(`Calendly (${d.account}) : ${d.imported || 0} RDV importés · webhook ${d.webhook}.`);
+      flash(`Calendly (${d.account}) : ${d.imported || 0} RDV · ${d.formResponses || 0} fiches questions${d.formsError ? ` · formulaires : ${d.formsError}` : ""} · webhook ${d.webhook}.`);
       loadCrm();
     } catch (e) {
       flash(e.name === "AbortError" ? "Connexion Calendly trop longue (interrompue)." : `Calendly : ${e.message}`);
@@ -1308,7 +1308,7 @@ export default function App() {
         .ls-notes:focus{outline:none;border-color:var(--cyan);}
         .ls-hist{display:flex;flex-direction:column;gap:6px;font-size:12.5px;}
         .ls-links{display:flex;gap:9px;flex-wrap:wrap;margin-bottom:14px;}
-        .ls-link{display:inline-flex;align-items:center;gap:6px;padding:8px 13px;border-radius:10px;border:1px solid var(--line);background:var(--panel2);color:var(--text);font-size:12.5px;font-weight:600;text-decoration:none;transition:border-color .12s;}
+        .ls-link{display:inline-flex;align-items:center;gap:6px;padding:8px 13px;border-radius:10px;border:1px solid var(--line);background:var(--panel2);color:var(--text);font-size:12.5px;font-weight:600;text-decoration:none;transition:border-color .12s;cursor:pointer;font-family:'Inter';}
         .ls-link:hover{border-color:var(--cyan);}
         .ls-join{border-color:rgba(0,200,117,.5);color:#2BD9A0;}
         .ls-cancel{border-color:rgba(255,77,94,.4);color:#FF8A93;}
@@ -2200,7 +2200,7 @@ export default function App() {
                       <div className="cal-name">{l.name && l.name !== l.email ? l.name : l.email}{l.closer ? <span className="mut" style={{ fontWeight: 500 }}> · {l.closer}</span> : null}</div>
                       <div className="cal-sub">{callEvent(l) || srcOf(l)}{l.phone ? ` · ${l.phone}` : ""}</div>
                     </div>
-                    {l.links && l.links.join ? <a className="ls-link ls-join" href={l.links.join} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>🎥 Rejoindre</a> : null}
+                    {l.links && l.links.join ? <button className="ls-link ls-join" onClick={(e) => { e.stopPropagation(); try { navigator.clipboard.writeText(l.links.join); flash("Lien du call copié 📋"); } catch (e2) { window.prompt("Copie le lien :", l.links.join); } }}>📋 Copier lien</button> : null}
                     <span className="mnd-src">{srcOf(l)}</span>
                     <select className="mnd-status" value={l.stage} style={{ backgroundColor: (META[l.stage] || ["", "#666"])[1] }}
                       onChange={(e) => updateLead(l.email, { stage: e.target.value })}>
@@ -2318,11 +2318,9 @@ export default function App() {
                 </select>
               </div>
 
-              {L.links && (L.links.join || L.links.reschedule || L.links.cancel) ? (
+              {L.links && L.links.join ? (
                 <div className="ls-links">
-                  {L.links.join ? <a className="ls-link ls-join" href={L.links.join} target="_blank" rel="noreferrer">🎥 Rejoindre le call</a> : null}
-                  {L.links.reschedule ? <a className="ls-link" href={L.links.reschedule} target="_blank" rel="noreferrer">🔁 Replanifier</a> : null}
-                  {L.links.cancel ? <a className="ls-link ls-cancel" href={L.links.cancel} target="_blank" rel="noreferrer">✕ Annuler le RDV</a> : null}
+                  <button className="ls-link ls-join" onClick={() => { try { navigator.clipboard.writeText(L.links.join); flash("Lien du call copié 📋"); } catch (e) { window.prompt("Copie le lien :", L.links.join); } }}>📋 Copier le lien du call</button>
                 </div>
               ) : null}
               <div className="ls-grid">
