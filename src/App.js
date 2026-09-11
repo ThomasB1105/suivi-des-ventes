@@ -20,6 +20,18 @@ const round2 = (x) => Math.round(x * 100) / 100;
 const pad = (n) => String(n).padStart(2, "0");
 const toISO = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 const parseLocal = (iso) => { const [y, m, d] = String(iso || "").split("-").map(Number); return y ? new Date(y, m - 1, d || 1) : new Date(); };
+// Horodatages plateformes (Calendly start_time, iClosed dateTimeUTC) : stockés
+// en UTC -> affichés en heure de Paris. Les chaînes SANS fuseau (saisies
+// locales type "2026-09-11 14:15") sont laissées telles quelles.
+const toParis = (s) => {
+  const str = String(s || "");
+  if (!str) return "";
+  if (!/([zZ]|[+-]\d{2}:?\d{2})$/.test(str)) return str.replace(" ", "T");
+  const d = new Date(str.replace(/\.(\d{3})\d+/, ".$1"));
+  if (isNaN(d)) return str.replace(" ", "T");
+  const p = new Intl.DateTimeFormat("fr-CA", { timeZone: "Europe/Paris", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }).formatToParts(d).reduce((a, x) => { a[x.type] = x.value; return a; }, {});
+  return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}`;
+};
 const addMonths = (date, n) => new Date(date.getFullYear(), date.getMonth() + n, date.getDate());
 
 const today = new Date();
@@ -656,10 +668,10 @@ export default function App() {
   const [crmView, setCrmView] = useState(() => { try { const r = localStorage.getItem("melo_role"); return r && r !== "admin" ? "today" : "all"; } catch (e) { return "all"; } }); // "today" | "week" | "all"
   const [leadOpen, setLeadOpen] = useState(null); // email de la fiche lead ouverte
   const [calView, setCalView] = useState("upcoming"); // calendrier : "today" | "upcoming" | "past"
-  const loadCrm = async () => {
-    setCrmLoading(true);
+  const loadCrm = async (silent) => {
+    if (!silent) setCrmLoading(true);
     try { const r = await authFetch("/api/crm"); const d = await r.json(); if (d && d.leads) setCrm(d); } catch (e) { /* ignore */ }
-    setCrmLoading(false);
+    if (!silent) setCrmLoading(false);
   };
   const [calSync, setCalSync] = useState(false);
   // Connecte Calendly : importe l'historique des RDV + active le webhook temps réel.
@@ -677,7 +689,18 @@ export default function App() {
       flash(e.name === "AbortError" ? "Connexion Calendly trop longue (interrompue)." : `Calendly : ${e.message}`);
     } finally { clearTimeout(to); setCalSync(false); }
   };
-  useEffect(() => { if (tab === "crm" || tab === "calendrier") { loadCrm(); if (isAdmin) loadTeam(); } }, [tab]); // eslint-disable-line
+  // Temps réel : les webhooks (Calendly / iClosed / paiements) alimentent la
+  // base en continu ; l'interface se resynchronise toute seule (toutes les
+  // 45 s quand l'onglet est visible, et au retour sur la fenêtre).
+  useEffect(() => {
+    if (!(tab === "crm" || tab === "calendrier")) return;
+    loadCrm(); if (isAdmin) loadTeam();
+    const iv = setInterval(() => { if (document.visibilityState === "visible") loadCrm(true); }, 45000);
+    const onFocus = () => { if (document.visibilityState !== "hidden") loadCrm(true); };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onFocus);
+    return () => { clearInterval(iv); window.removeEventListener("focus", onFocus); document.removeEventListener("visibilitychange", onFocus); };
+  }, [tab]); // eslint-disable-line
   // Mise à jour optimiste + sauvegarde serveur (stage/setter/closer/notes).
   const updateLead = async (email, patch) => {
     setCrm((p) => ({ ...p, leads: p.leads.map((l) => (l.email === email ? { ...l, ...patch, manualStage: patch.stage !== undefined ? true : l.manualStage } : l)) }));
@@ -2058,7 +2081,7 @@ export default function App() {
         const mon = new Date(wd); mon.setDate(wd.getDate() - dow);
         const sun = new Date(mon); sun.setDate(mon.getDate() + 6);
         const wFrom = toISO(mon), wTo = toISO(sun);
-        const dOf = (l) => { const t = (l.lastCall && l.lastCall.date) || l.bookedAt || ""; return String(t).slice(0, 10); };
+        const dOf = (l) => { const t = (l.lastCall && l.lastCall.date) || l.bookedAt || ""; return toParis(t).slice(0, 10); };
         const inView = (l) => crmView === "all" ? true : (crmView === "today" ? dOf(l) === todayISO : (dOf(l) >= wFrom && dOf(l) <= wTo));
         // Calendrier : Aujourd'hui / À venir (aujourd'hui inclus, puis les jours
         // suivants) / Passés (anciens appels, plus récents en premier)
@@ -2073,7 +2096,7 @@ export default function App() {
           .filter(activeFilter)
           .filter((l) => !q || `${l.email} ${l.name || ""} ${l.closer || ""}`.toLowerCase().includes(q));
         // Tri chronologique croissant (les premières heures de la journée d'abord)
-        const tsOf = (l) => String((l.lastCall && l.lastCall.date) || l.bookedAt || "").replace(" ", "T");
+        const tsOf = (l) => toParis((l.lastCall && l.lastCall.date) || l.bookedAt || "");
         const bySort = (a, b) => tsOf(a).localeCompare(tsOf(b));
         const groups = ORDER.map((s) => ({ s, items: rows.filter((l) => l.stage === s).sort(bySort) })).filter((g) => g.items.length);
         const others = rows.filter((l) => !ORDER.includes(l.stage));
@@ -2122,7 +2145,7 @@ export default function App() {
         const srcOf = (l) => (l.lastCall ? "iClosed" : (l.bookedAt ? "Calendly" : "—"));
         const avaColor = (e) => ["#579BFC", "#A25DDC", "#00C875", "#FDAB3D", "#E2445C", "#66B2FF"][(String(e).charCodeAt(0) + String(e).length) % 6];
         const initials = (n) => String(n).split(/[\s@._-]+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase() || "?";
-        const callTs = (l) => String((l.lastCall && l.lastCall.date) || l.bookedAt || "");
+        const callTs = (l) => toParis((l.lastCall && l.lastCall.date) || l.bookedAt || "");
         const callDate = (l) => (callTs(l) ? callTs(l).slice(0, 10) : "—");
         const callTime = (l) => { const m = callTs(l).match(/[T ](\d{2}:\d{2})/); return m ? m[1] : ""; };
         const callEvent = (l) => (l.lastCall && l.lastCall.event) || l.bookedEvent || "";
@@ -2430,8 +2453,8 @@ export default function App() {
                 <div><span className="ls-l">Setter</span><span>{L.setter || "—"}</span></div>
                 <div><span className="ls-l">Closer</span><span>{L.closer || "—"}</span></div>
                 <div><span className="ls-l">Encaissé</span><span className="green" style={{ fontWeight: 700 }}>{L.amount ? euro(L.amount) : "—"}</span></div>
-                {L.bookedAt ? <div><span className="ls-l">RDV</span><span>{String(L.bookedAt).slice(0, 10)}{L.bookedEvent ? ` · ${L.bookedEvent}` : ""}</span></div> : null}
-                {L.lastCall ? <div><span className="ls-l">Dernier call</span><span>{String(L.lastCall.date || "").slice(0, 10)}{L.lastCall.event ? ` · ${L.lastCall.event}` : ""}</span></div> : null}
+                {L.bookedAt ? <div><span className="ls-l">RDV</span><span>{toParis(L.bookedAt).slice(0, 16).replace("T", " · ")}{L.bookedEvent ? ` · ${L.bookedEvent}` : ""}</span></div> : null}
+                {L.lastCall ? <div><span className="ls-l">Dernier call</span><span>{toParis(L.lastCall.date).slice(0, 16).replace("T", " · ")}{L.lastCall.event ? ` · ${L.lastCall.event}` : ""}</span></div> : null}
               </div>
 
               <div className="ls-sec">Résultat du call</div>
