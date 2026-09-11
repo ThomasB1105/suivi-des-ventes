@@ -36,6 +36,43 @@ const toISODate = (v) => {
   else d = new Date(v);
   return isNaN(d) ? undefined : d.toISOString().slice(0, 10);
 };
+
+// Détail d'un plan Whop (échéancier) : cache KV, sinon API (si clé présente).
+async function fetchPlan(planId) {
+  if (!planId || !process.env.WHOP_API_KEY) return null;
+  try { const s = await cmd(["HGET", "whop:plans", planId]); if (s) return JSON.parse(s); } catch (e) { /* ignore */ }
+  const headers = { Authorization: `Bearer ${process.env.WHOP_API_KEY}`, Accept: "application/json" };
+  if (process.env.WHOP_COMPANY_ID) headers["x-company-id"] = process.env.WHOP_COMPANY_ID;
+  for (const base of ["https://api.whop.com/api/v2/plans/", "https://api.whop.com/api/v5/company/plans/"]) {
+    try {
+      const r = await fetch(base + planId, { headers });
+      if (!r.ok) continue;
+      const j = await r.json();
+      const pl = (j && (j.data || j)) || null;
+      if (pl && (pl.id || pl.renewal_price !== undefined)) {
+        try { await cmd(["HSET", "whop:plans", planId, JSON.stringify(pl)]); } catch (e) { /* ignore */ }
+        return pl;
+      }
+    } catch (e) { /* endpoint suivant */ }
+  }
+  return null;
+}
+
+// Champs d'échéancier (mêmes conventions que systeme.io : planCount / planAmount /
+// planInterval ; planOpen = mensualités actives mais nombre total inconnu).
+function planFieldsFrom(pl) {
+  if (!pl) return {};
+  const renewal = num(pick(pl, "renewal_price", "renewalPrice"));
+  const period = Number(pick(pl, "billing_period", "billingPeriod")) || 0;
+  if (!(renewal > 0) || !(period > 0)) return {};
+  const out = { planAmount: renewal, planInterval: period >= 300 ? "year" : "month" };
+  let count = Number(pick(pl, "split_pay_required_payments", "required_payments", "payments_required", "number_of_payments", "installments", "payment_count")) || 0;
+  const expDays = Number(pick(pl, "expiration_days", "expirationDays")) || 0;
+  if (!count && expDays && period) count = Math.max(1, Math.round(expDays / period));
+  if (count > 1) out.planCount = count;
+  else out.planOpen = true;
+  return out;
+}
 module.exports = async (req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
@@ -111,6 +148,17 @@ module.exports = async (req, res) => {
       processor: "whop",
       receivedAt: new Date().toISOString(),
     };
+    // Échéancier : le webhook embarque parfois l'objet plan complet ; sinon on
+    // le résout via l'API Whop (caché en KV). -> mensualités projetées côté /api/sales.
+    try {
+      const rawPlan = data.plan;
+      let planObj = (rawPlan && typeof rawPlan === "object" && (rawPlan.renewal_price !== undefined || rawPlan.billing_period !== undefined)) ? rawPlan : null;
+      if (!planObj) {
+        const planId = (typeof rawPlan === "string" && rawPlan) || (rawPlan && rawPlan.id) || data.plan_id || deepFind(data, ["plan_id"]);
+        planObj = await fetchPlan(planId);
+      }
+      Object.assign(rec, planFieldsFrom(planObj));
+    } catch (e) { /* sans plan : paiement simple */ }
     await cmd(["HSET", "sales:events", id, JSON.stringify(rec)]);
     res.status(200).json({ ok: true, stored: true, record: rec });
   } catch (e) {

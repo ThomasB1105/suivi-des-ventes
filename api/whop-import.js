@@ -66,7 +66,40 @@ const refIds = (p) => {
   return ids;
 };
 
-function mapPayment(p, emailById) {
+// Id du plan référencé par un paiement (chaîne ou objet), sinon via son membership.
+const planIdOf = (p, memById) => {
+  const direct = typeof p.plan === "string" ? p.plan : (p.plan && p.plan.id);
+  if (direct) return direct;
+  const memId = typeof p.membership === "string" ? p.membership : ((p.membership && p.membership.id) || p.membership_id);
+  const m = memId && memById && memById[memId];
+  return (m && m.plan) || undefined;
+};
+
+// Échéancier déduit du plan Whop : renewal_price + billing_period = mensualités.
+// Le nombre total de paiements est cherché dans les champs "split pay" connus,
+// sinon expiration_days / billing_period ; sinon plan "ouvert" (abonnement en
+// cours) -> /api/sales projettera au moins la PROCHAINE échéance.
+function planFields(p, memById, planById) {
+  const pl = planById && planById[planIdOf(p, memById)];
+  if (!pl) return {};
+  const renewal = num(pick(pl, "renewal_price", "renewalPrice"));
+  const period = Number(pick(pl, "billing_period", "billingPeriod")) || 0;
+  if (!(renewal > 0) || !(period > 0)) return {}; // one-time -> pas d'échéancier
+  const out = { planAmount: renewal, planInterval: period >= 300 ? "year" : "month" };
+  let count = Number(pick(pl, "split_pay_required_payments", "required_payments", "payments_required", "number_of_payments", "installments", "payment_count")) || 0;
+  const expDays = Number(pick(pl, "expiration_days", "expirationDays")) || 0;
+  if (!count && expDays && period) count = Math.max(1, Math.round(expDays / period));
+  if (count > 1) out.planCount = count;
+  else {
+    // Abonnement sans fin connue : ouvert tant que le membership n'est pas terminé.
+    const memId = typeof p.membership === "string" ? p.membership : ((p.membership && p.membership.id) || p.membership_id);
+    const st = String((memById && memById[memId] && memById[memId].status) || "").toLowerCase();
+    if (!/completed|canceled|cancelled|expired|past_due_final/.test(st)) out.planOpen = true;
+  }
+  return out;
+}
+
+function mapPayment(p, emailById, memById, planById) {
   const user = (typeof p.user === "object" && p.user) || (typeof p.member === "object" && p.member) || {};
   let email = String(pick(user, "email") || pick(p, "email", "user_email") || deepEmail(p) || "").toLowerCase();
   if (!email && emailById) { for (const id of refIds(p)) { if (emailById[id]) { email = emailById[id]; break; } } }
@@ -95,6 +128,7 @@ function mapPayment(p, emailById) {
     status: refunded ? "cancelled" : "paid",
     processor: "whop",
     receivedAt: new Date().toISOString(),
+    ...planFields(p, memById, planById),
   };
 }
 
@@ -155,11 +189,11 @@ module.exports = async (req, res) => {
       if (arr.length < 50) break;
     }
 
-    // Enrichissement des emails : les paiements ne portent souvent que des ids
-    // (user_XXX / mem_XXX). On lit les memberships pour construire id -> email.
-    const emailById = {};
-    const hasDirectEmail = (p) => !!deepEmail(p);
-    if (all.some((p) => !hasDirectEmail(p))) {
+    // Enrichissement : les paiements ne portent souvent que des ids
+    // (user_XXX / mem_XXX). On lit les memberships (id -> email, plan, statut)
+    // et les plans (échéanciers : renewal_price / billing_period / nb paiements).
+    const emailById = {}, memById = {};
+    {
       const memBase = chosen.base.replace(/payments|receipts/, "memberships");
       let g2 = 0;
       while (g2++ < 60) {
@@ -170,6 +204,10 @@ module.exports = async (req, res) => {
         arr.forEach((m) => {
           if (!m || typeof m !== "object") return;
           const em = String(deepEmail(m) || "").toLowerCase();
+          if (m.id && !memById[m.id]) {
+            memById[m.id] = { status: m.status, plan: typeof m.plan === "string" ? m.plan : (m.plan && m.plan.id) };
+            newIds += 1;
+          }
           if (!em) return;
           [m.id, (typeof m.user === "string" ? m.user : (m.user && m.user.id)), m.user_id].forEach((id) => {
             if (id && !emailById[id]) { emailById[id] = em; newIds += 1; }
@@ -179,8 +217,25 @@ module.exports = async (req, res) => {
         if (arr.length < 50) break;
       }
     }
+    const planById = {};
+    {
+      const planBase = chosen.base.replace(/payments|receipts/, "plans");
+      let g3 = 0;
+      while (g3++ < 40) {
+        let j; try { j = await whopGet(`${planBase}?${chosen.pageParam}=${g3}&per=50`, key); } catch (e) { break; }
+        const arr = extract(j);
+        if (!arr.length) break;
+        arr.forEach((pl) => { if (pl && pl.id && !planById[pl.id]) planById[pl.id] = pl; });
+        if (arr.length < 50) break;
+      }
+    }
 
-    const recs = all.map((p) => mapPayment(p, emailById)).filter(Boolean);
+    if (req.query && req.query.debug === "plans") {
+      res.status(200).json({ debug: true, plans: Object.values(planById).slice(0, 10), memberships: Object.entries(memById).slice(0, 5) });
+      return;
+    }
+
+    const recs = all.map((p) => mapPayment(p, emailById, memById, planById)).filter(Boolean);
 
     // 3) purge des anciennes entrées Whop avant réécriture (import = source de vérité)
     try {
@@ -196,7 +251,8 @@ module.exports = async (req, res) => {
       batch.forEach((r) => { args.push(r.id, JSON.stringify(r)); });
       if (args.length > 2) { await cmd(args); stored += batch.length; }
     }
-    res.status(200).json({ ok: true, endpoint: chosen.base, fetched: all.length, stored, skipped: all.length - recs.length, sample: recs[0] || null });
+    const withPlan = recs.filter((r) => r.planCount > 1 || r.planOpen).length;
+    res.status(200).json({ ok: true, endpoint: chosen.base, fetched: all.length, stored, skipped: all.length - recs.length, plans: Object.keys(planById).length, withPlan, sample: recs[0] || null });
   } catch (e) {
     res.status(e.status || 500).json({ error: String(e.message || e), detail: e.body });
   }

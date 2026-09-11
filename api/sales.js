@@ -45,7 +45,7 @@ function groupIntoSales(events) {
     // on garde l'enregistrement le plus riche (celui qui porte le plan échelonné).
     const cents = (e) => Math.round((Number(e.amount) || 0) * 100);
     const dayNum = (e) => { const [y, m, d] = String(e.date || "").split("-").map(Number); return y ? Math.round(Date.UTC(y, m - 1, d || 1) / 864e5) : NaN; };
-    const richer = (a, b) => (((b.planCount > 1 ? 2 : 0) + (b.planAmount > 0 ? 1 : 0)) > ((a.planCount > 1 ? 2 : 0) + (a.planAmount > 0 ? 1 : 0)) ? b : a);
+    const richer = (a, b) => (((b.planCount > 1 ? 2 : 0) + (b.planAmount > 0 ? 1 : 0) + (b.planOpen ? 1 : 0)) > ((a.planCount > 1 ? 2 : 0) + (a.planAmount > 0 ? 1 : 0) + (a.planOpen ? 1 : 0)) ? b : a);
     const kept = [];
     c.events
       .filter((e) => e.status !== "cancelled")
@@ -86,6 +86,25 @@ function groupIntoSales(events) {
           id: `inst-${plan.id}-f${i}`,
           dueDate: addMonthsISO(lastDate, i * interval),
           amount: plan.planAmount,
+          paid: false,
+          method: null,
+        });
+      }
+    } else {
+      // 2bis) plan "ouvert" (Whop : mensualités actives mais nombre total
+      //       inconnu) -> on projette la PROCHAINE échéance après le dernier
+      //       paiement, pour qu'elle apparaisse dans À collecter / Impayés.
+      const open = evs
+        .filter((e) => e.planOpen && e.planAmount > 0)
+        .sort((a, b) => String(b.date).localeCompare(String(a.date)))[0];
+      if (open) {
+        const paidLike = evs.filter((e) => Math.abs(e.amount - open.planAmount) < 0.5);
+        const lastDate = (paidLike.map((e) => e.date).sort().pop()) || open.date;
+        const interval = open.planInterval === "year" ? 12 : 1;
+        schedule.push({
+          id: `inst-${open.id}-next`,
+          dueDate: addMonthsISO(lastDate, interval),
+          amount: open.planAmount,
           paid: false,
           method: null,
         });
