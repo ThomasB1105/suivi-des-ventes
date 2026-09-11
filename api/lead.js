@@ -124,9 +124,13 @@ module.exports = async (req, res) => {
         pushHistory(lead, "calendly_booked", `RDV booké${ev.name ? ` · ${ev.name}` : ""}${ev.start_time ? ` (${String(ev.start_time).slice(0, 10)})` : ""}`);
       }
       lead.source = lead.source || "Calendly";
+      // Hôte Calendly = setter de référence (remplace l'auto, jamais le manuel)
+      const ms = Array.isArray(ev.event_memberships) ? ev.event_memberships : [];
+      const host = (ms[0] && (ms[0].user_name || ms[0].user_email)) || null;
+      if (host && (!lead.setter || lead.setterAuto)) { lead.setter = String(host); lead.setterAuto = true; pushHistory(lead, "assign", `Call pris par ${host}`); }
       if (!lead.setter) {
         const s = await pickNextAssignee(cmd, "setter");
-        if (s) { lead.setter = s; pushHistory(lead, "assign", `Attribué à ${s} (auto)`); }
+        if (s) { lead.setter = s; lead.setterAuto = true; pushHistory(lead, "assign", `Attribué à ${s} (auto)`); }
       }
       await saveLead(lead);
       res.status(200).json({ ok: true, calendly: true, email, stage: lead.stage });
@@ -150,7 +154,7 @@ module.exports = async (req, res) => {
     pushHistory(lead, "optin", `Lead entrant (${lead.source})`);
     if (!lead.setter) {
       const s = await pickNextAssignee(cmd, "setter");
-      if (s) { lead.setter = s; pushHistory(lead, "assign", `Attribué à ${s} (auto)`); }
+      if (s) { lead.setter = s; lead.setterAuto = true; pushHistory(lead, "assign", `Attribué à ${s} (auto)`); }
     }
     await saveLead(lead);
     res.status(200).json({ ok: true, email, stage: lead.stage });

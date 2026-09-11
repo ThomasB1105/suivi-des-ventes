@@ -691,10 +691,20 @@ export default function App() {
   const [teamLoading, setTeamLoading] = useState(false);
   const [tForm, setTForm] = useState({ username: "", name: "", role: "closer", password: "", rate: "" });
   const [meStats, setMeStats] = useState(null);
+  const [aliases, setAliases] = useState([]);
   const loadTeam = async () => {
     setTeamLoading(true);
     try { const r = await authFetch("/api/users"); const d = await r.json(); if (d && d.users) setTeam(d.users); } catch (e) { /* ignore */ }
+    try { const r = await authFetch("/api/aliases"); const d = await r.json(); if (d && d.detected) setAliases(d.detected); } catch (e) { /* ignore */ }
     setTeamLoading(false);
+  };
+  const saveAlias = async (raw, to) => {
+    try {
+      const r = await authFetch("/api/aliases", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ raw, to }) });
+      if (!r.ok) throw new Error(`Erreur ${r.status}`);
+      flash(to ? `« ${raw} » sera affiché comme « ${to} ».` : `Correspondance « ${raw} » supprimée.`);
+      loadCrm();
+    } catch (e) { flash(`Matching : ${e.message}`); }
   };
   useEffect(() => { if (tab === "equipe" && isAdmin) loadTeam(); }, [tab]); // eslint-disable-line
   useEffect(() => {
@@ -2296,6 +2306,32 @@ export default function App() {
               )}
             </tbody>
           </table>
+        </div>
+
+        <div className="section-h" style={{ marginTop: 24 }}><Search size={15} /> Qui est qui · matching des noms Calendly / iClosed</div>
+        <div className="card" style={{ padding: 6 }}>
+          <div className="mut" style={{ padding: "10px 14px", fontSize: 12.5 }}>
+            Les noms ci-dessous arrivent bruts de Calendly (hôte du RDV) et d'iClosed (closer). Associe-les à tes comptes :
+            partout dans l'app (board, stats, commissions), le nom brut sera remplacé par celui du compte.
+          </div>
+          <table className="tbl">
+            <thead><tr><th>Nom détecté</th><th>Source</th><th className="num">Calls</th><th>Vu comme</th></tr></thead>
+            <tbody>
+              {aliases.map((a) => (
+                <tr key={a.raw}>
+                  <td className="lab">{a.name}</td>
+                  <td className="mut">{(a.sources || []).join(" · ")}</td>
+                  <td className="num">{a.count}</td>
+                  <td>
+                    <input className="crm-input" style={{ width: 160 }} defaultValue={a.to || ""} list="crm-team-names" placeholder="— identique —"
+                      onBlur={(e) => { const v = e.target.value.trim(); if (v !== (a.to || "")) saveAlias(a.name, v); }} />
+                  </td>
+                </tr>
+              ))}
+              {aliases.length === 0 && <tr><td colSpan={4}><div className="empty" style={{ padding: 16 }}>Aucun nom détecté pour l'instant (ils apparaissent après un import Calendly / iClosed).</div></td></tr>}
+            </tbody>
+          </table>
+          <datalist id="crm-team-names">{(team || []).map((u) => <option key={u.username} value={u.name} />)}</datalist>
         </div>
       </>)}
 

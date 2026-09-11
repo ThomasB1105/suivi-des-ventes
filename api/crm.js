@@ -43,7 +43,7 @@ module.exports = async (req, res) => {
       try { const s = await cmd(["HGET", "crm:leads", email]); lead = s ? JSON.parse(s) : null; } catch {}
       if (!lead) lead = { email, createdAt: new Date().toISOString(), history: [] };
       if (body.stage !== undefined && STAGES.includes(body.stage)) { lead.stage = body.stage; lead.manualStage = true; }
-      if (body.setter !== undefined) lead.setter = String(body.setter || "") || undefined;
+      if (body.setter !== undefined) { lead.setter = String(body.setter || "") || undefined; lead.setterAuto = false; }
       if (body.closer !== undefined) lead.closer = String(body.closer || "") || undefined;
       if (body.notes !== undefined) lead.notes = String(body.notes || "") || undefined;
       if (body.autoStage === true) lead.manualStage = false;

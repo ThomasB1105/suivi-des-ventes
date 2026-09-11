@@ -1,0 +1,67 @@
+/* eslint-disable */
+// « Qui est qui » (ADMIN) : correspondance entre les noms bruts venant de
+// Calendly (hôtes) / iClosed (closers) et les comptes de l'équipe.
+//   GET  /api/aliases  -> { aliases:{raw->nom}, detected:[{name, sources, count}] }
+//   POST /api/aliases  -> { raw, to }   (to vide = supprimer la correspondance)
+// Les alias sont appliqués partout (board, stats, commissions) via buildLeads.
+
+const { cmd, isConfigured } = require("../lib/kv");
+const { checkAuth } = require("../lib/auth");
+
+module.exports = async (req, res) => {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, x-app-token");
+  if (req.method === "OPTIONS") { res.status(204).end(); return; }
+  if (!checkAuth(req)) { res.status(401).json({ error: "Non autorisé (admin uniquement)." }); return; }
+  if (!isConfigured()) { res.status(500).json({ error: "Base KV non configurée." }); return; }
+
+  try {
+    if (req.method === "POST") {
+      let body = req.body;
+      if (typeof body === "string") { try { body = JSON.parse(body); } catch { body = {}; } }
+      const raw = String((body && body.raw) || "").trim();
+      if (!raw) { res.status(400).json({ error: "raw manquant." }); return; }
+      const to = String((body && body.to) || "").trim();
+      if (to) await cmd(["HSET", "crm:aliases", raw.toLowerCase(), to]);
+      else await cmd(["HDEL", "crm:aliases", raw.toLowerCase()]);
+      res.status(200).json({ ok: true, raw: raw.toLowerCase(), to: to || null });
+      return;
+    }
+
+    // GET : alias existants + noms bruts détectés (AVANT résolution)
+    const aliasFlat = (await cmd(["HGETALL", "crm:aliases"])) || [];
+    const aliases = {};
+    for (let i = 0; i < aliasFlat.length; i += 2) aliases[aliasFlat[i]] = aliasFlat[i + 1];
+
+    const detected = {}; // rawLower -> { name, sources:Set, count }
+    const add = (name, source) => {
+      const k = String(name || "").trim();
+      if (!k) return;
+      const kl = k.toLowerCase();
+      if (!detected[kl]) detected[kl] = { name: k, sources: new Set(), count: 0 };
+      detected[kl].sources.add(source);
+      detected[kl].count += 1;
+    };
+
+    const scanHash = async (key, fields, source) => {
+      const flat = (await cmd(["HGETALL", key])) || [];
+      for (let i = 1; i < flat.length; i += 2) {
+        try { const o = JSON.parse(flat[i]); fields.forEach((f) => add(o[f], source)); } catch {}
+      }
+    };
+    await scanHash("crm:leads", ["setter", "closer"], "calendly");
+    await scanHash("iclosed:calls_h", ["closer"], "iclosed");
+    await scanHash("iclosed:contacts", ["closer"], "iclosed");
+
+    res.setHeader("Cache-Control", "no-store");
+    res.status(200).json({
+      aliases,
+      detected: Object.entries(detected)
+        .map(([kl, d]) => ({ raw: kl, name: d.name, sources: [...d.sources], count: d.count, to: aliases[kl] || "" }))
+        .sort((a, b) => b.count - a.count),
+    });
+  } catch (e) {
+    res.status(500).json({ error: String(e.message || e) });
+  }
+};
