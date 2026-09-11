@@ -1329,6 +1329,10 @@ export default function App() {
         .ls-cancel{border-color:rgba(255,77,94,.4);color:#FF8A93;}
         .ls-out{display:flex;gap:16px;flex-wrap:wrap;}
         .ls-out-l{display:flex;flex-direction:column;gap:6px;font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:700;}
+        .out-row{display:flex;gap:6px;flex-wrap:wrap;}
+        .out-select{background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:6px 8px;font-family:'Inter';font-size:11.5px;cursor:pointer;max-width:118px;}
+        .out-select:focus{outline:none;border-color:var(--cyan);}
+        .out-select:has(option:checked[value=""]){color:rgba(234,242,255,.35);}
         /* Équipe */
         .team-form{display:flex;gap:10px;flex-wrap:wrap;align-items:center;}
         .team-form .tf{background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:10px;padding:10px 13px;font-family:'Inter';font-size:13px;min-width:150px;}
@@ -2077,6 +2081,27 @@ export default function App() {
         const revenue = scoped.reduce((a, l) => a + (l.amount || 0), 0);
         const closerNames = [...new Set([...(callStats.closers || []).map((c) => c.closer), ...(team || []).filter((u) => u.role !== "setter").map((u) => u.name), ...all.map((l) => l.closer).filter(Boolean)])];
         const setterNames = [...new Set([...(team || []).filter((u) => u.role === "setter").map((u) => u.name), ...all.map((l) => l.setter).filter(Boolean)])];
+        const outSelects = (l, compact) => (<>
+          <select className="out-select" value={l.callResult || ""} title="Résultat du call"
+            onChange={(e) => updateLead(l.email, { callResult: e.target.value })}>
+            <option value="">Résultat…</option>
+            <option value="won">Closé ✅</option>
+            <option value="lost">Non closé</option>
+          </select>
+          <select className="out-select" value={l.showUp || ""} title="Show-up"
+            onChange={(e) => updateLead(l.email, { showUp: e.target.value })}>
+            <option value="">Show-up…</option>
+            <option value="present">Présent</option>
+            <option value="noshow">No-show</option>
+            <option value="cancelled">Annulé</option>
+          </select>
+          <select className="out-select" value={l.followUp || ""} title="À follow-up"
+            onChange={(e) => updateLead(l.email, { followUp: e.target.value })}>
+            <option value="">Follow-up…</option>
+            <option value="yes">Follow-up : oui 🔁</option>
+            <option value="no">Follow-up : non</option>
+          </select>
+        </>);
         const srcOf = (l) => (l.lastCall ? "iClosed" : (l.bookedAt ? "Calendly" : "—"));
         const avaColor = (e) => ["#579BFC", "#A25DDC", "#00C875", "#FDAB3D", "#E2445C", "#66B2FF"][(String(e).charCodeAt(0) + String(e).length) % 6];
         const initials = (n) => String(n).split(/[\s@._-]+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase() || "?";
@@ -2151,7 +2176,7 @@ export default function App() {
             </div>
             <div className="card mnd-card" style={{ borderLeft: `6px solid ${META[g.s][1]}` }}>
               <table className="mnd-tbl">
-                <thead><tr><th>Lead</th><th>Call</th><th>Source</th><th>Setter</th><th>Closer</th><th>Statut</th><th className="num">Encaissé</th><th>Notes</th></tr></thead>
+                <thead><tr><th>Lead</th><th>Call</th><th>Source</th><th>Setter</th><th>Closer</th><th>Statut</th><th>Résultat / Show-up / Follow-up</th><th className="num">Encaissé</th><th>Notes</th></tr></thead>
                 <tbody>
                   {g.items.slice(0, 100).map((l) => {
                     const nm = l.name && l.name !== l.email ? l.name : l.email;
@@ -2190,6 +2215,7 @@ export default function App() {
                           {l.followUp === "yes" ? <span title="À follow-up" style={{ fontSize: 15 }}>🔁</span> : null}
                         </div>
                       </td>
+                      <td><div className="out-row">{outSelects(l)}</div></td>
                       <td className="num green" style={{ fontWeight: 700 }}>{l.amount ? euro(l.amount) : "—"}</td>
                       <td>
                         <input className="crm-input crm-notes" defaultValue={l.notes || ""} placeholder="Ajouter une note…"
@@ -2236,6 +2262,7 @@ export default function App() {
                     </div>
                     {l.links && l.links.join ? <button className="ls-link ls-join" onClick={(e) => { e.stopPropagation(); try { navigator.clipboard.writeText(l.links.join); flash("Lien du call copié 📋"); } catch (e2) { window.prompt("Copie le lien :", l.links.join); } }}>📋 Copier lien</button> : null}
                     <span className="mnd-src">{srcOf(l)}</span>
+                    <div className="out-row">{outSelects(l)}</div>
                     {l.followUp === "yes" ? <span title="À follow-up" style={{ fontSize: 15 }}>🔁</span> : null}
                     <select className="mnd-status" value={l.stage} style={{ backgroundColor: (META[l.stage] || ["", "#666"])[1] }}
                       onChange={(e) => updateLead(l.email, { stage: e.target.value })}>
