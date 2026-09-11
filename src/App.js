@@ -1307,6 +1307,11 @@ export default function App() {
         .ls-notes{width:100%;box-sizing:border-box;min-height:70px;background:var(--panel2);border:1px solid var(--line);border-radius:10px;color:var(--text);font-family:'Inter';font-size:13px;padding:10px 12px;resize:vertical;}
         .ls-notes:focus{outline:none;border-color:var(--cyan);}
         .ls-hist{display:flex;flex-direction:column;gap:6px;font-size:12.5px;}
+        .ls-links{display:flex;gap:9px;flex-wrap:wrap;margin-bottom:14px;}
+        .ls-link{display:inline-flex;align-items:center;gap:6px;padding:8px 13px;border-radius:10px;border:1px solid var(--line);background:var(--panel2);color:var(--text);font-size:12.5px;font-weight:600;text-decoration:none;transition:border-color .12s;}
+        .ls-link:hover{border-color:var(--cyan);}
+        .ls-join{border-color:rgba(0,200,117,.5);color:#2BD9A0;}
+        .ls-cancel{border-color:rgba(255,77,94,.4);color:#FF8A93;}
         /* Équipe */
         .team-form{display:flex;gap:10px;flex-wrap:wrap;align-items:center;}
         .team-form .tf{background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:10px;padding:10px 13px;font-family:'Inter';font-size:13px;min-width:150px;}
@@ -2195,6 +2200,7 @@ export default function App() {
                       <div className="cal-name">{l.name && l.name !== l.email ? l.name : l.email}{l.closer ? <span className="mut" style={{ fontWeight: 500 }}> · {l.closer}</span> : null}</div>
                       <div className="cal-sub">{callEvent(l) || srcOf(l)}{l.phone ? ` · ${l.phone}` : ""}</div>
                     </div>
+                    {l.links && l.links.join ? <a className="ls-link ls-join" href={l.links.join} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>🎥 Rejoindre</a> : null}
                     <span className="mnd-src">{srcOf(l)}</span>
                     <select className="mnd-status" value={l.stage} style={{ backgroundColor: (META[l.stage] || ["", "#666"])[1] }}
                       onChange={(e) => updateLead(l.email, { stage: e.target.value })}>
@@ -2312,6 +2318,13 @@ export default function App() {
                 </select>
               </div>
 
+              {L.links && (L.links.join || L.links.reschedule || L.links.cancel) ? (
+                <div className="ls-links">
+                  {L.links.join ? <a className="ls-link ls-join" href={L.links.join} target="_blank" rel="noreferrer">🎥 Rejoindre le call</a> : null}
+                  {L.links.reschedule ? <a className="ls-link" href={L.links.reschedule} target="_blank" rel="noreferrer">🔁 Replanifier</a> : null}
+                  {L.links.cancel ? <a className="ls-link ls-cancel" href={L.links.cancel} target="_blank" rel="noreferrer">✕ Annuler le RDV</a> : null}
+                </div>
+              ) : null}
               <div className="ls-grid">
                 <div><span className="ls-l">Source</span><span>{L.source || "—"}</span></div>
                 <div><span className="ls-l">Setter</span><span>{L.setter || "—"}</span></div>

@@ -119,6 +119,12 @@ module.exports = async (req, res) => {
         if (!lead.bookedAt || String(ev.start_time) > String(lead.bookedAt)) {
           lead.bookedAt = ev.start_time;
           lead.bookedEvent = ev.name || "Calendly";
+          const links = {
+            join: (ev.location && (ev.location.join_url || ev.location.location)) || undefined,
+            reschedule: p.reschedule_url || undefined,
+            cancel: p.cancel_url || undefined,
+          };
+          if (links.join || links.reschedule || links.cancel) lead.links = { ...(lead.links || {}), ...links };
         }
         lead.source = lead.source || "Calendly";
         if (!lead.manualStage && !["won", "lost", "noshow", "show"].includes(lead.stage)) lead.stage = "booked";

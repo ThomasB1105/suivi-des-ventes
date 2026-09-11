@@ -111,6 +111,13 @@ module.exports = async (req, res) => {
         if (!lead.manualStage && !["won", "lost"].includes(lead.stage)) lead.stage = "booked";
         lead.bookedAt = ev.start_time || new Date().toISOString();
         lead.bookedEvent = ev.name || "Calendly";
+        // Liens Calendly : visio (Meet/Zoom) + replanifier / annuler côté invité
+        const links = {
+          join: (ev.location && (ev.location.join_url || ev.location.location)) || undefined,
+          reschedule: p.reschedule_url || undefined,
+          cancel: p.cancel_url || undefined,
+        };
+        if (links.join || links.reschedule || links.cancel) lead.links = { ...(lead.links || {}), ...links };
         pushHistory(lead, "calendly_booked", `RDV booké${ev.name ? ` · ${ev.name}` : ""}${ev.start_time ? ` (${String(ev.start_time).slice(0, 10)})` : ""}`);
       }
       lead.source = lead.source || "Calendly";
