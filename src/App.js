@@ -633,6 +633,7 @@ export default function App() {
   const [crm, setCrm] = useState({ leads: [] });
   const [crmLoading, setCrmLoading] = useState(false);
   const [crmQ, setCrmQ] = useState("");
+  const [crmView, setCrmView] = useState("all"); // "today" | "week" | "all"
   const loadCrm = async () => {
     setCrmLoading(true);
     try { const r = await authFetch("/api/crm"); const d = await r.json(); if (d && d.leads) setCrm(d); } catch (e) { /* ignore */ }
@@ -1168,27 +1169,48 @@ export default function App() {
         /* CRM */
         .crm-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:14px 0 10px;flex-wrap:wrap;}
         .crm-chips{display:flex;gap:6px;flex-wrap:wrap;}
-        .crm-chip{display:inline-flex;align-items:center;gap:6px;padding:6px 11px;border-radius:999px;border:1px solid var(--line);background:var(--panel);color:var(--text);font-size:12px;cursor:pointer;font-family:'Inter';}
+        .crm-views{display:flex;gap:7px;flex-wrap:wrap;}
+        .crm-chip{display:inline-flex;align-items:center;gap:7px;padding:9px 15px;border-radius:10px;border:1px solid var(--line);background:var(--panel);color:var(--text);font-size:13px;cursor:pointer;font-family:'Inter';transition:border-color .12s;}
+        .crm-chip:hover{border-color:rgba(124,92,255,.5);}
         .crm-chip b{font-weight:800;}
         .crm-chip.on{border-color:var(--cyan);background:rgba(124,92,255,.14);}
         .stage-dot{width:8px;height:8px;border-radius:50%;display:inline-block;}
         .crm-search{display:inline-flex;align-items:center;gap:7px;padding:7px 12px;border-radius:10px;border:1px solid var(--line);background:var(--panel);color:var(--muted);}
         .crm-search input{background:none;border:none;outline:none;color:var(--text);font-family:'Inter';font-size:13px;min-width:210px;}
-        .crm-select{background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:5px 8px;font-family:'Inter';font-size:12px;cursor:pointer;}
-        .crm-input{background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:5px 8px;font-family:'Inter';font-size:12px;width:96px;}
-        .crm-input:focus,.crm-select:focus{outline:none;border-color:var(--cyan);}
-        .crm-notes{width:150px;}
-        .crm-tbl td{vertical-align:middle;}
-        /* Board style Monday */
-        .mnd-group{margin-bottom:22px;}
-        .mnd-ghead{display:flex;align-items:center;gap:9px;font-family:'Montserrat';font-weight:800;font-size:14.5px;margin:16px 0 8px;}
-        .mnd-gbar{width:5px;height:18px;border-radius:3px;display:inline-block;}
-        .mnd-gcount{color:var(--muted);font-weight:600;font-size:12.5px;}
-        .mnd-tbl td{vertical-align:middle;}
-        .mnd-tbl tr:hover td{background:rgba(255,255,255,.025);}
-        .mnd-status{border:none;border-radius:7px;color:#fff;font-weight:800;font-size:12px;padding:8px 26px 8px 12px;min-width:150px;text-align:center;text-align-last:center;cursor:pointer;font-family:'Inter';-webkit-appearance:none;appearance:none;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M1 1l4 4 4-4' stroke='white' stroke-width='1.6' fill='none' stroke-linecap='round'/></svg>");background-repeat:no-repeat;background-position:right 9px center;box-shadow:0 2px 6px rgba(0,0,0,.25);}
+        /* ---- CRM · board style Monday, aéré ---- */
+        .crm-search{padding:10px 16px;border-radius:12px;}
+        .crm-search input{min-width:240px;font-size:13.5px;}
+        .mnd-group{margin:34px 0 0;}
+        .mnd-ghead{display:flex;align-items:center;gap:11px;font-family:'Montserrat';font-weight:800;font-size:16.5px;margin:0 0 12px 2px;}
+        .mnd-gbar{width:6px;height:22px;border-radius:4px;display:inline-block;}
+        .mnd-gcount{color:var(--muted);font-weight:700;font-size:12px;background:rgba(255,255,255,.07);padding:3px 11px;border-radius:999px;font-family:'Inter';}
+        .mnd-card{padding:0;overflow-x:auto;border-radius:14px;}
+        .mnd-tbl{width:100%;border-collapse:collapse;min-width:960px;}
+        .mnd-tbl th{font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);font-weight:700;text-align:left;padding:14px 18px 10px;border-bottom:1px solid rgba(255,255,255,.07);}
+        .mnd-tbl th.num, .mnd-tbl td.num{text-align:right;}
+        .mnd-tbl td{padding:14px 18px;vertical-align:middle;border-top:1px solid rgba(255,255,255,.045);font-size:13.5px;}
+        .mnd-tbl tbody tr:first-child td{border-top:none;}
+        .mnd-tbl tr:hover td{background:rgba(255,255,255,.028);}
+        .mnd-lead{display:flex;align-items:center;gap:13px;min-width:220px;}
+        .mnd-ava{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;color:#fff;font-size:13.5px;flex:none;letter-spacing:.02em;}
+        .mnd-name{font-weight:600;font-size:14px;line-height:1.25;}
+        .mnd-mail{font-size:11.5px;color:var(--muted);margin-top:3px;}
+        .mnd-status{border:none;border-radius:8px;color:#fff;font-weight:800;font-size:12.5px;padding:10px 30px 10px 16px;min-width:170px;text-align:center;text-align-last:center;cursor:pointer;font-family:'Inter';-webkit-appearance:none;appearance:none;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M1 1l4 4 4-4' stroke='white' stroke-width='1.6' fill='none' stroke-linecap='round'/></svg>");background-repeat:no-repeat;background-position:right 12px center;box-shadow:0 2px 8px rgba(0,0,0,.28);transition:filter .12s;}
+        .mnd-status:hover{filter:brightness(1.08);}
         .mnd-status option{color:#111;background:#fff;font-weight:600;}
-        .mnd-src{display:inline-flex;padding:3px 10px;border-radius:999px;border:1px solid var(--line);font-size:11px;color:var(--muted);background:var(--panel2);}
+        .mnd-src{display:inline-flex;padding:5px 13px;border-radius:999px;border:1px solid var(--line);font-size:11.5px;font-weight:600;color:var(--text);background:var(--panel2);white-space:nowrap;}
+        /* édition inline discrète (façon Monday : invisible tant qu'on ne survole pas) */
+        .crm-input{background:transparent;color:var(--text);border:1px solid transparent;border-radius:8px;padding:8px 10px;font-family:'Inter';font-size:13px;width:128px;transition:border-color .12s, background .12s;}
+        .mnd-tbl tr:hover .crm-input{border-color:rgba(255,255,255,.14);}
+        .crm-input:hover{border-color:rgba(255,255,255,.22);}
+        .crm-input:focus{outline:none;border-color:var(--cyan);background:var(--panel2);}
+        .crm-input::placeholder{color:rgba(234,242,255,.25);}
+        .crm-notes{width:230px;}
+        .mnd-foot{display:flex;gap:22px;align-items:center;padding:12px 18px;border-top:1px solid rgba(255,255,255,.07);color:var(--muted);font-size:12.5px;}
+        .mnd-foot b{color:var(--text);font-weight:700;}
+        .mnd-call{line-height:1.35;}
+        .mnd-call .d{font-weight:600;font-size:13px;color:var(--text);}
+        .mnd-call .e{font-size:11.5px;color:var(--muted);margin-top:2px;}
       `}</style>
 
       <aside className={`sidebar ${navOpen ? "open" : ""}`}>
@@ -1889,8 +1911,20 @@ export default function App() {
         const ORDER = ["booked", "show", "won", "noshow", "lost", "setting", "unqualified"];
         const all = crm.leads || [];
         const q = crmQ.trim().toLowerCase();
-        const rows = all.filter((l) => !q || `${l.email} ${l.name || ""} ${l.closer || ""}`.toLowerCase().includes(q));
-        const groups = ORDER.map((s) => ({ s, items: rows.filter((l) => l.stage === s) })).filter((g) => g.items.length);
+        const todayISO = toISO(new Date());
+        const wd = new Date(); const dow = (wd.getDay() + 6) % 7;
+        const mon = new Date(wd); mon.setDate(wd.getDate() - dow);
+        const sun = new Date(mon); sun.setDate(mon.getDate() + 6);
+        const wFrom = toISO(mon), wTo = toISO(sun);
+        const dOf = (l) => { const t = (l.lastCall && l.lastCall.date) || l.bookedAt || ""; return String(t).slice(0, 10); };
+        const inView = (l) => crmView === "all" ? true : (crmView === "today" ? dOf(l) === todayISO : (dOf(l) >= wFrom && dOf(l) <= wTo));
+        const nToday = all.filter((l) => dOf(l) === todayISO).length;
+        const nWeek = all.filter((l) => dOf(l) >= wFrom && dOf(l) <= wTo).length;
+        const rows = all
+          .filter(inView)
+          .filter((l) => !q || `${l.email} ${l.name || ""} ${l.closer || ""}`.toLowerCase().includes(q));
+        const bySort = (a, b) => crmView === "all" ? 0 : String(dOf(a)).localeCompare(String(dOf(b)));
+        const groups = ORDER.map((s) => ({ s, items: rows.filter((l) => l.stage === s).sort(bySort) })).filter((g) => g.items.length);
         const others = rows.filter((l) => !ORDER.includes(l.stage));
         if (others.length) groups.push({ s: "new", items: others });
         const nShow = all.filter((l) => ["show", "won", "lost"].includes(l.stage)).length;
@@ -1909,13 +1943,21 @@ export default function App() {
           return Object.values(m).sort((a, b) => b.won - a.won || b.den - a.den);
         })();
         const srcOf = (l) => (l.lastCall ? "iClosed" : (l.bookedAt ? "Calendly" : "—"));
-        const callOf = (l) => l.lastCall
-          ? `${String(l.lastCall.date || "").slice(0, 10)}${l.lastCall.event ? ` · ${l.lastCall.event}` : ""}`
-          : (l.bookedAt ? `${String(l.bookedAt).slice(0, 10)}${l.bookedEvent ? ` · ${l.bookedEvent}` : ""}` : "—");
+        const avaColor = (e) => ["#579BFC", "#A25DDC", "#00C875", "#FDAB3D", "#E2445C", "#66B2FF"][(String(e).charCodeAt(0) + String(e).length) % 6];
+        const initials = (n) => String(n).split(/[\s@._-]+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase() || "?";
+        const callTs = (l) => String((l.lastCall && l.lastCall.date) || l.bookedAt || "");
+        const callDate = (l) => (callTs(l) ? callTs(l).slice(0, 10) : "—");
+        const callTime = (l) => { const m = callTs(l).match(/[T ](\d{2}:\d{2})/); return m ? m[1] : ""; };
+        const callEvent = (l) => (l.lastCall && l.lastCall.event) || l.bookedEvent || "";
         return (<>
         <div className="closers-head">
           <div className="closers-title"><ClipboardList size={16} /> Calls · {all.length}</div>
           <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+            <div className="crm-views">
+              <button className={`crm-chip ${crmView === "today" ? "on" : ""}`} onClick={() => setCrmView("today")}>Aujourd'hui <b>{nToday}</b></button>
+              <button className={`crm-chip ${crmView === "week" ? "on" : ""}`} onClick={() => setCrmView("week")}>Cette semaine <b>{nWeek}</b></button>
+              <button className={`crm-chip ${crmView === "all" ? "on" : ""}`} onClick={() => setCrmView("all")}>Tout <b>{all.length}</b></button>
+            </div>
             <div className="crm-search"><Search size={14} /><input value={crmQ} onChange={(e) => setCrmQ(e.target.value)} placeholder="Rechercher (nom, email, closer…)" /></div>
             <button className={`refresh-btn ${crmLoading ? "is-loading" : ""}`} onClick={loadCrm} disabled={crmLoading}>
               <RotateCcw size={15} className={crmLoading ? "spin" : ""} /> {crmLoading ? "Chargement…" : "Actualiser"}
@@ -1930,32 +1972,41 @@ export default function App() {
           <div className="kcard"><div className="kcard-l">Revenu</div><div className="kcard-v green">{euro(revenue)}</div><div className="kcard-f">encaissé sur ces calls</div></div>
         </div>
 
-        {groups.length === 0 && (
+        {groups.length === 0 && crmView !== "all" && (
+          <div className="empty" style={{ padding: 24 }}>Aucun call {crmView === "today" ? "aujourd'hui" : "cette semaine"} 🎉</div>
+        )}
+        {groups.length === 0 && crmView === "all" && (
           <div className="empty" style={{ padding: 24 }}>
             Aucun call pour l'instant. Les appels iClosed remontent automatiquement ; pour Calendly, branche le webhook (invitee.created / canceled) vers <code>/api/lead?secret=…</code>.
           </div>
         )}
 
-        {groups.map((g) => (
+        {groups.map((g) => {
+          const gRevenue = g.items.reduce((a, l) => a + (l.amount || 0), 0);
+          return (
           <div className="mnd-group" key={g.s}>
             <div className="mnd-ghead" style={{ color: META[g.s][1] }}>
               <span className="mnd-gbar" style={{ background: META[g.s][1] }} />
               {META[g.s][0]} <span className="mnd-gcount">{g.items.length}</span>
             </div>
-            <div className="card" style={{ padding: 0, overflowX: "auto" }}>
-              <table className="tbl mnd-tbl">
+            <div className="card mnd-card" style={{ borderLeft: `6px solid ${META[g.s][1]}` }}>
+              <table className="mnd-tbl">
                 <thead><tr><th>Lead</th><th>Call</th><th>Source</th><th>Closer</th><th>Statut</th><th className="num">Encaissé</th><th>Notes</th></tr></thead>
                 <tbody>
-                  {g.items.slice(0, 100).map((l) => (
+                  {g.items.slice(0, 100).map((l) => {
+                    const nm = l.name && l.name !== l.email ? l.name : l.email;
+                    return (
                     <tr key={l.email}>
-                      <td className="lab" style={{ borderLeft: `4px solid ${META[g.s][1]}` }}>
-                        <div>{l.name && l.name !== l.email ? l.name : l.email}</div>
-                        <div className="mut" style={{ fontSize: 11 }}>{l.email}</div>
+                      <td>
+                        <div className="mnd-lead">
+                          <span className="mnd-ava" style={{ background: avaColor(l.email) }}>{initials(nm)}</span>
+                          <div><div className="mnd-name">{nm}</div><div className="mnd-mail">{l.email}</div></div>
+                        </div>
                       </td>
-                      <td className="mut" style={{ fontSize: 12 }}>{callOf(l)}</td>
+                      <td><div className="mnd-call"><div className="d">{callDate(l)}{callTime(l) ? ` · ${callTime(l)}` : ""}</div>{callEvent(l) ? <div className="e">{callEvent(l)}</div> : null}</div></td>
                       <td><span className="mnd-src">{srcOf(l)}</span></td>
                       <td>
-                        <input className="crm-input" defaultValue={l.closer || ""} list="crm-closers" placeholder="—"
+                        <input className="crm-input" defaultValue={l.closer || ""} list="crm-closers" placeholder="Assigner…"
                           onBlur={(e) => { const v = e.target.value.trim(); if (v !== (l.closer || "")) updateLead(l.email, { closer: v }); }} />
                       </td>
                       <td>
@@ -1964,19 +2015,23 @@ export default function App() {
                           {Object.keys(META).map((s) => <option key={s} value={s}>{META[s][0]}</option>)}
                         </select>
                       </td>
-                      <td className="num green">{l.amount ? euro(l.amount) : "—"}</td>
+                      <td className="num green" style={{ fontWeight: 700 }}>{l.amount ? euro(l.amount) : "—"}</td>
                       <td>
-                        <input className="crm-input crm-notes" defaultValue={l.notes || ""} placeholder="note…"
+                        <input className="crm-input crm-notes" defaultValue={l.notes || ""} placeholder="Ajouter une note…"
                           onBlur={(e) => { const v = e.target.value; if (v !== (l.notes || "")) updateLead(l.email, { notes: v }); }} />
                       </td>
                     </tr>
-                  ))}
+                  ); })}
                 </tbody>
               </table>
-              {g.items.length > 100 && <div className="empty" style={{ padding: 8 }}>+{g.items.length - 100} — affine la recherche.</div>}
+              <div className="mnd-foot">
+                <span><b>{g.items.length}</b> call{g.items.length > 1 ? "s" : ""}</span>
+                {gRevenue > 0 ? <span>encaissé : <b>{euro(gRevenue)}</b></span> : null}
+                {g.items.length > 100 ? <span>+{g.items.length - 100} masqués — affine la recherche</span> : null}
+              </div>
             </div>
           </div>
-        ))}
+        ); })}
         <datalist id="crm-closers">{closerNames.map((n) => <option key={n} value={n} />)}</datalist>
 
         {closerPerf.length > 0 && (<>
