@@ -655,6 +655,7 @@ export default function App() {
   const [crmQ, setCrmQ] = useState("");
   const [crmView, setCrmView] = useState(() => { try { const r = localStorage.getItem("melo_role"); return r && r !== "admin" ? "today" : "all"; } catch (e) { return "all"; } }); // "today" | "week" | "all"
   const [leadOpen, setLeadOpen] = useState(null); // email de la fiche lead ouverte
+  const [calView, setCalView] = useState("upcoming"); // calendrier : "today" | "upcoming" | "past"
   const loadCrm = async () => {
     setCrmLoading(true);
     try { const r = await authFetch("/api/crm"); const d = await r.json(); if (d && d.leads) setCrm(d); } catch (e) { /* ignore */ }
@@ -2040,18 +2041,27 @@ export default function App() {
         const wFrom = toISO(mon), wTo = toISO(sun);
         const dOf = (l) => { const t = (l.lastCall && l.lastCall.date) || l.bookedAt || ""; return String(t).slice(0, 10); };
         const inView = (l) => crmView === "all" ? true : (crmView === "today" ? dOf(l) === todayISO : (dOf(l) >= wFrom && dOf(l) <= wTo));
+        // Calendrier : Aujourd'hui / À venir (aujourd'hui inclus, puis les jours
+        // suivants) / Passés (anciens appels, plus récents en premier)
+        const isCal = tab === "calendrier";
+        const inViewCal = (l) => calView === "today" ? dOf(l) === todayISO : (calView === "past" ? dOf(l) < todayISO : dOf(l) >= todayISO);
+        const activeFilter = isCal ? inViewCal : inView;
+        const nUpcoming = all.filter((l) => dOf(l) >= todayISO).length;
+        const nPast = all.filter((l) => dOf(l) < todayISO).length;
         const nToday = all.filter((l) => dOf(l) === todayISO).length;
         const nWeek = all.filter((l) => dOf(l) >= wFrom && dOf(l) <= wTo).length;
         const rows = all
-          .filter(inView)
+          .filter(activeFilter)
           .filter((l) => !q || `${l.email} ${l.name || ""} ${l.closer || ""}`.toLowerCase().includes(q));
-        const bySort = (a, b) => crmView === "all" ? 0 : String(dOf(a)).localeCompare(String(dOf(b)));
+        const bySort = (a, b) => (isCal || crmView !== "all") ? String(dOf(a)).localeCompare(String(dOf(b))) : 0;
         const groups = ORDER.map((s) => ({ s, items: rows.filter((l) => l.stage === s).sort(bySort) })).filter((g) => g.items.length);
         const others = rows.filter((l) => !ORDER.includes(l.stage));
         if (others.length) groups.push({ s: "new", items: others });
         // KPI sur la période sélectionnée (Aujourd'hui / Cette semaine / Tout)
-        const scoped = all.filter(inView);
-        const periodLbl = crmView === "today" ? "aujourd'hui" : (crmView === "week" ? "cette semaine" : "toutes périodes");
+        const scoped = all.filter(activeFilter);
+        const periodLbl = isCal
+          ? (calView === "today" ? "aujourd'hui" : (calView === "past" ? "appels passés" : "à venir"))
+          : (crmView === "today" ? "aujourd'hui" : (crmView === "week" ? "cette semaine" : "toutes périodes"));
         const nShow = scoped.filter((l) => ["show", "won", "lost"].includes(l.stage)).length;
         const nNoShow = scoped.filter((l) => l.stage === "noshow").length;
         const nWon = scoped.filter((l) => l.stage === "won").length;
@@ -2083,9 +2093,15 @@ export default function App() {
           </div>
           <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
             <div className="crm-views">
-              <button className={`crm-chip ${crmView === "today" ? "on" : ""}`} onClick={() => setCrmView("today")}>Aujourd'hui <b>{nToday}</b></button>
-              <button className={`crm-chip ${crmView === "week" ? "on" : ""}`} onClick={() => setCrmView("week")}>Cette semaine <b>{nWeek}</b></button>
-              <button className={`crm-chip ${crmView === "all" ? "on" : ""}`} onClick={() => setCrmView("all")}>Tout <b>{all.length}</b></button>
+              {isCal ? (<>
+                <button className={`crm-chip ${calView === "today" ? "on" : ""}`} onClick={() => setCalView("today")}>Aujourd'hui <b>{nToday}</b></button>
+                <button className={`crm-chip ${calView === "upcoming" ? "on" : ""}`} onClick={() => setCalView("upcoming")}>À venir <b>{nUpcoming}</b></button>
+                <button className={`crm-chip ${calView === "past" ? "on" : ""}`} onClick={() => setCalView("past")}>Passés <b>{nPast}</b></button>
+              </>) : (<>
+                <button className={`crm-chip ${crmView === "today" ? "on" : ""}`} onClick={() => setCrmView("today")}>Aujourd'hui <b>{nToday}</b></button>
+                <button className={`crm-chip ${crmView === "week" ? "on" : ""}`} onClick={() => setCrmView("week")}>Cette semaine <b>{nWeek}</b></button>
+                <button className={`crm-chip ${crmView === "all" ? "on" : ""}`} onClick={() => setCrmView("all")}>Tout <b>{all.length}</b></button>
+              </>)}
             </div>
             <div className="crm-search"><Search size={14} /><input value={crmQ} onChange={(e) => setCrmQ(e.target.value)} placeholder="Rechercher (nom, email, closer…)" /></div>
             {isAdmin && (
@@ -2198,8 +2214,9 @@ export default function App() {
           const byDay = {};
           rows.forEach((l) => { const d = dOf(l) || "—"; (byDay[d] = byDay[d] || []).push(l); });
           const days = Object.keys(byDay).sort();
+          if (calView === "past") days.reverse();
           const fmtDay = (d) => { try { return parseLocal(d).toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" }); } catch (e) { return d; } };
-          if (!days.length) return <div className="empty" style={{ padding: 26 }}>Aucun call sur cette période 🎉</div>;
+          if (!days.length) return <div className="empty" style={{ padding: 26 }}>{calView === "past" ? "Aucun call passé sur cette période." : "Aucun call à venir 🎉"}</div>;
           return days.map((d) => (
             <div className="cal-day" key={d}>
               <div className="cal-dhead">
