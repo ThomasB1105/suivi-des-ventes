@@ -124,8 +124,9 @@ module.exports = async (req, res) => {
             }
           });
         }
-        // On garde le RDV le plus récent comme référence
-        if (!lead.bookedAt || String(ev.start_time) > String(lead.bookedAt)) {
+        // On garde le RDV le plus récent comme référence (>= : permet de
+        // compléter les liens/l'événement d'un RDV déjà importé)
+        if (!lead.bookedAt || String(ev.start_time) >= String(lead.bookedAt)) {
           lead.bookedAt = ev.start_time;
           lead.bookedEvent = ev.name || "Calendly";
           const locUrl = ev.location && (ev.location.join_url || ev.location.location);
@@ -145,12 +146,66 @@ module.exports = async (req, res) => {
       }
     }
 
+    // ---- 3) Réponses des formulaires de routage (questions du funnel) ----
+    // Les questions type "Quel âge as-tu / budget..." vivent dans les routing
+    // forms, pas dans le formulaire de réservation. On rattache chaque
+    // soumission à son invité (submitter) -> email -> fiche lead.
+    let formAnswers = 0, formSubs = 0;
+    try {
+      const rf = await cGet("/routing_forms", tok, { organization, count: 20 });
+      const minTs = new Date(Date.now() - days * 864e5).toISOString();
+      let lookups = 0;
+      for (const form of (rf && rf.collection) || []) {
+        let pageUrl2 = null, g2 = 0;
+        while (g2++ < 5 && lookups < 100) {
+          const page = pageUrl2
+            ? await cGet(pageUrl2, tok)
+            : await cGet("/routing_form_submissions", tok, { form: form.uri, count: 100, sort: "created_at:desc" });
+          const subs = (page && page.collection) || [];
+          for (const sub of subs) {
+            if (String(sub.created_at || "") < minTs) { g2 = 99; break; } // trop ancien -> stop ce formulaire
+            if (!sub.submitter || sub.submitter_type !== "Invitee") continue;
+            if (lookups >= 100) break;
+            lookups += 1;
+            let invR; try { invR = await cGet(sub.submitter, tok); } catch (e) { continue; }
+            const invitee = (invR && invR.resource) || {};
+            const email = String(invitee.email || "").toLowerCase();
+            if (!email) continue;
+            const qas = Array.isArray(sub.questions_and_answers) ? sub.questions_and_answers : [];
+            if (!qas.length) continue;
+            let lead = null;
+            try { const s = await cmd(["HGET", "crm:leads", email]); lead = s ? JSON.parse(s) : null; } catch {}
+            if (!lead) lead = { email, createdAt: new Date().toISOString(), stage: "new", history: [] };
+            let touched = false;
+            qas.forEach((x) => {
+              const q = x && x.question, a = x && x.answer;
+              if (!q || a == null || String(a) === "") return;
+              lead.answers = { ...(lead.answers || {}), [String(q)]: Array.isArray(a) ? a.join(", ") : String(a) };
+              touched = true;
+              if (!lead.phone && /phone|t[ée]l|num[ée]ro|whatsapp/i.test(String(q)) ) lead.phone = String(a);
+              if (!lead.name || lead.name === email) { if (/pr[ée]nom|^nom$|name/i.test(String(q))) lead.name = String(a); }
+            });
+            if (touched) {
+              lead.source = lead.source || "Calendly";
+              lead.updatedAt = new Date().toISOString();
+              await cmd(["HSET", "crm:leads", email, JSON.stringify(lead)]);
+              formAnswers += 1;
+            }
+            formSubs += 1;
+          }
+          pageUrl2 = page && page.pagination && page.pagination.next_page;
+          if (!pageUrl2 || !subs.length) break;
+        }
+      }
+    } catch (e) { /* routing forms optionnels */ }
+
     res.status(200).json({
       ok: true,
       account: user.email,
       events: events.length,
       imported: stored,
       skipped,
+      formResponses: formAnswers,
       webhook: webhook || "non demandé (ajoute ?setup=1)",
     });
   } catch (e) {
