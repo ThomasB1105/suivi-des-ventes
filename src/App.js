@@ -2077,16 +2077,6 @@ export default function App() {
         const revenue = scoped.reduce((a, l) => a + (l.amount || 0), 0);
         const closerNames = [...new Set([...(callStats.closers || []).map((c) => c.closer), ...(team || []).filter((u) => u.role !== "setter").map((u) => u.name), ...all.map((l) => l.closer).filter(Boolean)])];
         const setterNames = [...new Set([...(team || []).filter((u) => u.role === "setter").map((u) => u.name), ...all.map((l) => l.setter).filter(Boolean)])];
-        const closerPerf = (() => {
-          const m = {};
-          all.forEach((l) => {
-            const p = l.closer; if (!p) return;
-            if (!m[p]) m[p] = { name: p, den: 0, won: 0, revenue: 0 };
-            if (["show", "won", "lost"].includes(l.stage)) m[p].den += 1;
-            if (l.stage === "won") { m[p].won += 1; m[p].revenue += l.amount || 0; }
-          });
-          return Object.values(m).sort((a, b) => b.won - a.won || b.den - a.den);
-        })();
         const srcOf = (l) => (l.lastCall ? "iClosed" : (l.bookedAt ? "Calendly" : "—"));
         const avaColor = (e) => ["#579BFC", "#A25DDC", "#00C875", "#FDAB3D", "#E2445C", "#66B2FF"][(String(e).charCodeAt(0) + String(e).length) % 6];
         const initials = (n) => String(n).split(/[\s@._-]+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase() || "?";
@@ -2258,17 +2248,7 @@ export default function App() {
           ));
         })()}
 
-        {isAdmin && closerPerf.length > 0 && (<>
-          <div className="section-h"><UserCheck size={15} /> Closing · par closer</div>
-          <div className="card" style={{ padding: 6 }}>
-            <table className="tbl">
-              <thead><tr><th>Closer</th><th className="num">Présents</th><th className="num">Closés</th><th className="num">Taux closing</th><th className="num">Revenu</th></tr></thead>
-              <tbody>{closerPerf.map((p) => (
-                <tr key={p.name}><td className="lab">{p.name}</td><td className="num">{p.den}</td><td className="num">{p.won}</td><td className="num">{p.den ? pct(p.won / p.den) : "—"}</td><td className="num green">{euro(p.revenue)}</td></tr>
-              ))}</tbody>
-            </table>
-          </div>
-        </>)}
+
         </>);
       })()}
 
