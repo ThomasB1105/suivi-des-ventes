@@ -699,11 +699,14 @@ export default function App() {
     try { const r = await authFetch("/api/aliases"); const d = await r.json(); if (d && d.detected) setAliases(d.detected); } catch (e) { /* ignore */ }
     setTeamLoading(false);
   };
-  const saveAlias = async (raw, to) => {
+  const aliasEdits = useRef({});
+  const saveAlias = async (a, patch) => {
+    const cur = { to: a.to || "", role: a.role || "", ...(aliasEdits.current[a.raw] || {}), ...patch };
+    aliasEdits.current[a.raw] = cur;
     try {
-      const r = await authFetch("/api/aliases", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ raw, to }) });
+      const r = await authFetch("/api/aliases", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ raw: a.name, to: cur.to, role: cur.role }) });
       if (!r.ok) throw new Error(`Erreur ${r.status}`);
-      flash(to ? `« ${raw} » sera affiché comme « ${to} ».` : `Correspondance « ${raw} » supprimée.`);
+      flash(`« ${a.name} » : ${cur.to || "nom identique"}${cur.role ? ` · ${cur.role === "setter" ? "Setter" : "Closer"}` : ""}.`);
       loadCrm();
     } catch (e) { flash(`Matching : ${e.message}`); }
   };
@@ -1291,6 +1294,8 @@ export default function App() {
         .mnd-call{line-height:1.35;}
         .mnd-call .d{font-weight:600;font-size:13px;color:var(--text);}
         .mnd-call .e{font-size:11.5px;color:var(--muted);margin-top:2px;}
+        .crm-select{background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:7px 10px;font-family:'Inter';font-size:12.5px;cursor:pointer;}
+        .crm-select:focus{outline:none;border-color:var(--cyan);}
         /* Vue calendrier (agenda) */
         .cal-day{margin:24px 0;}
         .cal-dhead{display:flex;align-items:center;gap:10px;font-family:'Montserrat';font-weight:800;font-size:15.5px;margin:0 0 10px 2px;text-transform:capitalize;}
@@ -2334,7 +2339,7 @@ export default function App() {
             partout dans l'app (board, stats, commissions), le nom brut sera remplacé par celui du compte.
           </div>
           <table className="tbl">
-            <thead><tr><th>Nom détecté</th><th>Source</th><th className="num">Calls</th><th>Vu comme</th></tr></thead>
+            <thead><tr><th>Nom détecté</th><th>Source</th><th className="num">Calls</th><th>Vu comme</th><th>Rôle</th></tr></thead>
             <tbody>
               {aliases.map((a) => (
                 <tr key={a.raw}>
@@ -2343,11 +2348,19 @@ export default function App() {
                   <td className="num">{a.count}</td>
                   <td>
                     <input className="crm-input" style={{ width: 160 }} defaultValue={a.to || ""} list="crm-team-names" placeholder="— identique —"
-                      onBlur={(e) => { const v = e.target.value.trim(); if (v !== (a.to || "")) saveAlias(a.name, v); }} />
+                      onBlur={(e) => { const v = e.target.value.trim(); if (v !== (a.to || "")) saveAlias(a, { to: v }); }} />
+                  </td>
+                  <td>
+                    <select className="crm-select" defaultValue={a.role || ""} title="Détermine la colonne remplie automatiquement quand cette personne prend un call Calendly"
+                      onChange={(e) => saveAlias(a, { role: e.target.value })}>
+                      <option value="">—</option>
+                      <option value="closer">Closer</option>
+                      <option value="setter">Setter</option>
+                    </select>
                   </td>
                 </tr>
               ))}
-              {aliases.length === 0 && <tr><td colSpan={4}><div className="empty" style={{ padding: 16 }}>Aucun nom détecté pour l'instant (ils apparaissent après un import Calendly / iClosed).</div></td></tr>}
+              {aliases.length === 0 && <tr><td colSpan={5}><div className="empty" style={{ padding: 16 }}>Aucun nom détecté pour l'instant (ils apparaissent après un import Calendly / iClosed).</div></td></tr>}
             </tbody>
           </table>
           <datalist id="crm-team-names">{(team || []).map((u) => <option key={u.username} value={u.name} />)}</datalist>

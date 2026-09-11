@@ -11,7 +11,7 @@
 
 const { cmd, isConfigured } = require("../lib/kv");
 const { checkAuth } = require("../lib/auth");
-const { pickNextAssignee } = require("../lib/crmData");
+const { pickNextAssignee, buildRoleMap } = require("../lib/crmData");
 
 const BASE = "https://api.calendly.com";
 
@@ -90,6 +90,7 @@ module.exports = async (req, res) => {
     }
 
     // Invités de chaque RDV actif -> upsert crm:leads (borne : 150 RDV / run)
+    const roleMap = await buildRoleMap(cmd); // rôle des hôtes (Qui est qui / comptes)
     let stored = 0, skipped = 0;
     const active = events.filter((ev) => ev.status === "active").slice(0, 150);
     for (const ev of active) {
@@ -139,13 +140,19 @@ module.exports = async (req, res) => {
         }
         lead.source = lead.source || "Calendly";
         if (!lead.manualStage && !["won", "lost", "noshow", "show"].includes(lead.stage)) lead.stage = "booked";
-        // L'HÔTE Calendly (membre qui prend le call) = CLOSER de référence.
-        // Il remplace une attribution automatique, jamais une saisie manuelle.
+        // L'HÔTE Calendly (membre qui prend le call) est attribué dans la
+        // colonne de SON rôle (défini dans Qui est qui / comptes ; closer par
+        // défaut). Remplace l'auto, jamais une saisie manuelle.
         const ms = Array.isArray(ev.event_memberships) ? ev.event_memberships : [];
         const host = (ms[0] && (ms[0].user_name || ms[0].user_email)) || null;
-        // Migration : l'ancienne règle mettait l'hôte en setter -> on libère.
-        if (host && lead.setterAuto && String(lead.setter || "") === String(host)) { lead.setter = undefined; }
-        if (host && (!lead.closer || lead.closerAuto)) { lead.closer = String(host); lead.closerAuto = true; }
+        if (host) {
+          const hostRole = roleMap[String(host).trim().toLowerCase()] || "closer";
+          // Migration/nettoyage : si l'hôte occupe l'autre colonne en auto, on libère.
+          if (hostRole === "closer" && lead.setterAuto && String(lead.setter || "") === String(host)) lead.setter = undefined;
+          if (hostRole === "setter" && lead.closerAuto && String(lead.closer || "") === String(host)) lead.closer = undefined;
+          if (hostRole === "setter") { if (!lead.setter || lead.setterAuto) { lead.setter = String(host); lead.setterAuto = true; } }
+          else { if (!lead.closer || lead.closerAuto) { lead.closer = String(host); lead.closerAuto = true; } }
+        }
         if (!lead.setter) { const sName = await pickNextAssignee(cmd, "setter"); if (sName) { lead.setter = sName; lead.setterAuto = true; } }
         lead.updatedAt = new Date().toISOString();
         await cmd(["HSET", "crm:leads", email, JSON.stringify(lead)]);

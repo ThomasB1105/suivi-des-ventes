@@ -7,7 +7,7 @@
 
 const { cmd, isConfigured } = require("../lib/kv");
 const { checkAuth } = require("../lib/auth");
-const { DEFAULT_ALIASES } = require("../lib/crmData");
+const { DEFAULT_ALIASES, loadAliases, buildRoleMap } = require("../lib/crmData");
 
 module.exports = async (req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -24,16 +24,16 @@ module.exports = async (req, res) => {
       const raw = String((body && body.raw) || "").trim();
       if (!raw) { res.status(400).json({ error: "raw manquant." }); return; }
       const to = String((body && body.to) || "").trim();
-      if (to) await cmd(["HSET", "crm:aliases", raw.toLowerCase(), to]);
+      const role = ["setter", "closer"].includes(body && body.role) ? body.role : "";
+      if (to || role) await cmd(["HSET", "crm:aliases", raw.toLowerCase(), JSON.stringify({ to, role })]);
       else await cmd(["HDEL", "crm:aliases", raw.toLowerCase()]);
-      res.status(200).json({ ok: true, raw: raw.toLowerCase(), to: to || null });
+      res.status(200).json({ ok: true, raw: raw.toLowerCase(), to: to || null, role: role || null });
       return;
     }
 
-    // GET : alias existants + noms bruts détectés (AVANT résolution)
-    const aliasFlat = (await cmd(["HGETALL", "crm:aliases"])) || [];
-    const aliases = {};
-    for (let i = 0; i < aliasFlat.length; i += 2) aliases[aliasFlat[i]] = aliasFlat[i + 1];
+    // GET : alias existants ({to, role}) + noms bruts détectés (AVANT résolution)
+    const aliases = await loadAliases(cmd);
+    const roleMap = await buildRoleMap(cmd);
 
     const detected = {}; // rawLower -> { name, sources:Set, count }
     const add = (name, source) => {
@@ -59,7 +59,11 @@ module.exports = async (req, res) => {
     res.status(200).json({
       aliases,
       detected: Object.entries(detected)
-        .map(([kl, d]) => ({ raw: kl, name: d.name, sources: [...d.sources], count: d.count, to: aliases[kl] || DEFAULT_ALIASES[kl] || "" }))
+        .map(([kl, d]) => ({
+          raw: kl, name: d.name, sources: [...d.sources], count: d.count,
+          to: (aliases[kl] && aliases[kl].to) || "",
+          role: (aliases[kl] && aliases[kl].role) || roleMap[kl] || "",
+        }))
         .sort((a, b) => b.count - a.count),
     });
   } catch (e) {

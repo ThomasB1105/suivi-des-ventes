@@ -10,7 +10,7 @@
 //   GET /api/lead?debug=1 -> derniers payloads bruts reçus.
 
 const { cmd, isConfigured } = require("../lib/kv");
-const { pickNextAssignee } = require("../lib/crmData");
+const { pickNextAssignee, buildRoleMap } = require("../lib/crmData");
 
 const pick = (o, ...ks) => { for (const k of ks) if (o && o[k] != null && o[k] !== "") return o[k]; return undefined; };
 function deepEmail(obj, depth = 0) {
@@ -124,11 +124,17 @@ module.exports = async (req, res) => {
         pushHistory(lead, "calendly_booked", `RDV booké${ev.name ? ` · ${ev.name}` : ""}${ev.start_time ? ` (${String(ev.start_time).slice(0, 10)})` : ""}`);
       }
       lead.source = lead.source || "Calendly";
-      // Hôte Calendly = CLOSER (c'est lui qui fait le call). Remplace une
-      // attribution automatique, jamais une saisie manuelle.
+      // Hôte Calendly attribué dans la colonne de SON rôle (Qui est qui /
+      // comptes ; closer par défaut). Remplace l'auto, jamais le manuel.
       const ms = Array.isArray(ev.event_memberships) ? ev.event_memberships : [];
       const host = (ms[0] && (ms[0].user_name || ms[0].user_email)) || null;
-      if (host && (!lead.closer || lead.closerAuto)) { lead.closer = String(host); lead.closerAuto = true; pushHistory(lead, "assign", `Call pris par ${host}`); }
+      if (host) {
+        const roleMap = await buildRoleMap(cmd);
+        const hostRole = roleMap[String(host).trim().toLowerCase()] || "closer";
+        if (hostRole === "setter") {
+          if (!lead.setter || lead.setterAuto) { lead.setter = String(host); lead.setterAuto = true; pushHistory(lead, "assign", `Call pris par ${host}`); }
+        } else if (!lead.closer || lead.closerAuto) { lead.closer = String(host); lead.closerAuto = true; pushHistory(lead, "assign", `Call pris par ${host}`); }
+      }
       if (!lead.setter) {
         const s = await pickNextAssignee(cmd, "setter");
         if (s) { lead.setter = s; lead.setterAuto = true; pushHistory(lead, "assign", `Attribué à ${s} (auto)`); }
