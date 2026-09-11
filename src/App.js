@@ -79,6 +79,13 @@ const normalize = (list) =>
 
 const STORAGE_KEY = "melo_sales_v5";
 
+// Statuts CRM (libellé + couleur, style Monday) — partagés board/calendrier/fiche.
+const CRM_META = {
+  booked: ["Call booké", "#579BFC"], show: ["Call fait · en cours", "#FDAB3D"], won: ["Closé", "#00C875"],
+  noshow: ["No-show", "#E2445C"], lost: ["Perdu", "#808080"], setting: ["À replanifier", "#A25DDC"],
+  unqualified: ["Non qualifié", "#676879"], new: ["Nouveau", "#66B2FF"],
+};
+
 /* ------------------------------ styles ------------------------------ */
 
 const css = `
@@ -647,6 +654,8 @@ export default function App() {
   const [crmLoading, setCrmLoading] = useState(false);
   const [crmQ, setCrmQ] = useState("");
   const [crmView, setCrmView] = useState(() => { try { const r = localStorage.getItem("melo_role"); return r && r !== "admin" ? "today" : "all"; } catch (e) { return "all"; } }); // "today" | "week" | "all"
+  const [leadOpen, setLeadOpen] = useState(null); // email de la fiche lead ouverte
+  const [crmMode, setCrmMode] = useState(() => { try { const r = localStorage.getItem("melo_role"); return r && r !== "admin" ? "cal" : "board"; } catch (e) { return "board"; } }); // "board" | "cal"
   const loadCrm = async () => {
     setCrmLoading(true);
     try { const r = await authFetch("/api/crm"); const d = await r.json(); if (d && d.leads) setCrm(d); } catch (e) { /* ignore */ }
@@ -1254,6 +1263,8 @@ export default function App() {
         .mnd-ava{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;color:#fff;font-size:13.5px;flex:none;letter-spacing:.02em;}
         .mnd-name{font-weight:600;font-size:14px;line-height:1.25;}
         .mnd-mail{font-size:11.5px;color:var(--muted);margin-top:3px;}
+        .mnd-phone{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;color:var(--cyan);margin-top:3px;text-decoration:none;}
+        .mnd-phone:hover{text-decoration:underline;}
         .mnd-status{border:none;border-radius:8px;color:#fff;font-weight:800;font-size:12.5px;padding:10px 30px 10px 16px;min-width:170px;text-align:center;text-align-last:center;cursor:pointer;font-family:'Inter';-webkit-appearance:none;appearance:none;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M1 1l4 4 4-4' stroke='white' stroke-width='1.6' fill='none' stroke-linecap='round'/></svg>");background-repeat:no-repeat;background-position:right 12px center;box-shadow:0 2px 8px rgba(0,0,0,.28);transition:filter .12s;}
         .mnd-status:hover{filter:brightness(1.08);}
         .mnd-status option{color:#111;background:#fff;font-weight:600;}
@@ -1270,6 +1281,32 @@ export default function App() {
         .mnd-call{line-height:1.35;}
         .mnd-call .d{font-weight:600;font-size:13px;color:var(--text);}
         .mnd-call .e{font-size:11.5px;color:var(--muted);margin-top:2px;}
+        /* Vue calendrier (agenda) */
+        .cal-day{margin:24px 0;}
+        .cal-dhead{display:flex;align-items:center;gap:10px;font-family:'Montserrat';font-weight:800;font-size:15.5px;margin:0 0 10px 2px;text-transform:capitalize;}
+        .cal-today{background:#00C875;color:#fff;padding:3px 11px;border-radius:999px;font-size:11px;font-weight:800;font-family:'Inter';text-transform:none;}
+        .cal-row{display:flex;align-items:center;gap:18px;padding:14px 18px;border-top:1px solid rgba(255,255,255,.05);}
+        .cal-row:first-child{border-top:none;}
+        .cal-row:hover{background:rgba(255,255,255,.028);}
+        .cal-time{font-weight:800;font-size:14.5px;min-width:56px;color:var(--cyan);font-variant-numeric:tabular-nums;}
+        .cal-main{flex:1;min-width:0;}
+        .cal-name{font-weight:600;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+        .cal-sub{font-size:12px;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+        @media(max-width:700px){ .cal-row{flex-wrap:wrap;gap:10px;} }
+        /* Fiche lead */
+        .lead-sheet{max-width:600px;width:min(600px,94vw);max-height:88vh;overflow-y:auto;}
+        .ls-head{display:flex;align-items:center;gap:14px;margin-bottom:18px;flex-wrap:wrap;}
+        .ls-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px 18px;background:rgba(255,255,255,.03);border:1px solid var(--line);border-radius:12px;padding:14px 16px;}
+        .ls-grid>div{display:flex;flex-direction:column;gap:3px;font-size:13.5px;min-width:0;}
+        .ls-l{font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:700;}
+        .ls-sec{font-family:'Montserrat';font-weight:800;font-size:13.5px;margin:18px 0 8px;}
+        .ls-qa{display:flex;flex-direction:column;gap:9px;}
+        .ls-qa-row{background:rgba(255,255,255,.03);border:1px solid var(--line);border-radius:10px;padding:10px 13px;}
+        .ls-q{font-size:12px;color:var(--muted);margin-bottom:4px;}
+        .ls-a{font-size:13.5px;font-weight:600;}
+        .ls-notes{width:100%;box-sizing:border-box;min-height:70px;background:var(--panel2);border:1px solid var(--line);border-radius:10px;color:var(--text);font-family:'Inter';font-size:13px;padding:10px 12px;resize:vertical;}
+        .ls-notes:focus{outline:none;border-color:var(--cyan);}
+        .ls-hist{display:flex;flex-direction:column;gap:6px;font-size:12.5px;}
         /* Équipe */
         .team-form{display:flex;gap:10px;flex-wrap:wrap;align-items:center;}
         .team-form .tf{background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:10px;padding:10px 13px;font-family:'Inter';font-size:13px;min-width:150px;}
@@ -1975,11 +2012,7 @@ export default function App() {
 
       {/* CRM — board des calls (Calendly + iClosed), style Monday */}
       {tab === "crm" && (() => {
-        const META = {
-          booked: ["Call booké", "#579BFC"], show: ["Call fait · en cours", "#FDAB3D"], won: ["Closé", "#00C875"],
-          noshow: ["No-show", "#E2445C"], lost: ["Perdu", "#808080"], setting: ["À replanifier", "#A25DDC"],
-          unqualified: ["Non qualifié", "#676879"], new: ["Nouveau", "#66B2FF"],
-        };
+        const META = CRM_META;
         const ORDER = ["booked", "show", "won", "noshow", "lost", "setting", "unqualified"];
         const all = crm.leads || [];
         const q = crmQ.trim().toLowerCase();
@@ -2027,6 +2060,9 @@ export default function App() {
           <div className="closers-title"><ClipboardList size={16} /> {isAdmin ? `Calls · ${all.length}` : `Ma journée · ${me.name}`}</div>
           <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
             <div className="crm-views">
+              <button className={`crm-chip ${crmMode === "board" ? "on" : ""}`} onClick={() => setCrmMode("board")} title="Vue board (groupes par statut)"><ClipboardList size={14} /> Board</button>
+              <button className={`crm-chip ${crmMode === "cal" ? "on" : ""}`} onClick={() => setCrmMode("cal")} title="Vue agenda (par jour et heure)"><Calendar size={14} /> Calendrier</button>
+              <span style={{ width: 8 }} />
               <button className={`crm-chip ${crmView === "today" ? "on" : ""}`} onClick={() => setCrmView("today")}>Aujourd'hui <b>{nToday}</b></button>
               <button className={`crm-chip ${crmView === "week" ? "on" : ""}`} onClick={() => setCrmView("week")}>Cette semaine <b>{nWeek}</b></button>
               <button className={`crm-chip ${crmView === "all" ? "on" : ""}`} onClick={() => setCrmView("all")}>Tout <b>{all.length}</b></button>
@@ -2060,6 +2096,7 @@ export default function App() {
         </div>
         )}
 
+        {crmMode === "board" && (<>
         {groups.length === 0 && crmView !== "all" && (
           <div className="empty" style={{ padding: 24 }}>Aucun call {crmView === "today" ? "aujourd'hui" : "cette semaine"} 🎉</div>
         )}
@@ -2086,9 +2123,13 @@ export default function App() {
                     return (
                     <tr key={l.email}>
                       <td>
-                        <div className="mnd-lead">
+                        <div className="mnd-lead" style={{ cursor: "pointer" }} onClick={() => setLeadOpen(l.email)} title="Ouvrir la fiche">
                           <span className="mnd-ava" style={{ background: avaColor(l.email) }}>{initials(nm)}</span>
-                          <div><div className="mnd-name">{nm}</div><div className="mnd-mail">{l.email}</div></div>
+                          <div>
+                            <div className="mnd-name">{nm}</div>
+                            <div className="mnd-mail">{l.email}</div>
+                            {l.phone ? <a className="mnd-phone" href={`tel:${String(l.phone).replace(/[^+0-9]/g, "")}`}><Phone size={10} /> {l.phone}</a> : null}
+                          </div>
                         </div>
                       </td>
                       <td><div className="mnd-call"><div className="d">{callDate(l)}{callTime(l) ? ` · ${callTime(l)}` : ""}</div>{callEvent(l) ? <div className="e">{callEvent(l)}</div> : null}</div></td>
@@ -2130,6 +2171,41 @@ export default function App() {
         ); })}
         <datalist id="crm-closers">{closerNames.map((n) => <option key={n} value={n} />)}</datalist>
         <datalist id="crm-setters">{setterNames.map((n) => <option key={n} value={n} />)}</datalist>
+        </>)}
+
+        {/* VUE CALENDRIER — agenda par jour, façon Calendly */}
+        {crmMode === "cal" && (() => {
+          const byDay = {};
+          rows.forEach((l) => { const d = dOf(l) || "—"; (byDay[d] = byDay[d] || []).push(l); });
+          const days = Object.keys(byDay).sort();
+          const fmtDay = (d) => { try { return parseLocal(d).toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" }); } catch (e) { return d; } };
+          if (!days.length) return <div className="empty" style={{ padding: 26 }}>Aucun call sur cette période 🎉</div>;
+          return days.map((d) => (
+            <div className="cal-day" key={d}>
+              <div className="cal-dhead">
+                {fmtDay(d)}
+                {d === todayISO ? <span className="cal-today">Aujourd'hui</span> : null}
+                <span className="mnd-gcount">{byDay[d].length}</span>
+              </div>
+              <div className="card" style={{ padding: 0, overflow: "hidden" }}>
+                {byDay[d].sort((a, b) => String(callTime(a) || "99").localeCompare(String(callTime(b) || "99"))).map((l) => (
+                  <div className="cal-row" key={l.email}>
+                    <div className="cal-time">{callTime(l) || "—"}</div>
+                    <div className="cal-main" style={{ cursor: "pointer" }} onClick={() => setLeadOpen(l.email)} title="Ouvrir la fiche">
+                      <div className="cal-name">{l.name && l.name !== l.email ? l.name : l.email}{l.closer ? <span className="mut" style={{ fontWeight: 500 }}> · {l.closer}</span> : null}</div>
+                      <div className="cal-sub">{callEvent(l) || srcOf(l)}{l.phone ? ` · ${l.phone}` : ""}</div>
+                    </div>
+                    <span className="mnd-src">{srcOf(l)}</span>
+                    <select className="mnd-status" value={l.stage} style={{ backgroundColor: (META[l.stage] || ["", "#666"])[1] }}
+                      onChange={(e) => updateLead(l.email, { stage: e.target.value })}>
+                      {Object.keys(META).map((s) => <option key={s} value={s}>{META[s][0]}</option>)}
+                    </select>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ));
+        })()}
 
         {isAdmin && closerPerf.length > 0 && (<>
           <div className="section-h"><UserCheck size={15} /> Closing · par closer</div>
@@ -2213,6 +2289,68 @@ export default function App() {
       </>)}
 
       </main>
+
+      {/* FICHE LEAD — réponses aux questions, coordonnées, notes, historique */}
+      {leadOpen && (() => {
+        const L = (crm.leads || []).find((x) => x.email === leadOpen);
+        if (!L) return null;
+        const nm = L.name && L.name !== L.email ? L.name : L.email;
+        const qa = L.answers && typeof L.answers === "object" ? Object.entries(L.answers) : [];
+        return (
+          <div className="overlay" onClick={(e) => e.target === e.currentTarget && setLeadOpen(null)}>
+            <div className="modal lead-sheet">
+              <button className="modal-close" onClick={() => setLeadOpen(null)}><X size={20} /></button>
+              <div className="ls-head">
+                <span className="mnd-ava" style={{ background: "linear-gradient(135deg,#7C5CFF,#9D5CFF)", width: 46, height: 46, fontSize: 17 }}>{String(nm)[0].toUpperCase()}</span>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontFamily: "'Montserrat'", fontWeight: 800, fontSize: 19 }}>{nm}</div>
+                  <div className="mut" style={{ fontSize: 12.5, marginTop: 2 }}>{L.email}{L.phone ? <> · <a href={`tel:${String(L.phone).replace(/[^+0-9]/g, "")}`} style={{ color: "var(--cyan)", textDecoration: "none" }}>{L.phone}</a></> : null}</div>
+                </div>
+                <select className="mnd-status" value={L.stage} style={{ backgroundColor: (CRM_META[L.stage] || ["", "#666"])[1], marginLeft: "auto" }}
+                  onChange={(e) => updateLead(L.email, { stage: e.target.value })}>
+                  {Object.keys(CRM_META).map((s) => <option key={s} value={s}>{CRM_META[s][0]}</option>)}
+                </select>
+              </div>
+
+              <div className="ls-grid">
+                <div><span className="ls-l">Source</span><span>{L.source || "—"}</span></div>
+                <div><span className="ls-l">Setter</span><span>{L.setter || "—"}</span></div>
+                <div><span className="ls-l">Closer</span><span>{L.closer || "—"}</span></div>
+                <div><span className="ls-l">Encaissé</span><span className="green" style={{ fontWeight: 700 }}>{L.amount ? euro(L.amount) : "—"}</span></div>
+                {L.bookedAt ? <div><span className="ls-l">RDV</span><span>{String(L.bookedAt).slice(0, 10)}{L.bookedEvent ? ` · ${L.bookedEvent}` : ""}</span></div> : null}
+                {L.lastCall ? <div><span className="ls-l">Dernier call</span><span>{String(L.lastCall.date || "").slice(0, 10)}{L.lastCall.event ? ` · ${L.lastCall.event}` : ""}</span></div> : null}
+              </div>
+
+              <div className="ls-sec">Réponses aux questions</div>
+              {qa.length === 0 ? (
+                <div className="mut" style={{ fontSize: 13, padding: "4px 0 8px" }}>Aucune réponse enregistrée pour ce lead (elles remontent des formulaires iClosed / Calendly).</div>
+              ) : (
+                <div className="ls-qa">
+                  {qa.map(([q, a]) => (
+                    <div className="ls-qa-row" key={q}>
+                      <div className="ls-q">{q}</div>
+                      <div className="ls-a">{String(a)}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="ls-sec">Notes</div>
+              <textarea className="ls-notes" defaultValue={L.notes || ""} placeholder="Ajouter une note…" key={L.email + (L.notes || "")}
+                onBlur={(e) => { const v = e.target.value; if (v !== (L.notes || "")) updateLead(L.email, { notes: v }); }} />
+
+              {(L.history || []).length > 0 && (<>
+                <div className="ls-sec">Historique</div>
+                <div className="ls-hist">
+                  {[...L.history].reverse().map((h, i) => (
+                    <div key={i}><span className="mut">{String(h.at || "").slice(0, 16).replace("T", " ")}</span> — {h.label}</div>
+                  ))}
+                </div>
+              </>)}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ÉDITER LA FICHE */}
       {editFor && editDraft && (

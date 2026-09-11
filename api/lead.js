@@ -86,6 +86,23 @@ module.exports = async (req, res) => {
       const ev = p.scheduled_event || {};
       const lead = (await getLead(email)) || { email, createdAt: new Date().toISOString(), stage: "new", history: [] };
       lead.name = lead.name || p.name || email;
+      // Téléphone : numéro SMS Calendly, ou réponse de formulaire qui y ressemble.
+      if (!lead.phone) {
+        const qas = Array.isArray(p.questions_and_answers) ? p.questions_and_answers : [];
+        const byQ = qas.find((x) => /phone|t[ée]l/i.test(String(x.question || "")));
+        const byShape = qas.map((x) => x.answer).find((a) => /^\+?[0-9][0-9 ().-]{6,}$/.test(String(a || "").trim()));
+        const ph = p.text_reminder_number || (byQ && byQ.answer) || byShape;
+        if (ph) lead.phone = String(ph);
+      }
+      // Réponses au formulaire Calendly -> fiche lead
+      {
+        const qas = Array.isArray(p.questions_and_answers) ? p.questions_and_answers : [];
+        qas.forEach((x) => {
+          if (x && x.question && x.answer != null && String(x.answer) !== "") {
+            lead.answers = { ...(lead.answers || {}), [String(x.question)]: String(x.answer) };
+          }
+        });
+      }
       const canceled = /canceled/.test(calendlyEvent) || p.status === "canceled";
       if (canceled) {
         if (!lead.manualStage) lead.stage = "setting"; // le RDV saute -> retour en setting
@@ -117,6 +134,8 @@ module.exports = async (req, res) => {
       deepFind(body, ["first_name", "firstName", "name"]) || email;
     lead.phone = lead.phone || pick(data, "phone", "phone_number", "phoneNumber") || pick(f, "phone_number", "phone") || undefined;
     lead.source = lead.source || pick(data, "source", "utm_source", "funnel", "funnelName") || "VSL";
+    const ans = pick(data, "answers", "survey", "questions");
+    if (ans && typeof ans === "object" && !Array.isArray(ans)) lead.answers = { ...(lead.answers || {}), ...ans };
     if (pick(data, "utm_campaign", "campaign")) lead.campaign = pick(data, "utm_campaign", "campaign");
     pushHistory(lead, "optin", `Lead entrant (${lead.source})`);
     if (!lead.setter) {

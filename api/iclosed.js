@@ -112,6 +112,7 @@ module.exports = async (req, res) => {
       const call = {
         id: callId,
         email, closer: closer ? String(closer) : "Non attribué",
+        phone: pick(data, "phone", "phoneNumber", "phone_number") || undefined,
         status: ns, source: source ? String(source) : undefined,
         date: (pick(data, "date", "callDate", "scheduledAt", "createdAt") || new Date().toISOString()),
         answers: (answers && typeof answers === "object") ? answers : undefined,

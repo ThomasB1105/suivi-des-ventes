@@ -100,6 +100,21 @@ module.exports = async (req, res) => {
         try { const s = await cmd(["HGET", "crm:leads", email]); lead = s ? JSON.parse(s) : null; } catch {}
         if (!lead) lead = { email, createdAt: new Date().toISOString(), stage: "new", history: [] };
         lead.name = lead.name || p.name || email;
+        if (!lead.phone) {
+          const qas = Array.isArray(p.questions_and_answers) ? p.questions_and_answers : [];
+          const byQ = qas.find((x) => /phone|t[ée]l/i.test(String(x.question || "")));
+          const byShape = qas.map((x) => x.answer).find((a) => /^\+?[0-9][0-9 ().-]{6,}$/.test(String(a || "").trim()));
+          const ph = p.text_reminder_number || (byQ && byQ.answer) || byShape;
+          if (ph) lead.phone = String(ph);
+        }
+        {
+          const qas = Array.isArray(p.questions_and_answers) ? p.questions_and_answers : [];
+          qas.forEach((x) => {
+            if (x && x.question && x.answer != null && String(x.answer) !== "") {
+              lead.answers = { ...(lead.answers || {}), [String(x.question)]: String(x.answer) };
+            }
+          });
+        }
         // On garde le RDV le plus récent comme référence
         if (!lead.bookedAt || String(ev.start_time) > String(lead.bookedAt)) {
           lead.bookedAt = ev.start_time;

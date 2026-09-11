@@ -86,6 +86,7 @@ function mapCall(c, userMap) {
   return {
     id: "ic-" + (callId || `${email}-${date}`),
     email,
+    phone: pick(c, "phoneNumber", "phone") || qa["Phone Number"] || qa["Téléphone"] || undefined,
     closer: String(closer),
     status,
     date,
