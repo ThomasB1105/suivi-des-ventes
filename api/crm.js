@@ -46,6 +46,22 @@ module.exports = async (req, res) => {
       if (body.setter !== undefined) { lead.setter = String(body.setter || "") || undefined; lead.setterAuto = false; }
       if (body.closer !== undefined) { lead.closer = String(body.closer || "") || undefined; lead.closerAuto = false; }
       if (body.notes !== undefined) lead.notes = String(body.notes || "") || undefined;
+      // Dimensions du résultat de call (synchronisent le statut quand pertinent)
+      if (body.callResult !== undefined) {
+        const v = ["won", "lost", ""].includes(body.callResult) ? body.callResult : "";
+        lead.callResult = v || undefined;
+        if (v === "won" || v === "lost") { lead.stage = v; lead.manualStage = true; }
+      }
+      if (body.showUp !== undefined) {
+        const v = ["present", "noshow", "cancelled", ""].includes(body.showUp) ? body.showUp : "";
+        lead.showUp = v || undefined;
+        if (v === "noshow") { lead.stage = "noshow"; lead.manualStage = true; }
+        if (v === "present" && !["won", "lost"].includes(lead.stage)) { lead.stage = "show"; lead.manualStage = true; }
+      }
+      if (body.followUp !== undefined) {
+        const v = ["yes", "no", ""].includes(body.followUp) ? body.followUp : "";
+        lead.followUp = v || undefined;
+      }
       if (body.autoStage === true) lead.manualStage = false;
       lead.updatedAt = new Date().toISOString();
       lead.history = [...(lead.history || []), { at: lead.updatedAt, type: "edit", label: `Mise à jour (${me.name})` }].slice(-12);

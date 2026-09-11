@@ -1327,6 +1327,8 @@ export default function App() {
         .ls-link:hover{border-color:var(--cyan);}
         .ls-join{border-color:rgba(0,200,117,.5);color:#2BD9A0;}
         .ls-cancel{border-color:rgba(255,77,94,.4);color:#FF8A93;}
+        .ls-out{display:flex;gap:16px;flex-wrap:wrap;}
+        .ls-out-l{display:flex;flex-direction:column;gap:6px;font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:700;}
         /* Équipe */
         .team-form{display:flex;gap:10px;flex-wrap:wrap;align-items:center;}
         .team-form .tf{background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:10px;padding:10px 13px;font-family:'Inter';font-size:13px;min-width:150px;}
@@ -2190,10 +2192,13 @@ export default function App() {
                         ) : <span className="mut" style={{ fontSize: 13 }}>{l.closer || "—"}</span>}
                       </td>
                       <td>
-                        <select className="mnd-status" value={l.stage} style={{ backgroundColor: (META[l.stage] || ["", "#666"])[1] }}
-                          onChange={(e) => updateLead(l.email, { stage: e.target.value })}>
-                          {Object.keys(META).map((s) => <option key={s} value={s}>{META[s][0]}</option>)}
-                        </select>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <select className="mnd-status" value={l.stage} style={{ backgroundColor: (META[l.stage] || ["", "#666"])[1] }}
+                            onChange={(e) => updateLead(l.email, { stage: e.target.value })}>
+                            {Object.keys(META).map((s) => <option key={s} value={s}>{META[s][0]}</option>)}
+                          </select>
+                          {l.followUp === "yes" ? <span title="À follow-up" style={{ fontSize: 15 }}>🔁</span> : null}
+                        </div>
                       </td>
                       <td className="num green" style={{ fontWeight: 700 }}>{l.amount ? euro(l.amount) : "—"}</td>
                       <td>
@@ -2241,6 +2246,7 @@ export default function App() {
                     </div>
                     {l.links && l.links.join ? <button className="ls-link ls-join" onClick={(e) => { e.stopPropagation(); try { navigator.clipboard.writeText(l.links.join); flash("Lien du call copié 📋"); } catch (e2) { window.prompt("Copie le lien :", l.links.join); } }}>📋 Copier lien</button> : null}
                     <span className="mnd-src">{srcOf(l)}</span>
+                    {l.followUp === "yes" ? <span title="À follow-up" style={{ fontSize: 15 }}>🔁</span> : null}
                     <select className="mnd-status" value={l.stage} style={{ backgroundColor: (META[l.stage] || ["", "#666"])[1] }}
                       onChange={(e) => updateLead(l.email, { stage: e.target.value })}>
                       {Object.keys(META).map((s) => <option key={s} value={s}>{META[s][0]}</option>)}
@@ -2403,6 +2409,32 @@ export default function App() {
                 <div><span className="ls-l">Encaissé</span><span className="green" style={{ fontWeight: 700 }}>{L.amount ? euro(L.amount) : "—"}</span></div>
                 {L.bookedAt ? <div><span className="ls-l">RDV</span><span>{String(L.bookedAt).slice(0, 10)}{L.bookedEvent ? ` · ${L.bookedEvent}` : ""}</span></div> : null}
                 {L.lastCall ? <div><span className="ls-l">Dernier call</span><span>{String(L.lastCall.date || "").slice(0, 10)}{L.lastCall.event ? ` · ${L.lastCall.event}` : ""}</span></div> : null}
+              </div>
+
+              <div className="ls-sec">Résultat du call</div>
+              <div className="ls-out">
+                <label className="ls-out-l">Résultat
+                  <select className="crm-select" value={L.callResult || ""} onChange={(e) => updateLead(L.email, { callResult: e.target.value })}>
+                    <option value="">—</option>
+                    <option value="won">Closé ✅</option>
+                    <option value="lost">Non closé</option>
+                  </select>
+                </label>
+                <label className="ls-out-l">Show-up
+                  <select className="crm-select" value={L.showUp || ""} onChange={(e) => updateLead(L.email, { showUp: e.target.value })}>
+                    <option value="">—</option>
+                    <option value="present">Présent</option>
+                    <option value="noshow">No-show</option>
+                    <option value="cancelled">Annulé</option>
+                  </select>
+                </label>
+                <label className="ls-out-l">À follow-up
+                  <select className="crm-select" value={L.followUp || ""} onChange={(e) => updateLead(L.email, { followUp: e.target.value })}>
+                    <option value="">—</option>
+                    <option value="yes">Oui 🔁</option>
+                    <option value="no">Non</option>
+                  </select>
+                </label>
               </div>
 
               <div className="ls-sec">Réponses aux questions</div>
