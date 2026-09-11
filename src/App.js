@@ -2053,7 +2053,9 @@ export default function App() {
         const rows = all
           .filter(activeFilter)
           .filter((l) => !q || `${l.email} ${l.name || ""} ${l.closer || ""}`.toLowerCase().includes(q));
-        const bySort = (a, b) => (isCal || crmView !== "all") ? String(dOf(a)).localeCompare(String(dOf(b))) : 0;
+        // Tri chronologique croissant (les premières heures de la journée d'abord)
+        const tsOf = (l) => String((l.lastCall && l.lastCall.date) || l.bookedAt || "").replace(" ", "T");
+        const bySort = (a, b) => tsOf(a).localeCompare(tsOf(b));
         const groups = ORDER.map((s) => ({ s, items: rows.filter((l) => l.stage === s).sort(bySort) })).filter((g) => g.items.length);
         const others = rows.filter((l) => !ORDER.includes(l.stage));
         if (others.length) groups.push({ s: "new", items: others });

@@ -44,7 +44,7 @@ module.exports = async (req, res) => {
       if (!lead) lead = { email, createdAt: new Date().toISOString(), history: [] };
       if (body.stage !== undefined && STAGES.includes(body.stage)) { lead.stage = body.stage; lead.manualStage = true; }
       if (body.setter !== undefined) { lead.setter = String(body.setter || "") || undefined; lead.setterAuto = false; }
-      if (body.closer !== undefined) lead.closer = String(body.closer || "") || undefined;
+      if (body.closer !== undefined) { lead.closer = String(body.closer || "") || undefined; lead.closerAuto = false; }
       if (body.notes !== undefined) lead.notes = String(body.notes || "") || undefined;
       if (body.autoStage === true) lead.manualStage = false;
       lead.updatedAt = new Date().toISOString();

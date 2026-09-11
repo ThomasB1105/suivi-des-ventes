@@ -139,11 +139,13 @@ module.exports = async (req, res) => {
         }
         lead.source = lead.source || "Calendly";
         if (!lead.manualStage && !["won", "lost", "noshow", "show"].includes(lead.stage)) lead.stage = "booked";
-        // L'HÔTE Calendly (membre qui prend le call) = setter de référence.
+        // L'HÔTE Calendly (membre qui prend le call) = CLOSER de référence.
         // Il remplace une attribution automatique, jamais une saisie manuelle.
         const ms = Array.isArray(ev.event_memberships) ? ev.event_memberships : [];
         const host = (ms[0] && (ms[0].user_name || ms[0].user_email)) || null;
-        if (host && (!lead.setter || lead.setterAuto)) { lead.setter = String(host); lead.setterAuto = true; }
+        // Migration : l'ancienne règle mettait l'hôte en setter -> on libère.
+        if (host && lead.setterAuto && String(lead.setter || "") === String(host)) { lead.setter = undefined; }
+        if (host && (!lead.closer || lead.closerAuto)) { lead.closer = String(host); lead.closerAuto = true; }
         if (!lead.setter) { const sName = await pickNextAssignee(cmd, "setter"); if (sName) { lead.setter = sName; lead.setterAuto = true; } }
         lead.updatedAt = new Date().toISOString();
         await cmd(["HSET", "crm:leads", email, JSON.stringify(lead)]);
