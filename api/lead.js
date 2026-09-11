@@ -89,9 +89,11 @@ module.exports = async (req, res) => {
       // Téléphone : numéro SMS Calendly, ou réponse de formulaire qui y ressemble.
       if (!lead.phone) {
         const qas = Array.isArray(p.questions_and_answers) ? p.questions_and_answers : [];
-        const byQ = qas.find((x) => /phone|t[ée]l/i.test(String(x.question || "")));
+        const byQ = qas.find((x) => /phone|t[ée]l|num[ée]ro|whatsapp/i.test(String(x.question || "")));
         const byShape = qas.map((x) => x.answer).find((a) => /^\+?[0-9][0-9 ().-]{6,}$/.test(String(a || "").trim()));
-        const ph = p.text_reminder_number || (byQ && byQ.answer) || byShape;
+        const loc = (p.scheduled_event && p.scheduled_event.location) || {};
+        const locPhone = /call/i.test(String(loc.type || "")) && /[0-9]{6,}/.test(String(loc.location || "")) ? loc.location : null;
+        const ph = p.text_reminder_number || (byQ && byQ.answer) || byShape || locPhone;
         if (ph) lead.phone = String(ph);
       }
       // Réponses au formulaire Calendly -> fiche lead
@@ -112,8 +114,9 @@ module.exports = async (req, res) => {
         lead.bookedAt = ev.start_time || new Date().toISOString();
         lead.bookedEvent = ev.name || "Calendly";
         // Liens Calendly : visio (Meet/Zoom) + replanifier / annuler côté invité
+        const locUrl = ev.location && (ev.location.join_url || ev.location.location);
         const links = {
-          join: (ev.location && (ev.location.join_url || ev.location.location)) || undefined,
+          join: /^https?:/.test(String(locUrl || "")) ? locUrl : undefined,   // URL uniquement (pas un n° de tel)
           reschedule: p.reschedule_url || undefined,
           cancel: p.cancel_url || undefined,
         };

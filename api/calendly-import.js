@@ -41,9 +41,14 @@ module.exports = async (req, res) => {
     const organization = user.current_organization;
 
     if (req.query && (req.query.debug === "1" || req.query.debug === "true")) {
-      let sample = null;
-      try { sample = await cGet("/scheduled_events", tok, { organization, count: 3 }); } catch (e) { sample = { _error: e.status, _body: e.body }; }
-      res.status(200).json({ debug: true, user: { name: user.name, email: user.email, organization }, sample });
+      let sample = null, invitee = null;
+      try {
+        sample = await cGet("/scheduled_events", tok, { organization, count: 3 });
+        const ev0 = sample && sample.collection && sample.collection[0];
+        const uuid = ev0 && String(ev0.uri || "").split("/").pop();
+        if (uuid) { const inv = await cGet(`/scheduled_events/${uuid}/invitees`, tok, { count: 1 }); invitee = inv && inv.collection && inv.collection[0]; }
+      } catch (e) { sample = sample || { _error: e.status, _body: e.body }; }
+      res.status(200).json({ debug: true, user: { name: user.name, email: user.email, organization }, sample, invitee });
       return;
     }
 
@@ -102,9 +107,13 @@ module.exports = async (req, res) => {
         lead.name = lead.name || p.name || email;
         if (!lead.phone) {
           const qas = Array.isArray(p.questions_and_answers) ? p.questions_and_answers : [];
-          const byQ = qas.find((x) => /phone|t[ée]l/i.test(String(x.question || "")));
+          const byQ = qas.find((x) => /phone|t[ée]l|num[ée]ro|whatsapp/i.test(String(x.question || "")));
           const byShape = qas.map((x) => x.answer).find((a) => /^\+?[0-9][0-9 ().-]{6,}$/.test(String(a || "").trim()));
-          const ph = p.text_reminder_number || (byQ && byQ.answer) || byShape;
+          // Événement "appel téléphonique" Calendly : le numéro de l'invité est
+          // dans location de l'événement (type *_call), pas dans les réponses.
+          const loc = ev.location || {};
+          const locPhone = /call/i.test(String(loc.type || "")) && /[0-9]{6,}/.test(String(loc.location || "")) ? loc.location : null;
+          const ph = p.text_reminder_number || (byQ && byQ.answer) || byShape || locPhone;
           if (ph) lead.phone = String(ph);
         }
         {
@@ -119,8 +128,9 @@ module.exports = async (req, res) => {
         if (!lead.bookedAt || String(ev.start_time) > String(lead.bookedAt)) {
           lead.bookedAt = ev.start_time;
           lead.bookedEvent = ev.name || "Calendly";
+          const locUrl = ev.location && (ev.location.join_url || ev.location.location);
           const links = {
-            join: (ev.location && (ev.location.join_url || ev.location.location)) || undefined,
+            join: /^https?:/.test(String(locUrl || "")) ? locUrl : undefined,   // URL uniquement (pas un n° de tel)
             reschedule: p.reschedule_url || undefined,
             cancel: p.cancel_url || undefined,
           };
