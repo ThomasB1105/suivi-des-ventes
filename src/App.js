@@ -1277,7 +1277,7 @@ export default function App() {
         .mnd-mail{font-size:11.5px;color:var(--muted);margin-top:3px;}
         .mnd-phone{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;color:var(--cyan);margin-top:3px;text-decoration:none;}
         .mnd-phone:hover{text-decoration:underline;}
-        .mnd-status{border:none;border-radius:8px;color:#fff;font-weight:800;font-size:12px;padding:9px 26px 9px 12px;min-width:138px;text-align:center;text-align-last:center;cursor:pointer;font-family:'Inter';-webkit-appearance:none;appearance:none;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M1 1l4 4 4-4' stroke='white' stroke-width='1.6' fill='none' stroke-linecap='round'/></svg>");background-repeat:no-repeat;background-position:right 12px center;box-shadow:0 2px 8px rgba(16,24,40,.06);transition:filter .12s;}
+        .mnd-status{border:none;border-radius:10px;color:#fff;font-weight:800;font-size:12.5px;padding:11px 26px 11px 12px;min-width:150px;text-align:center;text-align-last:center;cursor:pointer;font-family:'Inter';-webkit-appearance:none;appearance:none;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M1 1l4 4 4-4' stroke='white' stroke-width='1.6' fill='none' stroke-linecap='round'/></svg>");background-repeat:no-repeat;background-position:right 12px center;box-shadow:0 2px 8px rgba(16,24,40,.06);transition:filter .12s;}
         .mnd-status:hover{filter:brightness(1.08);}
         .mnd-status option{color:#111;background:#fff;font-weight:600;}
         .mnd-src{display:inline-flex;padding:5px 13px;border-radius:999px;border:1px solid var(--line);font-size:11.5px;font-weight:600;color:var(--text);background:var(--panel2);white-space:nowrap;}
@@ -1290,7 +1290,7 @@ export default function App() {
         .mnd-foot b{color:var(--text);font-weight:700;}
         .mnd-call{line-height:1.35;}
         .mnd-call .d{font-weight:600;font-size:13px;color:var(--text);white-space:nowrap;}
-        .mnd-call .e{font-size:11.5px;color:var(--muted);margin-top:2px;white-space:nowrap;max-width:150px;overflow:hidden;text-overflow:ellipsis;}
+        .mnd-call .e{font-size:11.5px;color:var(--muted);margin-top:2px;white-space:nowrap;max-width:190px;overflow:hidden;text-overflow:ellipsis;}
         .crm-select{background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:7px 10px;font-family:'Inter';font-size:12.5px;cursor:pointer;}
         .crm-select:focus{outline:none;border-color:var(--cyan);}
         /* Vue calendrier (agenda) */
@@ -1326,11 +1326,12 @@ export default function App() {
         .ls-cancel{border-color:rgba(255,77,94,.4);color:#FF8A93;}
         .ls-out{display:flex;gap:16px;flex-wrap:wrap;}
         .ls-out-l{display:flex;flex-direction:column;gap:6px;font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:700;}
-        .out-row{display:flex;gap:6px;flex-wrap:wrap;}
-        .out-select{background:#fff;color:var(--text);border:1px solid #E3E6EA;border-radius:999px;padding:6px 9px;font-family:'Inter';font-size:11px;font-weight:600;cursor:pointer;max-width:112px;transition:border-color .12s;}
-        .out-select:hover{border-color:#C6CCD6;}
+        .out-row{display:flex;flex-direction:column;gap:7px;align-items:stretch;}
+        .out-select{-webkit-appearance:none;appearance:none;background-color:#fff;color:var(--text);border:1.5px solid #E3E6EA;border-radius:10px;padding:10px 32px 10px 14px;font-family:'Inter';font-size:12.5px;font-weight:700;cursor:pointer;width:186px;text-align:left;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M1 1l4 4 4-4' stroke='%23667085' stroke-width='1.6' fill='none' stroke-linecap='round'/></svg>");background-repeat:no-repeat;background-position:right 12px center;box-shadow:0 1px 2px rgba(16,24,40,.04);transition:border-color .12s, box-shadow .12s;}
+        .out-select:hover{border-color:#C6CCD6;box-shadow:0 2px 6px rgba(16,24,40,.08);}
         .out-select:focus{outline:none;border-color:var(--cyan);box-shadow:0 0 0 3px rgba(108,92,231,.12);}
-        .out-select:has(option:checked[value=""]){color:#98A2B3;font-weight:500;}
+        .out-select:has(option:checked[value=""]){color:#98A2B3;font-weight:600;border-style:dashed;box-shadow:none;}
+        .out-select option{color:#111;background:#fff;font-weight:600;}
         /* Équipe */
         .team-form{display:flex;gap:10px;flex-wrap:wrap;align-items:center;}
         .team-form .tf{background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:10px;padding:10px 13px;font-family:'Inter';font-size:13px;min-width:150px;}
@@ -2091,7 +2092,7 @@ export default function App() {
         const outSelects = (l, compact) => (<>
           <select className="out-select" style={TONES[l.callResult] || {}} value={l.callResult || ""} title="Résultat du call"
             onChange={(e) => updateLead(l.email, { callResult: e.target.value })}>
-            <option value="">Résultat…</option>
+            <option value="">Résultat du call…</option>
             <option value="won">Closé ✅</option>
             <option value="lost">Non closé</option>
           </select>
@@ -2183,7 +2184,7 @@ export default function App() {
             </div>
             <div className="card mnd-card" style={{ borderLeft: `6px solid ${META[g.s][1]}` }}>
               <table className="mnd-tbl">
-                <thead><tr><th>Lead</th><th>Call</th><th>Source</th><th>Setter</th><th>Closer</th><th>Statut</th><th>Résultat du call</th><th className="num">Encaissé</th></tr></thead>
+                <thead><tr><th>Lead</th><th>Call</th><th>Setter</th><th>Closer</th><th>Statut</th><th>Résultat du call</th><th className="num">Encaissé</th></tr></thead>
                 <tbody>
                   {g.items.slice(0, 100).map((l) => {
                     const nm = l.name && l.name !== l.email ? l.name : l.email;
@@ -2199,8 +2200,7 @@ export default function App() {
                           </div>
                         </div>
                       </td>
-                      <td><div className="mnd-call"><div className="d">{callDate(l)}{callTime(l) ? ` · ${callTime(l)}` : ""}</div>{callEvent(l) ? <div className="e">{callEvent(l)}</div> : null}</div></td>
-                      <td><span className="mnd-src">{srcOf(l)}</span></td>
+                      <td><div className="mnd-call"><div className="d">{callDate(l)}{callTime(l) ? ` · ${callTime(l)}` : ""}</div><div className="e">{srcOf(l)}{callEvent(l) ? ` · ${callEvent(l)}` : ""}</div></div></td>
                       <td>
                         {isAdmin ? (
                           <input className="crm-input" defaultValue={l.setter || ""} list="crm-setters" placeholder="Assigner…"
