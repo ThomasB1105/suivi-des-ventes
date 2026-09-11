@@ -7,6 +7,7 @@
 
 const { cmd, isConfigured } = require("../lib/kv");
 const { checkAuth } = require("../lib/auth");
+const { DEFAULT_ALIASES } = require("../lib/crmData");
 
 module.exports = async (req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -58,7 +59,7 @@ module.exports = async (req, res) => {
     res.status(200).json({
       aliases,
       detected: Object.entries(detected)
-        .map(([kl, d]) => ({ raw: kl, name: d.name, sources: [...d.sources], count: d.count, to: aliases[kl] || "" }))
+        .map(([kl, d]) => ({ raw: kl, name: d.name, sources: [...d.sources], count: d.count, to: aliases[kl] || DEFAULT_ALIASES[kl] || "" }))
         .sort((a, b) => b.count - a.count),
     });
   } catch (e) {
