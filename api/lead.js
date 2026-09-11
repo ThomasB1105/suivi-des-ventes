@@ -10,6 +10,7 @@
 //   GET /api/lead?debug=1 -> derniers payloads bruts reçus.
 
 const { cmd, isConfigured } = require("../lib/kv");
+const { pickNextAssignee } = require("../lib/crmData");
 
 const pick = (o, ...ks) => { for (const k of ks) if (o && o[k] != null && o[k] !== "") return o[k]; return undefined; };
 function deepEmail(obj, depth = 0) {
@@ -96,6 +97,10 @@ module.exports = async (req, res) => {
         pushHistory(lead, "calendly_booked", `RDV booké${ev.name ? ` · ${ev.name}` : ""}${ev.start_time ? ` (${String(ev.start_time).slice(0, 10)})` : ""}`);
       }
       lead.source = lead.source || "Calendly";
+      if (!lead.setter) {
+        const s = await pickNextAssignee(cmd, "setter");
+        if (s) { lead.setter = s; pushHistory(lead, "assign", `Attribué à ${s} (auto)`); }
+      }
       await saveLead(lead);
       res.status(200).json({ ok: true, calendly: true, email, stage: lead.stage });
       return;
@@ -114,6 +119,10 @@ module.exports = async (req, res) => {
     lead.source = lead.source || pick(data, "source", "utm_source", "funnel", "funnelName") || "VSL";
     if (pick(data, "utm_campaign", "campaign")) lead.campaign = pick(data, "utm_campaign", "campaign");
     pushHistory(lead, "optin", `Lead entrant (${lead.source})`);
+    if (!lead.setter) {
+      const s = await pickNextAssignee(cmd, "setter");
+      if (s) { lead.setter = s; pushHistory(lead, "assign", `Attribué à ${s} (auto)`); }
+    }
     await saveLead(lead);
     res.status(200).json({ ok: true, email, stage: lead.stage });
   } catch (e) {

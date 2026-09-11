@@ -11,6 +11,7 @@
 
 const { cmd, isConfigured } = require("../lib/kv");
 const { checkAuth } = require("../lib/auth");
+const { pickNextAssignee } = require("../lib/crmData");
 
 const BASE = "https://api.calendly.com";
 
@@ -106,6 +107,7 @@ module.exports = async (req, res) => {
         }
         lead.source = lead.source || "Calendly";
         if (!lead.manualStage && !["won", "lost", "noshow", "show"].includes(lead.stage)) lead.stage = "booked";
+        if (!lead.setter) { const sName = await pickNextAssignee(cmd, "setter"); if (sName) lead.setter = sName; }
         lead.updatedAt = new Date().toISOString();
         await cmd(["HSET", "crm:leads", email, JSON.stringify(lead)]);
         stored += 1;

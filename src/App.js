@@ -668,7 +668,7 @@ export default function App() {
       flash(e.name === "AbortError" ? "Connexion Calendly trop longue (interrompue)." : `Calendly : ${e.message}`);
     } finally { clearTimeout(to); setCalSync(false); }
   };
-  useEffect(() => { if (tab === "crm") loadCrm(); }, [tab]); // eslint-disable-line
+  useEffect(() => { if (tab === "crm") { loadCrm(); if (isAdmin) loadTeam(); } }, [tab]); // eslint-disable-line
   // Mise à jour optimiste + sauvegarde serveur (stage/setter/closer/notes).
   const updateLead = async (email, patch) => {
     setCrm((p) => ({ ...p, leads: p.leads.map((l) => (l.email === email ? { ...l, ...patch, manualStage: patch.stage !== undefined ? true : l.manualStage } : l)) }));
@@ -2003,7 +2003,8 @@ export default function App() {
         const nNoShow = all.filter((l) => l.stage === "noshow").length;
         const nWon = all.filter((l) => l.stage === "won").length;
         const revenue = all.reduce((a, l) => a + (l.amount || 0), 0);
-        const closerNames = [...new Set([...(callStats.closers || []).map((c) => c.closer), ...all.map((l) => l.closer).filter(Boolean)])];
+        const closerNames = [...new Set([...(callStats.closers || []).map((c) => c.closer), ...(team || []).filter((u) => u.role !== "setter").map((u) => u.name), ...all.map((l) => l.closer).filter(Boolean)])];
+        const setterNames = [...new Set([...(team || []).filter((u) => u.role === "setter").map((u) => u.name), ...all.map((l) => l.setter).filter(Boolean)])];
         const closerPerf = (() => {
           const m = {};
           all.forEach((l) => {
@@ -2078,7 +2079,7 @@ export default function App() {
             </div>
             <div className="card mnd-card" style={{ borderLeft: `6px solid ${META[g.s][1]}` }}>
               <table className="mnd-tbl">
-                <thead><tr><th>Lead</th><th>Call</th><th>Source</th><th>Closer</th><th>Statut</th><th className="num">Encaissé</th><th>Notes</th></tr></thead>
+                <thead><tr><th>Lead</th><th>Call</th><th>Source</th><th>Setter</th><th>Closer</th><th>Statut</th><th className="num">Encaissé</th><th>Notes</th></tr></thead>
                 <tbody>
                   {g.items.slice(0, 100).map((l) => {
                     const nm = l.name && l.name !== l.email ? l.name : l.email;
@@ -2092,6 +2093,12 @@ export default function App() {
                       </td>
                       <td><div className="mnd-call"><div className="d">{callDate(l)}{callTime(l) ? ` · ${callTime(l)}` : ""}</div>{callEvent(l) ? <div className="e">{callEvent(l)}</div> : null}</div></td>
                       <td><span className="mnd-src">{srcOf(l)}</span></td>
+                      <td>
+                        {isAdmin ? (
+                          <input className="crm-input" defaultValue={l.setter || ""} list="crm-setters" placeholder="Assigner…"
+                            onBlur={(e) => { const v = e.target.value.trim(); if (v !== (l.setter || "")) updateLead(l.email, { setter: v }); }} />
+                        ) : <span className="mut" style={{ fontSize: 13 }}>{l.setter || "—"}</span>}
+                      </td>
                       <td>
                         {isAdmin ? (
                           <input className="crm-input" defaultValue={l.closer || ""} list="crm-closers" placeholder="Assigner…"
@@ -2122,6 +2129,7 @@ export default function App() {
           </div>
         ); })}
         <datalist id="crm-closers">{closerNames.map((n) => <option key={n} value={n} />)}</datalist>
+        <datalist id="crm-setters">{setterNames.map((n) => <option key={n} value={n} />)}</datalist>
 
         {isAdmin && closerPerf.length > 0 && (<>
           <div className="section-h"><UserCheck size={15} /> Closing · par closer</div>
@@ -2163,18 +2171,24 @@ export default function App() {
             }}><Plus size={15} /> Créer</button>
           </div>
           <div className="mut" style={{ fontSize: 12.5, marginTop: 10 }}>
-            Le membre se connecte avec <b>identifiant + mot de passe</b> sur la même page de connexion. Il ne voit <b>que</b> ses calls, sa todo du jour et ses commissions — rien des finances. Le <b>nom affiché</b> doit correspondre au nom utilisé dans la colonne Closer/Setter du CRM pour que ses stats remontent.
+            Le membre se connecte avec <b>identifiant + mot de passe</b> sur la même page de connexion. Il ne voit <b>que</b> ses calls, sa todo du jour et ses commissions — rien des finances. Le <b>nom affiché</b> doit correspondre au nom utilisé dans la colonne Closer/Setter du CRM pour que ses stats remontent. Les <b>nouveaux leads</b> (VSL, Calendly) sont <b>attribués automatiquement</b> en rotation équitable entre les setters dont l'attribution auto est activée.
           </div>
         </div>
 
         <div className="card" style={{ padding: 6 }}>
           <table className="tbl">
-            <thead><tr><th>Membre</th><th>Rôle</th><th className="num">Taux</th><th className="num">Calls</th><th className="num">Show-up</th><th className="num">Closing</th><th className="num">Revenu généré</th><th className="num">Commission due</th><th className="num" /></tr></thead>
+            <thead><tr><th>Membre</th><th>Rôle</th><th>Attribution auto</th><th className="num">Taux</th><th className="num">Calls</th><th className="num">Show-up</th><th className="num">Closing</th><th className="num">Revenu généré</th><th className="num">Commission due</th><th className="num" /></tr></thead>
             <tbody>
               {(team || []).map((u) => (
                 <tr key={u.username}>
                   <td className="lab"><div>{u.name}</div><div className="mut" style={{ fontSize: 11 }}>@{u.username}</div></td>
                   <td><span className="mnd-src">{u.role === "setter" ? "Setter" : "Closer"}</span></td>
+                  <td>
+                    <label style={{ display: "inline-flex", alignItems: "center", gap: 7, cursor: "pointer", fontSize: 12.5 }} title="Reçoit les nouveaux leads en rotation automatique">
+                      <input type="checkbox" defaultChecked={u.autoAssign !== false} onChange={(e) => saveUser({ username: u.username, autoAssign: e.target.checked })} />
+                      <span className="mut">{u.autoAssign !== false ? "activée" : "off"}</span>
+                    </label>
+                  </td>
                   <td className="num">
                     <input className="crm-input" style={{ width: 64, textAlign: "right" }} defaultValue={u.rate}
                       onBlur={(e) => { const v = Math.max(0, Number(e.target.value) || 0); if (v !== u.rate) saveUser({ username: u.username, rate: v }); }} /> %
@@ -2191,7 +2205,7 @@ export default function App() {
                 </tr>
               ))}
               {team && team.length === 0 && (
-                <tr><td colSpan={9}><div className="empty" style={{ padding: 20 }}>Aucun compte. Crée celui de chaque closer/setter ci-dessus 👆</div></td></tr>
+                <tr><td colSpan={10}><div className="empty" style={{ padding: 20 }}>Aucun compte. Crée celui de chaque closer/setter ci-dessus 👆</div></td></tr>
               )}
             </tbody>
           </table>

@@ -33,6 +33,7 @@ module.exports = async (req, res) => {
       if (body.role !== undefined) u.role = body.role === "setter" ? "setter" : "closer";
       if (!u.role) u.role = "closer";
       if (body.rate !== undefined) u.rate = Math.max(0, Math.min(100, Number(body.rate) || 0));
+      if (body.autoAssign !== undefined) u.autoAssign = !!body.autoAssign;
       if (body.password) {
         // nouveau mot de passe -> nouvelle empreinte + invalidation de l'ancienne session
         if (u.hash) { try { await cmd(["HDEL", "app:sessions", userToken(username, u.hash)]); } catch {} }
@@ -63,6 +64,7 @@ module.exports = async (req, res) => {
       name: u.name || u.username,
       role: u.role || "closer",
       rate: u.rate || 0,
+      autoAssign: u.autoAssign !== false,
       createdAt: u.createdAt,
       stats: personStats(leads, u.name || u.username, u.role || "closer", u.rate || 0),
     }));
