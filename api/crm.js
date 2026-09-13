@@ -20,7 +20,9 @@ module.exports = async (req, res) => {
   const me = await identify(req, cmd);
   if (!me) { res.status(401).json({ error: "Non autorisé." }); return; }
   const isAdmin = me.role === "admin";
-  const myField = me.role === "setter" ? "setter" : "closer";
+  // Un membre voit SES leads, qu'il soit dans la colonne closer OU setter
+  // (un rôle mal configuré dans le matching ne doit pas vider son espace).
+  const isMine = (l) => isPerson(l.closer, me.name) || isPerson(l.setter, me.name);
 
   try {
     // ---- Mise à jour d'un lead ----
@@ -34,7 +36,7 @@ module.exports = async (req, res) => {
       if (!isAdmin) {
         const rows = await buildLeads(cmd);
         const row = rows.find((l) => l.email === email);
-        if (!row || !isPerson(row[myField], me.name)) { res.status(403).json({ error: "Lead non assigné à ton compte." }); return; }
+        if (!row || !isMine(row)) { res.status(403).json({ error: "Lead non assigné à ton compte." }); return; }
         // et ne peut pas se réassigner les leads des autres
         delete body.closer; delete body.setter;
       }
@@ -79,7 +81,7 @@ module.exports = async (req, res) => {
 
     // ---- Lecture du board ----
     let leads = await buildLeads(cmd);
-    if (!isAdmin) leads = leads.filter((l) => isPerson(l[myField], me.name));
+    if (!isAdmin) leads = leads.filter(isMine);
 
     res.setHeader("Cache-Control", "no-store");
     res.status(200).json({ leads, me: { role: me.role, name: me.name } });

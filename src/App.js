@@ -2357,9 +2357,10 @@ export default function App() {
           </div>
         );
         const isSetter = persona.role === "setter";
-        const field = isSetter ? "setter" : "closer";
         const same = (v) => String(v || "").trim().toLowerCase() === String(persona.name || "").trim().toLowerCase();
-        const mineAll = (crm.leads || []).filter((l) => same(l[field]));
+        // Ses leads, dans LES DEUX colonnes (closer OU setter) : un mauvais
+        // rôle dans le matching ne vide plus l'espace.
+        const mineAll = (crm.leads || []).filter((l) => same(l.closer) || same(l.setter));
         const mine = mineAll.filter((l) => l.hasCall !== false);
         const today = toISO(new Date());
         const tsL = (l) => toParis((l.lastCall && l.lastCall.date) || l.bookedAt || "");
@@ -2604,7 +2605,7 @@ export default function App() {
                       onClick={() => {
                         const nm = a.to || a.name;
                         const acc = (team || []).find((u) => String(u.name).toLowerCase() === String(nm).toLowerCase());
-                        setViewAs({ name: nm, role: (a.role || (acc && acc.role) || "closer") === "setter" ? "setter" : "closer", rate: (acc && acc.rate) || 0 });
+                        setViewAs({ name: nm, role: ((acc && acc.role) || a.role || "closer") === "setter" ? "setter" : "closer", rate: (acc && acc.rate) || 0 });
                         go("espace");
                       }}><Eye size={13} /> Voir</button>
                   </td>
