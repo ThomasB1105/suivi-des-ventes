@@ -230,7 +230,7 @@ const authFetch = (url, opts = {}) => fetch(url, { ...opts, headers: { ...(opts.
 
 export default function App() {
   const [sales, setSales] = useState([]);
-  const [tab, setTab] = useState(() => { try { const r = localStorage.getItem("melo_role"); return r && r !== "admin" ? "calendrier" : "clients"; } catch (e) { return "clients"; } });
+  const [tab, setTab] = useState(() => { try { const r = localStorage.getItem("melo_role"); return r && r !== "admin" ? "espace" : "clients"; } catch (e) { return "clients"; } });
   const [showAdd, setShowAdd] = useState(false);
   const [menu, setMenu] = useState(null);
   const [toast, setToast] = useState(null);
@@ -693,7 +693,7 @@ export default function App() {
   // base en continu ; l'interface se resynchronise toute seule (toutes les
   // 45 s quand l'onglet est visible, et au retour sur la fenêtre).
   useEffect(() => {
-    if (!(tab === "crm" || tab === "calendrier")) return;
+    if (!(tab === "crm" || tab === "calendrier" || tab === "espace")) return;
     loadCrm(); if (isAdmin) loadTeam();
     const iv = setInterval(() => { if (document.visibilityState === "visible") loadCrm(true); }, 45000);
     const onFocus = () => { if (document.visibilityState !== "hidden") loadCrm(true); };
@@ -709,6 +709,42 @@ export default function App() {
       if (!r.ok) throw new Error(`Erreur ${r.status}`);
     } catch (e) { flash(`Sauvegarde CRM impossible : ${e.message}`); }
   };
+
+  // Badges colorés des 3 dimensions du résultat de call (partagés board /
+  // calendrier / espace membre).
+  const TONES = {
+    won: { color: "#067647", borderColor: "#ABEFC6", background: "#ECFDF3" },
+    lost: { color: "#B42318", borderColor: "#FECDCA", background: "#FEF3F2" },
+    present: { color: "#067647", borderColor: "#ABEFC6", background: "#ECFDF3" },
+    noshow: { color: "#B42318", borderColor: "#FECDCA", background: "#FEF3F2" },
+    cancelled: { color: "#B54708", borderColor: "#FEDF89", background: "#FFFAEB" },
+    yes: { color: "#5925DC", borderColor: "#D9D6FE", background: "#F4F3FF" },
+    no: { color: "#475467", borderColor: "#E3E6EA", background: "#F9FAFB" },
+  };
+  const outSelects = (l) => (<>
+    <select className="out-select" style={TONES[l.callResult] || {}} value={l.callResult || ""} title="Résultat du call"
+      onChange={(e) => updateLead(l.email, { callResult: e.target.value })}>
+      <option value="">Résultat du call…</option>
+      <option value="won">Closé ✅</option>
+      <option value="lost">Non closé</option>
+    </select>
+    <select className="out-select" style={TONES[l.showUp] || {}} value={l.showUp || ""} title="Show-up"
+      onChange={(e) => updateLead(l.email, { showUp: e.target.value })}>
+      <option value="">Show-up…</option>
+      <option value="present">Présent</option>
+      <option value="noshow">No-show</option>
+      <option value="cancelled">Annulé</option>
+    </select>
+    <select className="out-select" style={TONES[l.followUp] || {}} value={l.followUp || ""} title="À follow-up"
+      onChange={(e) => updateLead(l.email, { followUp: e.target.value })}>
+      <option value="">Follow-up…</option>
+      <option value="yes">Follow-up : oui 🔁</option>
+      <option value="no">Follow-up : non</option>
+    </select>
+  </>);
+
+  // Aperçu admin de l'espace d'un membre (Équipe → « Voir son espace »).
+  const [viewAs, setViewAs] = useState(null); // { name, role, rate }
 
   // ---- Équipe (admin) & mon espace (membre) ----
   const [team, setTeam] = useState(null);
@@ -933,7 +969,7 @@ export default function App() {
   const overduesF = sortOverdue((impAll ? allOverdue : overdues).filter((i) => matchQ(i.sale)));
   const periodListF = periodList.filter((i) => matchQ(i.sale));
 
-  const SECTION = { clients: "Tableau de bord", cohortes: "Cohortes", mois: "Par mois", collecte: "À collecter", impayes: "Impayés", couts: "Coûts", closers: "Closers", crm: "CRM", calendrier: "Calendrier", equipe: "Équipe" };
+  const SECTION = { clients: "Tableau de bord", cohortes: "Cohortes", mois: "Par mois", collecte: "À collecter", impayes: "Impayés", couts: "Coûts", closers: "Closers", crm: "CRM", calendrier: "Calendrier", equipe: "Équipe", espace: "Ma journée" };
   const go = (t) => { setTab(t); setNavOpen(false); };
   const navCls = (t) => `nav-item ${tab === t ? "active" : ""}`;
   const logout = () => { try { localStorage.removeItem("melo_token"); localStorage.removeItem("melo_role"); localStorage.removeItem("melo_name"); } catch (e) { /* ignore */ } window.location.reload(); };
@@ -1369,6 +1405,30 @@ export default function App() {
         .team-form .tf{background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:10px;padding:10px 13px;font-family:'Inter';font-size:13px;min-width:150px;}
         .team-form .tf:focus{outline:none;border-color:var(--cyan);}
         .team-form select.tf{cursor:pointer;}
+        /* ---- Espace membre (Ma journée) ---- */
+        .esp-preview{display:flex;align-items:center;gap:8px;background:#FFFAEB;border:1px solid #FEDF89;color:#B54708;border-radius:12px;padding:10px 16px;font-size:13px;margin-bottom:16px;}
+        .esp-hero{display:flex;align-items:center;gap:22px;background:linear-gradient(120deg,#6C5CE7,#8E7CF8 55%,#A78BFA);border-radius:18px;padding:24px 28px;color:#fff;box-shadow:0 12px 32px rgba(108,92,231,.28);flex-wrap:wrap;}
+        .esp-ava{width:58px;height:58px;border-radius:50%;background:rgba(255,255,255,.18);border:2px solid rgba(255,255,255,.5);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:21px;letter-spacing:.02em;flex:none;}
+        .esp-hi{font-family:'Montserrat';font-weight:800;font-size:23px;letter-spacing:-.02em;}
+        .esp-date{font-size:13px;opacity:.85;margin-top:3px;text-transform:capitalize;}
+        .esp-lvl{margin-left:auto;text-align:center;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.25);border-radius:14px;padding:10px 20px;}
+        .esp-lvl-emoji{font-size:26px;line-height:1.1;}
+        .esp-lvl-name{font-size:11.5px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;margin-top:3px;}
+        .esp-day{flex:1 1 240px;min-width:220px;background:rgba(255,255,255,.13);border:1px solid rgba(255,255,255,.22);border-radius:14px;padding:13px 17px;}
+        .esp-day-top{display:flex;justify-content:space-between;gap:10px;font-size:12.5px;margin-bottom:8px;opacity:.95;}
+        .esp-track{height:9px;border-radius:999px;background:rgba(255,255,255,.25);overflow:hidden;}
+        .esp-fill{height:100%;border-radius:999px;background:#fff;box-shadow:0 0 10px rgba(255,255,255,.7);transition:width .4s;}
+        .esp-day-sub{font-size:12px;margin-top:8px;opacity:.9;}
+        .esp-sec{display:flex;align-items:center;gap:10px;font-family:'Montserrat';font-weight:800;font-size:16.5px;margin:28px 0 12px 2px;}
+        .esp-todo{display:flex;align-items:center;gap:14px;padding:13px 18px;border-top:1px solid rgba(15,23,42,.05);}
+        .esp-todo:first-child{border-top:none;}
+        .esp-todo-ico{font-size:19px;flex:none;width:34px;height:34px;display:flex;align-items:center;justify-content:center;background:var(--panel2);border-radius:10px;}
+        .esp-todo-txt{font-weight:700;font-size:13.5px;}
+        .esp-todo-lead{font-size:12px;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+        .esp-tag{display:inline-flex;border:1.5px solid;border-radius:999px;padding:5px 13px;font-size:11.5px;font-weight:800;white-space:nowrap;flex:none;margin-left:auto;}
+        .esp-open{flex:none;display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:9px;border:1px solid #E3E6EA;background:#fff;color:var(--text);font-family:'Inter';font-size:12.5px;font-weight:700;cursor:pointer;transition:border-color .12s, box-shadow .12s;white-space:nowrap;}
+        .esp-open:hover{border-color:var(--cyan);color:var(--cyan);box-shadow:0 2px 8px rgba(108,92,231,.12);}
+        @media (max-width:760px){ .esp-hero{padding:18px;gap:14px;} .esp-lvl{margin-left:0;} }
       `}</style>
 
       <aside className={`sidebar ${navOpen ? "open" : ""}`}>
@@ -1389,7 +1449,8 @@ export default function App() {
             <button className={navCls("equipe")} onClick={() => go("equipe")}><Users size={16} /> Équipe</button>
           </>) : (<>
             <div className="nav-label">Mon espace</div>
-            <button className={navCls("calendrier")} onClick={() => go("calendrier")}><Calendar size={16} /> Ma journée</button>
+            <button className={navCls("espace")} onClick={() => go("espace")}><UserCheck size={16} /> Ma journée</button>
+            <button className={navCls("calendrier")} onClick={() => go("calendrier")}><Calendar size={16} /> Mon agenda</button>
             <button className={navCls("crm")} onClick={() => go("crm")}><ClipboardList size={16} /> Mes calls</button>
           </>)}
         </nav>
@@ -2074,7 +2135,7 @@ export default function App() {
         const crmMode = tab === "calendrier" ? "cal" : "board";
         const META = CRM_META;
         const ORDER = ["booked", "show", "won", "noshow", "lost", "setting", "unqualified"];
-        const all = crm.leads || [];
+        const all = (crm.leads || []).filter((l) => l.hasCall !== false); // board = calls uniquement (les opt-ins vivent dans l'espace setter)
         const q = crmQ.trim().toLowerCase();
         const todayISO = toISO(new Date());
         const wd = new Date(); const dow = (wd.getDay() + 6) % 7;
@@ -2112,36 +2173,6 @@ export default function App() {
         const revenue = scoped.reduce((a, l) => a + (l.amount || 0), 0);
         const closerNames = [...new Set([...(callStats.closers || []).map((c) => c.closer), ...(team || []).filter((u) => u.role !== "setter").map((u) => u.name), ...all.map((l) => l.closer).filter(Boolean)])];
         const setterNames = [...new Set([...(team || []).filter((u) => u.role === "setter").map((u) => u.name), ...all.map((l) => l.setter).filter(Boolean)])];
-        const TONES = {
-          won: { color: "#067647", borderColor: "#ABEFC6", background: "#ECFDF3" },
-          lost: { color: "#B42318", borderColor: "#FECDCA", background: "#FEF3F2" },
-          present: { color: "#067647", borderColor: "#ABEFC6", background: "#ECFDF3" },
-          noshow: { color: "#B42318", borderColor: "#FECDCA", background: "#FEF3F2" },
-          cancelled: { color: "#B54708", borderColor: "#FEDF89", background: "#FFFAEB" },
-          yes: { color: "#5925DC", borderColor: "#D9D6FE", background: "#F4F3FF" },
-          no: { color: "#475467", borderColor: "#E3E6EA", background: "#F9FAFB" },
-        };
-        const outSelects = (l, compact) => (<>
-          <select className="out-select" style={TONES[l.callResult] || {}} value={l.callResult || ""} title="Résultat du call"
-            onChange={(e) => updateLead(l.email, { callResult: e.target.value })}>
-            <option value="">Résultat du call…</option>
-            <option value="won">Closé ✅</option>
-            <option value="lost">Non closé</option>
-          </select>
-          <select className="out-select" style={TONES[l.showUp] || {}} value={l.showUp || ""} title="Show-up"
-            onChange={(e) => updateLead(l.email, { showUp: e.target.value })}>
-            <option value="">Show-up…</option>
-            <option value="present">Présent</option>
-            <option value="noshow">No-show</option>
-            <option value="cancelled">Annulé</option>
-          </select>
-          <select className="out-select" style={TONES[l.followUp] || {}} value={l.followUp || ""} title="À follow-up"
-            onChange={(e) => updateLead(l.email, { followUp: e.target.value })}>
-            <option value="">Follow-up…</option>
-            <option value="yes">Follow-up : oui 🔁</option>
-            <option value="no">Follow-up : non</option>
-          </select>
-        </>);
         const srcOf = (l) => (l.lastCall ? "iClosed" : (l.bookedAt ? "Calendly" : "—"));
         const avaColor = (e) => ["#579BFC", "#A25DDC", "#00C875", "#FDAB3D", "#E2445C", "#66B2FF"][(String(e).charCodeAt(0) + String(e).length) % 6];
         const initials = (n) => String(n).split(/[\s@._-]+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase() || "?";
@@ -2317,6 +2348,161 @@ export default function App() {
         </>);
       })()}
 
+      {/* MA JOURNÉE — espace gamifié closer/setter (+ aperçu admin via Équipe) */}
+      {tab === "espace" && (() => {
+        const persona = isAdmin ? viewAs : { name: me.name, role: me.role === "setter" ? "setter" : "closer", rate: (meStats && meStats.rate) || 0 };
+        if (!persona) return (
+          <div className="empty" style={{ padding: 30 }}>
+            Choisis un membre dans <b>Équipe</b> (bouton <Eye size={13} style={{ verticalAlign: -2 }} /> « Voir son espace ») pour afficher sa vue.
+          </div>
+        );
+        const isSetter = persona.role === "setter";
+        const field = isSetter ? "setter" : "closer";
+        const same = (v) => String(v || "").trim().toLowerCase() === String(persona.name || "").trim().toLowerCase();
+        const mineAll = (crm.leads || []).filter((l) => same(l[field]));
+        const mine = mineAll.filter((l) => l.hasCall !== false);
+        const today = toISO(new Date());
+        const tsL = (l) => toParis((l.lastCall && l.lastCall.date) || l.bookedAt || "");
+        const dOfL = (l) => tsL(l).slice(0, 10);
+        const tOfL = (l) => { const m = tsL(l).match(/T(\d{2}:\d{2})/); return m ? m[1] : ""; };
+        const frD = (d) => (d ? `${d.slice(8, 10)}/${d.slice(5, 7)}` : "—");
+        const initials = (n) => String(n).split(/[\s@._-]+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase() || "?";
+        const avaColor = (e) => ["#579BFC", "#A25DDC", "#00C875", "#FDAB3D", "#E2445C", "#66B2FF"][(String(e).charCodeAt(0) + String(e).length) % 6];
+        const nmOf = (l) => (l.name && l.name !== l.email ? l.name : l.email);
+
+        // ---- Stats du mois en cours ----
+        const mk = today.slice(0, 7);
+        const monthLeads = mine.filter((l) => dOfL(l).slice(0, 7) === mk);
+        const showed = monthLeads.filter((l) => ["show", "won", "lost"].includes(l.stage)).length;
+        const noshowN = monthLeads.filter((l) => l.stage === "noshow").length;
+        const wonLeads = monthLeads.filter((l) => l.stage === "won");
+        const revenue = wonLeads.reduce((a, l) => a + (l.amount || 0), 0);
+        const showRate = showed + noshowN ? showed / (showed + noshowN) : 0;
+        const closingRate = showed ? wonLeads.length / showed : 0;
+        const rate = Number(persona.rate || 0);
+        const commission = revenue * rate / 100;
+        const bookedM = monthLeads.length;
+
+        // ---- Niveau (gamification) ----
+        const lvl = isSetter
+          ? (bookedM >= 40 ? ["👑", "Légende"] : bookedM >= 25 ? ["🔥", "Machine"] : bookedM >= 10 ? ["⚡", "Confirmé"] : ["🌱", "Rookie"])
+          : (closingRate >= 0.5 ? ["👑", "Légende"] : closingRate >= 0.35 ? ["🔥", "Machine"] : closingRate >= 0.2 ? ["⚡", "Confirmé"] : ["🌱", "Rookie"]);
+
+        // ---- Calls du jour + score ----
+        const todayCalls = mine.filter((l) => dOfL(l) === today).sort((a, b) => (tOfL(a) || "99").localeCompare(tOfL(b) || "99"));
+        const processed = todayCalls.filter((l) => l.callResult || ["noshow", "cancelled"].includes(l.showUp || "")).length;
+        const dayPct = todayCalls.length ? Math.round((processed / todayCalls.length) * 100) : 0;
+
+        // ---- Todo du jour (dérivée : une tâche disparaît quand c'est fait) ----
+        const weekAgo = toISO(new Date(Date.now() - 7 * 864e5));
+        const recent = mine.filter((l) => { const d = dOfL(l); return d && d <= today && d >= weekAgo; });
+        const needResult = recent.filter((l) => !l.callResult && !["noshow", "cancelled"].includes(l.showUp || "") && !["won", "lost"].includes(l.stage));
+        const needFathom = isSetter ? [] : recent.filter((l) => (l.showUp === "present" || ["won", "lost"].includes(l.stage)) && !l.fathom);
+        const followUps = mine.filter((l) => l.followUp === "yes" && l.stage !== "won").sort((a, b) => dOfL(b).localeCompare(dOfL(a)));
+        const relance = mine.filter((l) => (l.stage === "noshow" || l.showUp === "cancelled") && l.followUp !== "yes" && l.stage !== "won");
+        const aQualifier = isSetter ? mineAll.filter((l) => l.hasCall === false) : [];
+        const todos = [
+          ...aQualifier.map((l) => ({ ico: "📞", txt: "Qualifier & booker un call", l })),
+          ...needResult.map((l) => ({ ico: "📝", txt: "Renseigner le résultat du call", l })),
+          ...needFathom.map((l) => ({ ico: "🎥", txt: "Coller le lien Fathom", l })),
+          ...relance.map((l) => ({ ico: "🔄", txt: l.stage === "noshow" ? "No-show : re-booker un call" : "Annulé : re-booker un call", l })),
+          ...followUps.map((l) => ({ ico: "🔁", txt: "Follow-up : relancer", l })),
+        ];
+        const copyJoin = (l) => { try { navigator.clipboard.writeText(l.links.join); flash("Lien du call copié 📋"); } catch (e) { window.prompt("Copie le lien :", l.links.join); } };
+        const dateFr = new Date().toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" });
+
+        return (<>
+          {isAdmin && (
+            <div className="esp-preview">
+              <Eye size={15} /> Aperçu de l'espace de <b>{persona.name}</b> ({isSetter ? "Setter" : "Closer"}) — exactement ce qu'il voit en se connectant.
+              <button className="mini" style={{ marginLeft: "auto" }} onClick={() => { setViewAs(null); go("equipe"); }}><X size={13} /> Quitter</button>
+            </div>
+          )}
+
+          <div className="esp-hero">
+            <div className="esp-ava">{initials(persona.name)}</div>
+            <div style={{ minWidth: 0 }}>
+              <div className="esp-hi">Salut {persona.name} 👋</div>
+              <div className="esp-date">{dateFr} · {isSetter ? "Setter" : "Closer"}{rate ? ` · commission ${rate}%` : ""}</div>
+            </div>
+            <div className="esp-lvl" title={isSetter ? "Niveau selon tes RDV bookés du mois" : "Niveau selon ton taux de closing du mois"}>
+              <div className="esp-lvl-emoji">{lvl[0]}</div>
+              <div className="esp-lvl-name">{lvl[1]}</div>
+            </div>
+            <div className="esp-day">
+              <div className="esp-day-top"><span>Objectif du jour</span><b>{processed}/{todayCalls.length} calls traités</b></div>
+              <div className="esp-track"><div className="esp-fill" style={{ width: `${dayPct}%` }} /></div>
+              <div className="esp-day-sub">{dayPct === 100 && todayCalls.length ? "🏆 Journée parfaite !" : (todos.length ? `${todos.length} tâche${todos.length > 1 ? "s" : ""} dans ta todo` : "Rien en attente 🎉")}</div>
+            </div>
+          </div>
+
+          <div className="kpis" style={{ marginTop: 18 }}>
+            <div className="kcard"><div className="kcard-l">{isSetter ? "RDV bookés" : "Calls"}</div><div className="kcard-v">{isSetter ? bookedM : monthLeads.length}</div><div className="kcard-f">mois en cours</div></div>
+            <div className="kcard"><div className="kcard-l">Show-up</div><div className="kcard-v">{pct(showRate)}</div><div className="kcard-f">{noshowN} no-show</div></div>
+            {!isSetter && (<div className="kcard"><div className="kcard-l">Closing</div><div className="kcard-v green">{pct(closingRate)}</div><div className="kcard-f">{wonLeads.length} closés / {showed} présents</div></div>)}
+            <div className="kcard"><div className="kcard-l">Revenu généré</div><div className="kcard-v green">{euro(revenue)}</div><div className="kcard-f">mois en cours</div></div>
+            <div className="kcard"><div className="kcard-l">Commission{rate ? ` (${rate}%)` : ""}</div><div className="kcard-v" style={{ color: "var(--cyan)" }}>{euro(commission)}</div><div className="kcard-f">sur le mois</div></div>
+          </div>
+
+          <div className="esp-sec">🎯 {isSetter ? "Mes leads du jour" : "Mes calls aujourd'hui"} <span className="mnd-gcount">{todayCalls.length}</span></div>
+          <div className="card" style={{ padding: 0, overflow: "hidden" }}>
+            {todayCalls.length === 0 && <div className="empty" style={{ padding: 20 }}>Aucun call aujourd'hui.</div>}
+            {todayCalls.map((l) => (
+              <div className="cal-row" key={l.email}>
+                <div className="cal-time">{tOfL(l) || "—"}</div>
+                <div className="cal-main" style={{ cursor: "pointer" }} onClick={() => setLeadOpen(l.email)} title="Ouvrir la fiche">
+                  <div className="cal-name">{nmOf(l)}</div>
+                  <div className="cal-sub">{l.bookedEvent || (l.lastCall && l.lastCall.event) || ""}{l.phone ? ` · ${l.phone}` : ""}</div>
+                </div>
+                {l.links && l.links.join ? <button className="ls-link ls-join" onClick={(e) => { e.stopPropagation(); copyJoin(l); }}>📋 Copier lien</button> : null}
+                {!isSetter && (
+                  <input className="crm-input" style={{ width: 168 }} placeholder="🎥 Coller le lien Fathom…" defaultValue={l.fathom || ""}
+                    onBlur={(e) => { const v = e.target.value.trim(); if (v !== (l.fathom || "")) updateLead(l.email, { fathom: v }); }} />
+                )}
+                <div className="out-row">{outSelects(l)}</div>
+              </div>
+            ))}
+          </div>
+
+          <div className="esp-sec">📝 Ma todo du jour <span className="mnd-gcount">{todos.length}</span></div>
+          <div className="card" style={{ padding: 0, overflow: "hidden" }}>
+            {todos.length === 0 && <div className="empty" style={{ padding: 20 }}>Tout est à jour 🏆 Reviens après tes calls.</div>}
+            {todos.slice(0, 30).map((t) => (
+              <div className="esp-todo" key={t.l.email + t.txt}>
+                <span className="esp-todo-ico">{t.ico}</span>
+                <div style={{ minWidth: 0 }}>
+                  <div className="esp-todo-txt">{t.txt}</div>
+                  <div className="esp-todo-lead">{nmOf(t.l)}{dOfL(t.l) ? ` · call du ${frD(dOfL(t.l))}` : ""}{t.l.phone ? ` · ${t.l.phone}` : ""}</div>
+                </div>
+                {t.l.phone ? <a className="ls-link ls-join" style={{ marginLeft: "auto", flex: "none", textDecoration: "none" }} href={`tel:${String(t.l.phone).replace(/[^+0-9]/g, "")}`}>📱 Appeler</a> : null}
+                <button className="esp-open" style={{ marginLeft: t.l.phone ? 0 : "auto" }} onClick={() => setLeadOpen(t.l.email)}>Ouvrir la fiche</button>
+              </div>
+            ))}
+            {todos.length > 30 && <div className="mnd-foot"><span>+{todos.length - 30} autres tâches</span></div>}
+          </div>
+
+          <div className="esp-sec">🔁 À relancer & follow-ups <span className="mnd-gcount">{followUps.length + relance.length}</span></div>
+          <div className="card" style={{ padding: 0, overflow: "hidden", marginBottom: 26 }}>
+            {(followUps.length + relance.length) === 0 && <div className="empty" style={{ padding: 20 }}>Personne à relancer 🎉</div>}
+            {[
+              ...followUps.map((l) => ({ l, tag: "Follow-up 🔁", tone: TONES.yes })),
+              ...relance.map((l) => ({ l, tag: l.stage === "noshow" ? "No-show" : "Annulé", tone: l.stage === "noshow" ? TONES.noshow : TONES.cancelled })),
+            ].map(({ l, tag, tone }) => (
+              <div className="esp-todo" key={"rel" + l.email + tag}>
+                <span className="mnd-ava" style={{ background: avaColor(l.email), width: 32, height: 32, fontSize: 12 }}>{initials(nmOf(l))}</span>
+                <div style={{ minWidth: 0 }}>
+                  <div className="esp-todo-txt">{nmOf(l)}</div>
+                  <div className="esp-todo-lead">dernier call : {frD(dOfL(l))}{l.phone ? ` · ${l.phone}` : ""}</div>
+                </div>
+                <span className="esp-tag" style={tone}>{tag}</span>
+                {l.phone ? <a className="ls-link ls-join" style={{ flex: "none", textDecoration: "none" }} href={`tel:${String(l.phone).replace(/[^+0-9]/g, "")}`}>📱 Appeler</a> : null}
+                <button className="esp-open" onClick={() => setLeadOpen(l.email)}>Ouvrir la fiche</button>
+              </div>
+            ))}
+          </div>
+        </>);
+      })()}
+
       {/* ÉQUIPE — comptes closers/setters + commissions (admin) */}
       {tab === "equipe" && isAdmin && (<>
         <div className="closers-head">
@@ -2371,6 +2557,7 @@ export default function App() {
                   <td className="num green">{euro(u.stats.revenue)}</td>
                   <td className="num" style={{ fontWeight: 800, color: "var(--cyan)" }}>{euro(u.stats.commission)}</td>
                   <td className="num"><div className="row-actions">
+                    <button className="mini" title={`Voir l'espace de ${u.name}`} onClick={() => { setViewAs({ name: u.name, role: u.role === "setter" ? "setter" : "closer", rate: u.rate || 0 }); go("espace"); }}><Eye size={14} /></button>
                     <button className="mini" title="Changer le mot de passe" onClick={() => { const p = window.prompt(`Nouveau mot de passe pour ${u.name} :`); if (p) saveUser({ username: u.username, password: p }); }}><Pencil size={14} /></button>
                     <button className="mini" title="Supprimer le compte" onClick={() => delUser(u.username)}><Trash2 size={14} /></button>
                   </div></td>
