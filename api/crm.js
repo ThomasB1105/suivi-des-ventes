@@ -48,6 +48,9 @@ module.exports = async (req, res) => {
       if (body.setter !== undefined) { lead.setter = String(body.setter || "") || undefined; lead.setterAuto = false; }
       if (body.closer !== undefined) { lead.closer = String(body.closer || "") || undefined; lead.closerAuto = false; }
       if (body.notes !== undefined) lead.notes = String(body.notes || "") || undefined;
+      // Process setting : lead appelé + groupe WhatsApp créé.
+      if (body.setCalled !== undefined) lead.setCalled = body.setCalled ? true : undefined;
+      if (body.waGroup !== undefined) lead.waGroup = body.waGroup ? true : undefined;
       // Lien Fathom (enregistrement du call) : saisi par le closer sur SA ligne.
       if (body.fathom !== undefined) {
         let v = String(body.fathom || "").trim();

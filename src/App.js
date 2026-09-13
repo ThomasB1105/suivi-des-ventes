@@ -746,12 +746,41 @@ export default function App() {
   // Aperçu admin de l'espace d'un membre (Équipe → « Voir son espace »).
   const [viewAs, setViewAs] = useState(null); // { name, role, rate }
 
+  // Attribution setter/closer depuis le TABLEAU DE BORD : écrit dans le lead
+  // CRM (même email) -> stats, espace et commissions du closer à jour.
+  const setSaleAttrib = async (s, patch) => {
+    const em = String(s.email || "").toLowerCase();
+    if (!em) { flash("Cette vente n'a pas d'email : impossible de la relier au CRM."); return; }
+    try {
+      const r = await authFetch("/api/crm", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: em, ...patch }) });
+      if (!r.ok) throw new Error(`Erreur ${r.status}`);
+      const who = patch.closer !== undefined ? (patch.closer || "—") : (patch.setter || "—");
+      flash(`Attribué à ${who} ✅ — visible dans son espace.`);
+      try { const sr = await authFetch("/api/sales"); const sd = await sr.json(); if (sd && sd.sales) applyDbSales(normalize(sd.sales)); } catch (e2) { /* rafraîchi au prochain sync */ }
+    } catch (e) { flash(`Attribution : ${e.message}`); }
+  };
+  // Process setting : étapes cochables (lead appelé / groupe WhatsApp créé).
+  const stepChip = (l, key, label) => (
+    <button className={`esp-step ${l[key] ? "done" : ""}`} onClick={(e) => { e.stopPropagation(); updateLead(l.email, { [key]: !l[key] }); }}>
+      {l[key] ? "✅" : "○"} {label}
+    </button>
+  );
+
   // ---- Équipe (admin) & mon espace (membre) ----
   const [team, setTeam] = useState(null);
   const [teamLoading, setTeamLoading] = useState(false);
   const [tForm, setTForm] = useState({ username: "", name: "", role: "closer", password: "", rate: "" });
   const [meStats, setMeStats] = useState(null);
   const [aliases, setAliases] = useState([]);
+  // Menus déroulants d'attribution (noms des comptes équipe + noms déjà vus).
+  const dashClosers = [...new Set([...(team || []).filter((u) => u.role !== "setter").map((u) => u.name), ...sales.map((s) => s.closer).filter((n) => n && n !== "—")])];
+  const dashSetters = [...new Set([...(team || []).filter((u) => u.role === "setter").map((u) => u.name), ...sales.map((s) => s.setter).filter((n) => n && n !== "—")])];
+  const assignSelect = (value, options, onChange, ph) => (
+    <select className="attr-sel" value={value || ""} onClick={(e) => e.stopPropagation()} onChange={(e) => onChange(e.target.value)} title={ph}>
+      <option value="">{ph}</option>
+      {[...new Set([value, ...options])].filter(Boolean).map((n) => <option key={n} value={n}>{n}</option>)}
+    </select>
+  );
   const loadTeam = async () => {
     setTeamLoading(true);
     try { const r = await authFetch("/api/users"); const d = await r.json(); if (d && d.users) setTeam(d.users); } catch (e) { /* ignore */ }
@@ -770,6 +799,7 @@ export default function App() {
     } catch (e) { flash(`Matching : ${e.message}`); }
   };
   useEffect(() => { if (tab === "equipe" && isAdmin) loadTeam(); }, [tab]); // eslint-disable-line
+  useEffect(() => { if (isAdmin) loadTeam(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (isAdmin) return;
     authFetch("/api/me").then((r) => r.json()).then((d) => { if (d && d.stats) setMeStats({ ...d.stats, rate: d.rate }); }).catch(() => {});
@@ -1428,6 +1458,17 @@ export default function App() {
         .esp-tag{display:inline-flex;border:1.5px solid;border-radius:999px;padding:5px 13px;font-size:11.5px;font-weight:800;white-space:nowrap;flex:none;margin-left:auto;}
         .esp-open{flex:none;display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:9px;border:1px solid #E3E6EA;background:#fff;color:var(--text);font-family:'Inter';font-size:12.5px;font-weight:700;cursor:pointer;transition:border-color .12s, box-shadow .12s;white-space:nowrap;}
         .esp-open:hover{border-color:var(--cyan);color:var(--cyan);box-shadow:0 2px 8px rgba(108,92,231,.12);}
+        .attr-tag{padding:0 4px 0 10px!important;}
+        .attr-sel{-webkit-appearance:none;appearance:none;border:1px solid #E3E6EA;background-color:#fff;border-radius:8px;padding:8px 26px 8px 10px;font-family:'Inter';font-size:12.5px;font-weight:600;color:var(--text);cursor:pointer;min-width:118px;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M1 1l4 4 4-4' stroke='%23667085' stroke-width='1.6' fill='none' stroke-linecap='round'/></svg>");background-repeat:no-repeat;background-position:right 9px center;transition:border-color .12s, box-shadow .12s;}
+        .attr-sel:hover{border-color:#C6CCD6;}
+        .attr-sel:focus{outline:none;border-color:var(--cyan);box-shadow:0 0 0 3px rgba(108,92,231,.12);}
+        .attr-sel:has(option:checked[value=""]){color:#98A2B3;font-weight:500;}
+        .attr-sel option{color:#111;background:#fff;}
+        .attr-tag .attr-sel{border:none;background-color:transparent;min-width:86px;padding:6px 20px 6px 4px;font-size:12px;background-position:right 5px center;}
+        .attr-tag .attr-sel:hover{background-color:rgba(15,23,42,.04);}
+        .esp-step{display:inline-flex;align-items:center;gap:7px;padding:8px 14px;border-radius:999px;border:1.5px dashed #D0D5DD;background:#fff;color:#667085;font-family:'Inter';font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;transition:all .12s;}
+        .esp-step:hover{border-color:#98A2B3;}
+        .esp-step.done{border-style:solid;border-color:#ABEFC6;background:#ECFDF3;color:#067647;}
         @media (max-width:760px){ .esp-hero{padding:18px;gap:14px;} .esp-lvl{margin-left:0;} }
       `}</style>
 
@@ -1628,7 +1669,12 @@ export default function App() {
                       <option value="organic">🌱 Organique</option>
                       <option value="paid">📣 Ads</option>
                     </select>
-                    <span className="tag"><UserCheck size={12} /> {s.closer}</span>
+                    <span className="tag attr-tag" title="Closer — relié au CRM et à son espace"><UserCheck size={12} />
+                      {assignSelect(s.closer !== "—" ? s.closer : "", dashClosers, (v) => setSaleAttrib(s, { closer: v }), "Closer…")}
+                    </span>
+                    <span className="tag attr-tag" title="Setter — relié au CRM et à son espace"><Users size={12} />
+                      {assignSelect(s.setter !== "—" ? s.setter : "", dashSetters, (v) => setSaleAttrib(s, { setter: v }), "Setter…")}
+                    </span>
                     {s.email && <span><Mail size={12} /> {s.email}</span>}
                     {s.phone && <span><Phone size={12} /> {s.phone}</span>}
                   </div>
@@ -2266,16 +2312,12 @@ export default function App() {
                       <td><div className="mnd-call"><div className="d">{callDate(l)}{callTime(l) ? ` · ${callTime(l)}` : ""}</div>{callEvent(l) ? <div className="e">{callEvent(l)}</div> : null}{l.fathom ? <a className="mnd-fathom" href={l.fathom} target="_blank" rel="noreferrer">🎥 Fathom</a> : null}</div></td>
                       <td><span className="mnd-src">{srcOf(l)}</span></td>
                       <td>
-                        {isAdmin ? (
-                          <input className="crm-input" defaultValue={l.setter || ""} list="crm-setters" placeholder="Assigner…"
-                            onBlur={(e) => { const v = e.target.value.trim(); if (v !== (l.setter || "")) updateLead(l.email, { setter: v }); }} />
-                        ) : <span className="mut" style={{ fontSize: 13 }}>{l.setter || "—"}</span>}
+                        {isAdmin ? assignSelect(l.setter, [...new Set([...dashSetters, ...setterNames])], (v) => updateLead(l.email, { setter: v }), "Assigner…")
+                          : <span className="mut" style={{ fontSize: 13 }}>{l.setter || "—"}</span>}
                       </td>
                       <td>
-                        {isAdmin ? (
-                          <input className="crm-input" defaultValue={l.closer || ""} list="crm-closers" placeholder="Assigner…"
-                            onBlur={(e) => { const v = e.target.value.trim(); if (v !== (l.closer || "")) updateLead(l.email, { closer: v }); }} />
-                        ) : <span className="mut" style={{ fontSize: 13 }}>{l.closer || "—"}</span>}
+                        {isAdmin ? assignSelect(l.closer, [...new Set([...dashClosers, ...closerNames])], (v) => updateLead(l.email, { closer: v }), "Assigner…")
+                          : <span className="mut" style={{ fontSize: 13 }}>{l.closer || "—"}</span>}
                       </td>
                       <td>
                         <select className="mnd-status" value={l.stage} style={{ backgroundColor: (META[l.stage] || ["", "#666"])[1] }}
@@ -2402,7 +2444,14 @@ export default function App() {
         const followUps = mine.filter((l) => l.followUp === "yes" && l.stage !== "won").sort((a, b) => dOfL(b).localeCompare(dOfL(a)));
         const relance = mine.filter((l) => (l.stage === "noshow" || l.showUp === "cancelled") && l.followUp !== "yes" && l.stage !== "won");
         const aQualifier = isSetter ? mineAll.filter((l) => l.hasCall === false) : [];
+        // Process setting : dès qu'un lead a PRIS un call -> l'appeler + créer
+        // le groupe WhatsApp (cochable en un clic, la tâche disparaît).
+        const processLeads = isSetter ? mine.filter((l) => l.stage === "booked" && dOfL(l) >= today) : [];
+        const needCall = processLeads.filter((l) => !l.setCalled);
+        const needWA = processLeads.filter((l) => !l.waGroup);
         const todos = [
+          ...needCall.map((l) => ({ ico: "📲", txt: "Call pris → appeler le lead", l, act: "setCalled" })),
+          ...needWA.map((l) => ({ ico: "💬", txt: "Créer le groupe WhatsApp", l, act: "waGroup" })),
           ...aQualifier.map((l) => ({ ico: "📞", txt: "Qualifier & booker un call", l })),
           ...needResult.map((l) => ({ ico: "📝", txt: "Renseigner le résultat du call", l })),
           ...needFathom.map((l) => ({ ico: "🎥", txt: "Coller le lien Fathom", l })),
@@ -2463,6 +2512,7 @@ export default function App() {
                   <input className="crm-input" style={{ width: 168 }} placeholder="🎥 Coller le lien Fathom…" defaultValue={l.fathom || ""}
                     onBlur={(e) => { const v = e.target.value.trim(); if (v !== (l.fathom || "")) updateLead(l.email, { fathom: v }); }} />
                 )}
+                {isSetter && (<>{stepChip(l, "setCalled", "Appelé")}{stepChip(l, "waGroup", "Groupe WA")}</>)}
                 <div className="out-row">{outSelects(l)}</div>
               </div>
             ))}
@@ -2479,7 +2529,8 @@ export default function App() {
                   <div className="esp-todo-lead">{nmOf(t.l)}{dOfL(t.l) ? ` · call du ${frD(dOfL(t.l))}` : ""}{t.l.phone ? ` · ${t.l.phone}` : ""}</div>
                 </div>
                 {t.l.phone ? <a className="ls-link ls-join" style={{ marginLeft: "auto", flex: "none", textDecoration: "none" }} href={`tel:${String(t.l.phone).replace(/[^+0-9]/g, "")}`}>📱 Appeler</a> : null}
-                <button className="esp-open" style={{ marginLeft: t.l.phone ? 0 : "auto" }} onClick={() => setLeadOpen(t.l.email)}>Ouvrir la fiche</button>
+                {t.act ? <button className="esp-open" style={{ marginLeft: t.l.phone ? 0 : "auto", borderColor: "#ABEFC6", color: "#067647" }} onClick={() => updateLead(t.l.email, { [t.act]: true })}>✓ Fait</button> : null}
+                <button className="esp-open" style={{ marginLeft: (t.l.phone || t.act) ? 0 : "auto" }} onClick={() => setLeadOpen(t.l.email)}>Ouvrir la fiche</button>
               </div>
             ))}
             {todos.length > 30 && <div className="mnd-foot"><span>+{todos.length - 30} autres tâches</span></div>}
@@ -2682,6 +2733,14 @@ export default function App() {
                   </select>
                 </label>
               </div>
+
+              {L.bookedAt || L.lastCall ? (<>
+                <div className="ls-sec">Process setting</div>
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 4 }}>
+                  {stepChip(L, "setCalled", "Lead appelé après booking")}
+                  {stepChip(L, "waGroup", "Groupe WhatsApp créé")}
+                </div>
+              </>) : null}
 
               <div className="ls-sec">Enregistrement du call (Fathom)</div>
               <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 4 }}>

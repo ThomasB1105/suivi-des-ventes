@@ -172,6 +172,24 @@ module.exports = async (req, res) => {
       }
     } catch (e) { /* iClosed optionnel */ }
 
+    // Attribution CRM prioritaire (posée depuis le dashboard ou le board) :
+    // le setter/closer du lead CRM (même email) écrase l'enrichissement iClosed.
+    try {
+      const { loadAliases } = require("../lib/crmData");
+      const aliases = await loadAliases(cmd);
+      const resolve = (n) => { const k = String(n || "").trim().toLowerCase(); const a = k && aliases[k]; return (a && a.to) || n; };
+      const lf = (await cmd(["HGETALL", "crm:leads"])) || [];
+      const lm = {};
+      for (let i = 0; i < lf.length; i += 2) { try { lm[String(lf[i]).toLowerCase()] = JSON.parse(lf[i + 1]); } catch {} }
+      sales.forEach((s) => {
+        const l = lm[String(s.email || "").toLowerCase()];
+        if (l) {
+          if (l.closer) s.closer = resolve(l.closer);
+          if (l.setter) s.setter = resolve(l.setter);
+        }
+      });
+    } catch (e) { /* CRM optionnel */ }
+
     res.setHeader("Cache-Control", "s-maxage=10, stale-while-revalidate=60");
     res.status(200).json({ sales, count: sales.length, events: events.length, syncedAt: new Date().toISOString() });
   } catch (e) {
