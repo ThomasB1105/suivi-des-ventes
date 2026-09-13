@@ -2415,7 +2415,10 @@ export default function App() {
           {isAdmin && (
             <div className="esp-preview">
               <Eye size={15} /> Aperçu de l'espace de <b>{persona.name}</b> ({isSetter ? "Setter" : "Closer"}) — exactement ce qu'il voit en se connectant.
-              <button className="mini" style={{ marginLeft: "auto" }} onClick={() => { setViewAs(null); go("equipe"); }}><X size={13} /> Quitter</button>
+              {!(team || []).some((u) => String(u.name).toLowerCase() === String(persona.name).toLowerCase()) && (
+                <span style={{ opacity: .85 }}>· Aucun compte créé pour l'instant : crée-le dans Équipe pour qu'il puisse se connecter (et fixer sa commission).</span>
+              )}
+              <button className="mini" style={{ marginLeft: "auto", flex: "none" }} onClick={() => { setViewAs(null); go("equipe"); }}><X size={13} /> Quitter</button>
             </div>
           )}
 
@@ -2577,7 +2580,7 @@ export default function App() {
             partout dans l'app (board, stats, commissions), le nom brut sera remplacé par celui du compte.
           </div>
           <table className="tbl">
-            <thead><tr><th>Nom détecté</th><th>Source</th><th className="num">Calls</th><th>Vu comme</th><th>Rôle</th></tr></thead>
+            <thead><tr><th>Nom détecté</th><th>Source</th><th className="num">Calls</th><th>Vu comme</th><th>Rôle</th><th>Espace</th></tr></thead>
             <tbody>
               {aliases.map((a) => (
                 <tr key={a.raw}>
@@ -2596,9 +2599,18 @@ export default function App() {
                       <option value="setter">Setter</option>
                     </select>
                   </td>
+                  <td>
+                    <button className="esp-open" title={`Voir l'espace de ${a.to || a.name} (même sans compte créé)`}
+                      onClick={() => {
+                        const nm = a.to || a.name;
+                        const acc = (team || []).find((u) => String(u.name).toLowerCase() === String(nm).toLowerCase());
+                        setViewAs({ name: nm, role: (a.role || (acc && acc.role) || "closer") === "setter" ? "setter" : "closer", rate: (acc && acc.rate) || 0 });
+                        go("espace");
+                      }}><Eye size={13} /> Voir</button>
+                  </td>
                 </tr>
               ))}
-              {aliases.length === 0 && <tr><td colSpan={5}><div className="empty" style={{ padding: 16 }}>Aucun nom détecté pour l'instant (ils apparaissent après un import Calendly / iClosed).</div></td></tr>}
+              {aliases.length === 0 && <tr><td colSpan={6}><div className="empty" style={{ padding: 16 }}>Aucun nom détecté pour l'instant (ils apparaissent après un import Calendly / iClosed).</div></td></tr>}
             </tbody>
           </table>
           <datalist id="crm-team-names">{(team || []).map((u) => <option key={u.username} value={u.name} />)}</datalist>
