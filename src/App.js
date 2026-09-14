@@ -914,6 +914,12 @@ export default function App() {
     else if (sortBy === "old") arr.sort((a, b) => lastDateOf(a).localeCompare(lastDateOf(b)));
     else if (sortBy === "amount") arr.sort((a, b) => b.total - a.total);
     else if (sortBy === "overdue") arr.sort((a, b) => (hasOverdue(b) ? 1 : 0) - (hasOverdue(a) ? 1 : 0) || lastDateOf(b).localeCompare(lastDateOf(a)));
+    else if (sortBy === "unassigned") {
+      // Payeurs sans closer : à attribuer pour que le revenu compte dans le
+      // bon espace (matching email raté -> rattrapage à la main).
+      const noC = (s) => !s.closer || s.closer === "—";
+      return arr.filter(noC).sort((a, b) => lastDateOf(b).localeCompare(lastDateOf(a)));
+    }
     return arr;
   };
   // Graph "Prévisionnel d'encaissement" sur l'accueil — période indépendante.
@@ -1645,6 +1651,7 @@ export default function App() {
               <option value="old">Plus anciens</option>
               <option value="amount">Montant ↓</option>
               <option value="overdue">Impayés d'abord</option>
+              <option value="unassigned">💰 À attribuer (sans closer)</option>
             </select>
           )}
           {tab === "impayes" && (<>
@@ -2426,7 +2433,9 @@ export default function App() {
         const showed = monthLeads.filter((l) => ["show", "won", "lost"].includes(l.stage)).length;
         const noshowN = monthLeads.filter((l) => l.stage === "noshow").length;
         const wonLeads = monthLeads.filter((l) => l.stage === "won");
-        const revenue = wonLeads.reduce((a, l) => a + (l.amount || 0), 0);
+        // Revenu du mois = CASH ENCAISSÉ ce mois-ci sur ses leads (peu importe
+        // la date du call) -> un paiement attribué remonte immédiatement.
+        const revenue = mine.reduce((a, l) => a + ((l.paidMonths && l.paidMonths[mk]) || 0), 0);
         const showRate = showed + noshowN ? showed / (showed + noshowN) : 0;
         const closingRate = showed ? wonLeads.length / showed : 0;
         const rate = Number(persona.rate || 0);
@@ -2500,7 +2509,7 @@ export default function App() {
             <div className="kcard"><div className="kcard-l">{isSetter ? "RDV bookés" : "Calls"}</div><div className="kcard-v">{isSetter ? bookedM : monthLeads.length}</div><div className="kcard-f">mois en cours</div></div>
             <div className="kcard"><div className="kcard-l">Show-up</div><div className="kcard-v">{pct(showRate)}</div><div className="kcard-f">{noshowN} no-show</div></div>
             {!isSetter && (<div className="kcard"><div className="kcard-l">Closing</div><div className="kcard-v green">{pct(closingRate)}</div><div className="kcard-f">{wonLeads.length} closés / {showed} présents</div></div>)}
-            <div className="kcard"><div className="kcard-l">Revenu généré</div><div className="kcard-v green">{euro(revenue)}</div><div className="kcard-f">mois en cours</div></div>
+            <div className="kcard"><div className="kcard-l">Revenu généré</div><div className="kcard-v green">{euro(revenue)}</div><div className="kcard-f">encaissé ce mois-ci</div></div>
             <div className="kcard"><div className="kcard-l">Commission{rate ? ` (${rate}%)` : ""}</div><div className="kcard-v" style={{ color: "var(--cyan)" }}>{euro(commission)}</div><div className="kcard-f">sur le mois</div></div>
           </div>
 
