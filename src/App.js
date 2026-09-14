@@ -690,6 +690,7 @@ export default function App() {
   const [crmView, setCrmView] = useState(() => { try { const r = localStorage.getItem("melo_role"); return r && r !== "admin" ? "today" : "all"; } catch (e) { return "all"; } }); // "today" | "week" | "all"
   const [leadOpen, setLeadOpen] = useState(null); // email de la fiche lead ouverte
   const [calView, setCalView] = useState("upcoming"); // calendrier : "today" | "upcoming" | "past"
+  const [vslView, setVslView] = useState("recent"); // Leads VSL : "recent" (14 j) | "all"
   const loadCrm = async (silent) => {
     if (!silent) setCrmLoading(true);
     try { const r = await authFetch("/api/crm"); const d = await r.json(); if (d && d.leads) setCrm(d); } catch (e) { /* ignore */ }
@@ -1533,6 +1534,7 @@ export default function App() {
           </>) : (<>
             <div className="nav-label">Mon espace</div>
             <button className={navCls("espace")} onClick={() => go("espace")}><UserCheck size={16} /> Ma journée</button>
+            {me.role === "setter" && <button className={navCls("vsl")} onClick={() => go("vsl")}><Leaf size={16} /> Leads VSL</button>}
             <button className={navCls("calendrier")} onClick={() => go("calendrier")}><Calendar size={16} /> Mon agenda</button>
             <button className={navCls("crm")} onClick={() => go("crm")}><ClipboardList size={16} /> Mes calls</button>
           </>)}
@@ -2456,10 +2458,14 @@ export default function App() {
       })()}
 
       {/* LEADS VSL — CRM dédié aux opt-ins entrants SANS call pris (admin) */}
-      {tab === "vsl" && isAdmin && (() => {
+      {tab === "vsl" && (isAdmin || me.role === "setter") && (() => {
         const optins = (crm.leads || []).filter((l) => l.hasCall === false);
+        const vslSince = Date.now() - 14 * 864e5;
+        const isRecent = (l) => l.createdAt && new Date(l.createdAt).getTime() >= vslSince;
+        const recentN = optins.filter(isRecent).length;
+        const scopedOpt = vslView === "recent" ? optins.filter(isRecent) : optins;
         const q = crmQ.trim().toLowerCase();
-        const rows = optins
+        const rows = scopedOpt
           .filter((l) => !q || [l.name, l.email, l.phone, l.setter, l.campaign, l.source].some((v) => String(v || "").toLowerCase().includes(q)))
           .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
         const week = Date.now() - 7 * 864e5;
@@ -2473,6 +2479,10 @@ export default function App() {
           <div className="closers-head">
             <div className="closers-title"><Leaf size={16} /> Leads VSL · entrants sans call</div>
             <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+              <div className="crm-views">
+                <button className={`crm-chip ${vslView === "recent" ? "on" : ""}`} onClick={() => setVslView("recent")}>Nouveaux (14 j) <b>{recentN}</b></button>
+                <button className={`crm-chip ${vslView === "all" ? "on" : ""}`} onClick={() => setVslView("all")}>Tout <b>{optins.length}</b></button>
+              </div>
               <div className="crm-search"><Search size={14} /><input value={crmQ} onChange={(e) => setCrmQ(e.target.value)} placeholder="Rechercher (nom, email, setter…)" /></div>
               <button className={`refresh-btn ${crmLoading ? "is-loading" : ""}`} onClick={() => loadCrm()} disabled={crmLoading}><RotateCcw size={15} className={crmLoading ? "spin" : ""} /> Actualiser</button>
             </div>
@@ -2504,7 +2514,7 @@ export default function App() {
                       <td><div className="mnd-call"><div className="d">{frDT(l.createdAt)}</div></div></td>
                       <td><span className="mnd-src">{l.source || "VSL"}</span></td>
                       <td className="mut" style={{ fontSize: 12.5 }}>{l.campaign || "—"}</td>
-                      <td>{assignSelect(l.setter, dashSetters, (v) => updateLead(l.email, { setter: v }), "Assigner…")}</td>
+                      <td>{isAdmin ? assignSelect(l.setter, dashSetters, (v) => updateLead(l.email, { setter: v }), "Assigner…") : <span className="mut" style={{ fontSize: 13 }}>{l.setter || "—"}</span>}</td>
                       <td>
                         <select className="mnd-status" value={VSL_STAGES[l.stage] ? l.stage : "new"} style={{ backgroundColor: (CRM_META[l.stage] || CRM_META.new)[1] }}
                           onChange={(e) => updateLead(l.email, { stage: e.target.value })}>
@@ -2591,10 +2601,14 @@ export default function App() {
         // Follow-ups : c'est le CLOSER qui relance ses prospects — pas le setter.
         const followUps = isSetter ? [] : mine.filter((l) => l.followUp === "yes" && l.stage !== "won").sort((a, b) => dOfL(b).localeCompare(dOfL(a)));
         const relance = mine.filter((l) => (l.stage === "noshow" || l.showUp === "cancelled") && l.followUp !== "yes" && l.stage !== "won");
-        // Leads ENTRANTS à traiter : les siens + ceux pas encore attribués
-        // (un entrant sans setter ne doit jamais rester invisible).
+        // Leads ENTRANTS à traiter : les NOUVEAUX (14 derniers jours) — les
+        // siens + ceux pas encore attribués. L'historique complet reste dans
+        // l'onglet Leads VSL.
+        const vslSince = Date.now() - 14 * 864e5;
         const aQualifier = isSetter
-          ? (crm.leads || []).filter((l) => l.hasCall === false && l.stage !== "unqualified" && (same(l.setter) || !l.setter))
+          ? (crm.leads || []).filter((l) => l.hasCall === false && l.stage !== "unqualified" && (same(l.setter) || !l.setter)
+              && l.createdAt && new Date(l.createdAt).getTime() >= vslSince)
+            .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")))
           : [];
         // Process setting : dès qu'un lead a PRIS un call -> l'appeler + créer
         // le groupe WhatsApp (cochable en un clic, la tâche disparaît).
@@ -2608,7 +2622,6 @@ export default function App() {
         const todos = [
           ...processLeads.map((l) => ({ ico: "💬", txt: l.setStatus === "nrp" ? "NRP : rappeler + créer le groupe WA" : "Appeler le lead + créer le groupe WhatsApp", l, patch: { setStatus: "wa" }, done: "✓ WA créé" })),
           ...noShowVeille.map((l) => ({ ico: "🚨", txt: "No-show d'hier : rappeler pour re-booker", l })),
-          ...aQualifier.map((l) => ({ ico: "📞", txt: "Qualifier & booker un call", l })),
           ...needResult.map((l) => ({ ico: "📝", txt: "Renseigner le résultat du call", l })),
           ...needFathom.map((l) => ({ ico: "🎥", txt: "Coller le lien Fathom", l })),
           ...relance.filter((l) => !noShowVeille.includes(l)).map((l) => ({ ico: "🔄", txt: l.stage === "noshow" ? "No-show : re-booker un call" : "Annulé : re-booker un call", l })),
@@ -2697,6 +2710,52 @@ export default function App() {
                 </div>
               </div>
             ));
+          })()}
+
+          {isSetter && (() => {
+            // Nouveaux leads VSL (14 j) — même DA que l'agenda : un bloc par
+            // jour d'arrivée, du plus récent au plus ancien.
+            const byDay = {};
+            aQualifier.forEach((l) => { const d = toParis(l.createdAt).slice(0, 10) || "—"; (byDay[d] = byDay[d] || []).push(l); });
+            const days = Object.keys(byDay).sort().reverse();
+            const fmtDay = (d) => { try { return parseLocal(d).toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" }); } catch (e) { return d; } };
+            const tArr = (l) => { const t = toParis(l.createdAt); return t ? t.slice(11, 16) : "—"; };
+            return (<>
+              <div className="esp-sec">🌱 Nouveaux leads VSL à qualifier <span className="mnd-gcount">{aQualifier.length}</span></div>
+              {aQualifier.length === 0 && (
+                <div className="card" style={{ padding: 0, overflow: "hidden" }}><div className="empty" style={{ padding: 20 }}>Aucun nouveau lead entrant 🎉 (l'historique complet est dans l'onglet Leads VSL)</div></div>
+              )}
+              {days.map((d) => (
+                <div className="cal-day" key={d} style={{ margin: "12px 0 22px" }}>
+                  <div className="cal-dhead">
+                    {fmtDay(d)}
+                    {d === today ? <span className="cal-today">Aujourd'hui</span> : null}
+                    <span className="mnd-gcount">{byDay[d].length}</span>
+                  </div>
+                  <div className="card" style={{ padding: 0, overflow: "hidden" }}>
+                    {byDay[d].map((l) => (
+                      <div className="cal-row" key={l.email}>
+                        <div className="cal-time">{tArr(l)}</div>
+                        <span className="mnd-ava" style={{ background: avaColor(l.email), width: 36, height: 36, fontSize: 13, flex: "none" }}>{initials(nmOf(l))}</span>
+                        <div className="cal-main" style={{ cursor: "pointer" }} onClick={() => setLeadOpen(l.email)} title="Ouvrir la fiche">
+                          <div className="cal-name">{nmOf(l)}</div>
+                          <div className="cal-sub">{l.email}{l.phone ? ` · ${l.phone}` : ""}</div>
+                        </div>
+                        <span className="mnd-src">{l.source || "VSL"}</span>
+                        <select className="mnd-status" value={["new", "setting", "unqualified"].includes(l.stage) ? l.stage : "new"} style={{ backgroundColor: (CRM_META[l.stage] || CRM_META.new)[1] }}
+                          onChange={(e) => updateLead(l.email, { stage: e.target.value })}>
+                          <option value="new">🌱 Nouveau</option>
+                          <option value="setting">📞 En qualification</option>
+                          <option value="unqualified">🚫 Non qualifié</option>
+                        </select>
+                        {l.phone ? <a className="ls-link ls-join" style={{ flex: "none", textDecoration: "none" }} href={`tel:${String(l.phone).replace(/[^+0-9]/g, "")}`}>📱 Appeler</a> : null}
+                        <button className="esp-open" onClick={() => setLeadOpen(l.email)}>Ouvrir la fiche</button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </>);
           })()}
 
           <div className="esp-sec">📝 Ma todo du jour <span className="mnd-gcount">{todos.length}</span></div>
