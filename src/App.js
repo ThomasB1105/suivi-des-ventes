@@ -765,11 +765,24 @@ export default function App() {
       try { const sr = await authFetch("/api/sales"); const sd = await sr.json(); if (sd && sd.sales) applyDbSales(normalize(sd.sales)); } catch (e2) { /* rafraîchi au prochain sync */ }
     } catch (e) { flash(`Attribution : ${e.message}`); }
   };
-  // Process setting : étapes cochables (lead appelé / groupe WhatsApp créé).
-  const stepChip = (l, key, label) => (
-    <button className={`esp-step ${l[key] ? "done" : ""}`} onClick={(e) => { e.stopPropagation(); updateLead(l.email, { [key]: !l[key] }); }}>
-      {l[key] ? "✅" : "○"} {label}
-    </button>
+  // Statut setting (NRP / Cancel / Groupe WA créé / Non qualifié), partagé
+  // entre l'espace setter et la vue closing (board, calendrier, fiche).
+  const SET_TONES = {
+    wa: { color: "#067647", borderColor: "#ABEFC6", background: "#ECFDF3" },
+    nrp: { color: "#B54708", borderColor: "#FEDF89", background: "#FFFAEB" },
+    cancel: { color: "#B42318", borderColor: "#FECDCA", background: "#FEF3F2" },
+    unqualified: { color: "#475467", borderColor: "#E3E6EA", background: "#F9FAFB" },
+  };
+  const setStatusSelect = (l) => (
+    <select className="out-select" style={SET_TONES[l.setStatus] || {}} value={l.setStatus || ""} title="Statut setting (appel de confirmation + groupe WA)"
+      onClick={(e) => e.stopPropagation()}
+      onChange={(e) => updateLead(l.email, { setStatus: e.target.value })}>
+      <option value="">Setting…</option>
+      <option value="wa">Groupe WA créé ✅</option>
+      <option value="nrp">NRP 📵</option>
+      <option value="cancel">Cancel</option>
+      <option value="unqualified">Non qualifié</option>
+    </select>
   );
 
   // ---- Équipe (admin) & mon espace (membre) ----
@@ -1370,7 +1383,7 @@ export default function App() {
         .mnd-card::-webkit-scrollbar-track{background:transparent;}
         .mnd-card::-webkit-scrollbar-thumb{background:#D0D5DD;border-radius:999px;border:2px solid #fff;}
         .mnd-card::-webkit-scrollbar-thumb:hover{background:#B6BEC9;}
-        .mnd-tbl{width:100%;border-collapse:separate;border-spacing:0;min-width:1560px;}
+        .mnd-tbl{width:100%;border-collapse:separate;border-spacing:0;min-width:1720px;}
         .mnd-tbl th:first-child, .mnd-tbl td:first-child{position:sticky;left:0;z-index:2;background:#fff;box-shadow:inset -1px 0 0 rgba(15,23,42,.07);}
         .mnd-tbl tr:hover td:first-child{background:#F6F7F9;}
         .mnd-tbl th{font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:700;text-align:left;padding:13px 14px 9px;border-bottom:1px solid rgba(15,23,42,.06);}
@@ -2326,7 +2339,7 @@ export default function App() {
             </div>
             <div className="card mnd-card" style={{ borderLeft: `6px solid ${META[g.s][1]}` }}>
               <table className="mnd-tbl">
-                <thead><tr><th>Lead</th><th>Call</th><th>Source</th><th>Setter</th><th>Closer</th><th>Statut</th><th>Résultat du call</th><th className="num">Encaissé</th><th>Notes</th></tr></thead>
+                <thead><tr><th>Lead</th><th>Call</th><th>Source</th><th>Setter</th><th>Setting</th><th>Closer</th><th>Statut</th><th>Résultat du call</th><th className="num">Encaissé</th><th>Notes</th></tr></thead>
                 <tbody>
                   {g.items.slice(0, 100).map((l) => {
                     const nm = l.name && l.name !== l.email ? l.name : l.email;
@@ -2348,6 +2361,7 @@ export default function App() {
                         {isAdmin ? assignSelect(l.setter, [...new Set([...dashSetters, ...setterNames])], (v) => updateLead(l.email, { setter: v }), "Assigner…")
                           : <span className="mut" style={{ fontSize: 13 }}>{l.setter || "—"}</span>}
                       </td>
+                      <td>{setStatusSelect(l)}</td>
                       <td>
                         {isAdmin ? assignSelect(l.closer, [...new Set([...dashClosers, ...closerNames])], (v) => updateLead(l.email, { closer: v }), "Assigner…")
                           : <span className="mut" style={{ fontSize: 13 }}>{l.closer || "—"}</span>}
@@ -2406,6 +2420,7 @@ export default function App() {
                     {l.links && l.links.join ? <button className="ls-link ls-join" onClick={(e) => { e.stopPropagation(); try { navigator.clipboard.writeText(l.links.join); flash("Lien du call copié 📋"); } catch (e2) { window.prompt("Copie le lien :", l.links.join); } }}>📋 Copier lien</button> : null}
                     {l.fathom ? <a className="ls-link ls-join" href={l.fathom} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>🎥 Fathom</a> : null}
                     <span className="mnd-src">{srcOf(l)}</span>
+                    {setStatusSelect(l)}
                     <div className="out-row">{outSelects(l)}</div>
                     {l.followUp === "yes" ? <span title="À follow-up" style={{ fontSize: 15 }}>🔁</span> : null}
                     <select className="mnd-status" value={l.stage} style={{ backgroundColor: (META[l.stage] || ["", "#666"])[1] }}
@@ -2467,30 +2482,35 @@ export default function App() {
           : (closingRate >= 0.5 ? ["👑", "Légende"] : closingRate >= 0.35 ? ["🔥", "Machine"] : closingRate >= 0.2 ? ["⚡", "Confirmé"] : ["🌱", "Rookie"]);
 
         // ---- Calls du jour + score ----
-        const todayCalls = mine.filter((l) => dOfL(l) === today).sort((a, b) => (tOfL(a) || "99").localeCompare(tOfL(b) || "99"));
+        // Setter : groupe WA créé / non qualifié / cancel -> sort du planning du jour.
+        const todayCalls = mine.filter((l) => dOfL(l) === today && !(isSetter && ["wa", "unqualified", "cancel"].includes(l.setStatus || ""))).sort((a, b) => (tOfL(a) || "99").localeCompare(tOfL(b) || "99"));
         const processed = todayCalls.filter((l) => l.callResult || ["noshow", "cancelled"].includes(l.showUp || "")).length;
         const dayPct = todayCalls.length ? Math.round((processed / todayCalls.length) * 100) : 0;
 
         // ---- Todo du jour (dérivée : une tâche disparaît quand c'est fait) ----
         const weekAgo = toISO(new Date(Date.now() - 7 * 864e5));
         const recent = mine.filter((l) => { const d = dOfL(l); return d && d <= today && d >= weekAgo; });
-        const needResult = recent.filter((l) => !l.callResult && !["noshow", "cancelled"].includes(l.showUp || "") && !["won", "lost"].includes(l.stage));
+        const needResult = isSetter ? [] : recent.filter((l) => !l.callResult && !["noshow", "cancelled"].includes(l.showUp || "") && !["won", "lost"].includes(l.stage));
         const needFathom = isSetter ? [] : recent.filter((l) => (l.showUp === "present" || ["won", "lost"].includes(l.stage)) && !l.fathom);
         const followUps = mine.filter((l) => l.followUp === "yes" && l.stage !== "won").sort((a, b) => dOfL(b).localeCompare(dOfL(a)));
         const relance = mine.filter((l) => (l.stage === "noshow" || l.showUp === "cancelled") && l.followUp !== "yes" && l.stage !== "won");
         const aQualifier = isSetter ? mineAll.filter((l) => l.hasCall === false) : [];
         // Process setting : dès qu'un lead a PRIS un call -> l'appeler + créer
         // le groupe WhatsApp (cochable en un clic, la tâche disparaît).
-        const processLeads = isSetter ? mine.filter((l) => l.stage === "booked" && dOfL(l) >= today) : [];
-        const needCall = processLeads.filter((l) => !l.setCalled);
-        const needWA = processLeads.filter((l) => !l.waGroup);
+        // Statut setting « terminé » : groupe WA créé / non qualifié / cancel
+        // -> le lead SORT du planning du jour et de la todo du setter.
+        const SETTING_DONE = ["wa", "unqualified", "cancel"];
+        const processLeads = isSetter ? mine.filter((l) => l.stage === "booked" && dOfL(l) >= today && !SETTING_DONE.includes(l.setStatus || "")) : [];
+        const yesterday = toISO(new Date(Date.now() - 864e5));
+        const noShowVeille = isSetter ? mine.filter((l) => l.stage === "noshow" && dOfL(l) >= yesterday && dOfL(l) <= today) : [];
+        const setRelance = isSetter ? mine.filter((l) => ["nrp", "cancel"].includes(l.setStatus || "") && l.stage !== "won") : [];
         const todos = [
-          ...needCall.map((l) => ({ ico: "📲", txt: "Call pris → appeler le lead", l, act: "setCalled" })),
-          ...needWA.map((l) => ({ ico: "💬", txt: "Créer le groupe WhatsApp", l, act: "waGroup" })),
+          ...processLeads.map((l) => ({ ico: "💬", txt: l.setStatus === "nrp" ? "NRP : rappeler + créer le groupe WA" : "Appeler le lead + créer le groupe WhatsApp", l, patch: { setStatus: "wa" }, done: "✓ WA créé" })),
+          ...noShowVeille.map((l) => ({ ico: "🚨", txt: "No-show d'hier : rappeler pour re-booker", l })),
           ...aQualifier.map((l) => ({ ico: "📞", txt: "Qualifier & booker un call", l })),
           ...needResult.map((l) => ({ ico: "📝", txt: "Renseigner le résultat du call", l })),
           ...needFathom.map((l) => ({ ico: "🎥", txt: "Coller le lien Fathom", l })),
-          ...relance.map((l) => ({ ico: "🔄", txt: l.stage === "noshow" ? "No-show : re-booker un call" : "Annulé : re-booker un call", l })),
+          ...relance.filter((l) => !noShowVeille.includes(l)).map((l) => ({ ico: "🔄", txt: l.stage === "noshow" ? "No-show : re-booker un call" : "Annulé : re-booker un call", l })),
           ...followUps.map((l) => ({ ico: "🔁", txt: "Follow-up : relancer", l })),
         ];
         const copyJoin = (l) => { try { navigator.clipboard.writeText(l.links.join); flash("Lien du call copié 📋"); } catch (e) { window.prompt("Copie le lien :", l.links.join); } };
@@ -2547,7 +2567,7 @@ export default function App() {
                   <input className="crm-input" style={{ width: 168 }} placeholder="🎥 Coller le lien Fathom…" defaultValue={l.fathom || ""}
                     onBlur={(e) => { const v = e.target.value.trim(); if (v !== (l.fathom || "")) updateLead(l.email, { fathom: v }); }} />
                 )}
-                {isSetter && (<>{stepChip(l, "setCalled", "Appelé")}{stepChip(l, "waGroup", "Groupe WA")}</>)}
+                {isSetter && setStatusSelect(l)}
                 <div className="out-row">{outSelects(l)}</div>
               </div>
             ))}
@@ -2564,19 +2584,20 @@ export default function App() {
                   <div className="esp-todo-lead">{nmOf(t.l)}{dOfL(t.l) ? ` · call du ${frD(dOfL(t.l))}` : ""}{t.l.phone ? ` · ${t.l.phone}` : ""}</div>
                 </div>
                 {t.l.phone ? <a className="ls-link ls-join" style={{ marginLeft: "auto", flex: "none", textDecoration: "none" }} href={`tel:${String(t.l.phone).replace(/[^+0-9]/g, "")}`}>📱 Appeler</a> : null}
-                {t.act ? <button className="esp-open" style={{ marginLeft: t.l.phone ? 0 : "auto", borderColor: "#ABEFC6", color: "#067647" }} onClick={() => updateLead(t.l.email, { [t.act]: true })}>✓ Fait</button> : null}
-                <button className="esp-open" style={{ marginLeft: (t.l.phone || t.act) ? 0 : "auto" }} onClick={() => setLeadOpen(t.l.email)}>Ouvrir la fiche</button>
+                {t.patch ? <button className="esp-open" style={{ marginLeft: t.l.phone ? 0 : "auto", borderColor: "#ABEFC6", color: "#067647" }} onClick={() => updateLead(t.l.email, t.patch)}>{t.done || "✓ Fait"}</button> : null}
+                <button className="esp-open" style={{ marginLeft: (t.l.phone || t.patch) ? 0 : "auto" }} onClick={() => setLeadOpen(t.l.email)}>Ouvrir la fiche</button>
               </div>
             ))}
             {todos.length > 30 && <div className="mnd-foot"><span>+{todos.length - 30} autres tâches</span></div>}
           </div>
 
-          <div className="esp-sec">🔁 À relancer & follow-ups <span className="mnd-gcount">{followUps.length + relance.length}</span></div>
+          <div className="esp-sec">🔁 À relancer & follow-ups <span className="mnd-gcount">{followUps.length + relance.length + setRelance.length}</span></div>
           <div className="card" style={{ padding: 0, overflow: "hidden", marginBottom: 26 }}>
-            {(followUps.length + relance.length) === 0 && <div className="empty" style={{ padding: 20 }}>Personne à relancer 🎉</div>}
+            {(followUps.length + relance.length + setRelance.length) === 0 && <div className="empty" style={{ padding: 20 }}>Personne à relancer 🎉</div>}
             {[
               ...followUps.map((l) => ({ l, tag: "Follow-up 🔁", tone: TONES.yes })),
               ...relance.map((l) => ({ l, tag: l.stage === "noshow" ? "No-show" : "Annulé", tone: l.stage === "noshow" ? TONES.noshow : TONES.cancelled })),
+              ...setRelance.filter((l) => !relance.includes(l)).map((l) => ({ l, tag: l.setStatus === "nrp" ? "NRP 📵" : "Cancel", tone: SET_TONES[l.setStatus] })),
             ].map(({ l, tag, tone }) => (
               <div className="esp-todo" key={"rel" + l.email + tag}>
                 <span className="mnd-ava" style={{ background: avaColor(l.email), width: 32, height: 32, fontSize: 12 }}>{initials(nmOf(l))}</span>
@@ -2772,8 +2793,7 @@ export default function App() {
               {L.bookedAt || L.lastCall ? (<>
                 <div className="ls-sec">Process setting</div>
                 <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 4 }}>
-                  {stepChip(L, "setCalled", "Lead appelé après booking")}
-                  {stepChip(L, "waGroup", "Groupe WhatsApp créé")}
+                  {setStatusSelect(L)}
                 </div>
               </>) : null}
 

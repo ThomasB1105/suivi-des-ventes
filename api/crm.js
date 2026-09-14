@@ -91,6 +91,14 @@ module.exports = async (req, res) => {
       // Process setting : lead appelé + groupe WhatsApp créé.
       if (body.setCalled !== undefined) lead.setCalled = body.setCalled ? true : undefined;
       if (body.waGroup !== undefined) lead.waGroup = body.waGroup ? true : undefined;
+      // Statut setting : NRP / cancel / groupe WA créé / non qualifié.
+      if (body.setStatus !== undefined) {
+        const v = ["nrp", "cancel", "wa", "unqualified", ""].includes(body.setStatus) ? body.setStatus : "";
+        lead.setStatus = v || undefined;
+        if (v === "wa") lead.waGroup = true;
+        else if (lead.waGroup) lead.waGroup = undefined;
+        if (v === "unqualified") { lead.stage = "unqualified"; lead.manualStage = true; }
+      }
       // Lien Fathom (enregistrement du call) : saisi par le closer sur SA ligne.
       if (body.fathom !== undefined) {
         let v = String(body.fathom || "").trim();
