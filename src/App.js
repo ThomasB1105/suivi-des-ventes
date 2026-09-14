@@ -289,7 +289,7 @@ export default function App() {
   const [pwInput, setPwInput] = useState("");
   const [userInput, setUserInput] = useState("");
   const [showPw, setShowPw] = useState(false);
-  const [loginErr, setLoginErr] = useState(false);
+  const [loginErr, setLoginErr] = useState(""); // message d'erreur précis du serveur
   const [navOpen, setNavOpen] = useState(false);
   // Identité (rôle) du compte connecté — admin par défaut (rétro-compatible).
   const me = useMemo(() => {
@@ -298,7 +298,7 @@ export default function App() {
   }, []);
   const isAdmin = me.role === "admin";
   const doLogin = async () => {
-    setLoginErr(false);
+    setLoginErr("");
     try {
       const r = await fetch("/api/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ username: userInput.trim(), password: pwInput }) });
       const d = await r.json().catch(() => ({}));
@@ -309,8 +309,8 @@ export default function App() {
           localStorage.setItem("melo_name", d.name || "Admin");
         } catch (e) { /* ignore */ }
         window.location.reload();
-      } else setLoginErr(true);
-    } catch (e) { setLoginErr(true); }
+      } else setLoginErr((d && d.error) || "Identifiants incorrects.");
+    } catch (e) { setLoginErr("Connexion impossible — réessaie."); }
   };
   const [deletedSales, setDeletedSales] = useState(() => { try { return JSON.parse(localStorage.getItem("melo_deleted_v1") || "[]"); } catch (e) { return []; } });
   // Coûts datés par mois (varient d'un mois à l'autre) + dépenses pub Meta.
@@ -1039,12 +1039,12 @@ export default function App() {
         <div style={{ width: "min(380px,100%)", boxSizing: "border-box", background: "#FFFFFF", border: "1px solid #E6E8EE", borderRadius: 20, padding: "28px 22px", boxShadow: "0 40px 90px -30px rgba(16,24,40,.14)" }}>
           <div style={{ fontFamily: "'Montserrat',sans-serif", fontWeight: 800, fontSize: "clamp(20px,6vw,25px)", letterSpacing: "-.02em", background: "linear-gradient(95deg,#6A5CFF,#9D5CFF)", WebkitBackgroundClip: "text", backgroundClip: "text", WebkitTextFillColor: "transparent" }}>ANG INDUSTRIES</div>
           <div style={{ color: "#667085", fontSize: 13, margin: "8px 0 22px" }}>Admin : mot de passe seul. Équipe : prénom + mot de passe perso.</div>
-          <input value={userInput} onChange={(e) => setUserInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && doLogin()} placeholder="Prénom (équipe) — laisser vide si admin" autoComplete="username" style={{ width: "100%", boxSizing: "border-box", background: "#F9FAFB", border: "1px solid rgba(15,23,42,.12)", borderRadius: 12, padding: "13px 14px", color: "#101828", fontSize: 15, outline: "none", marginBottom: 10 }} />
+          <input value={userInput} onChange={(e) => setUserInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && doLogin()} placeholder="Identifiant ou prénom (équipe) — vide si admin" autoComplete="username" style={{ width: "100%", boxSizing: "border-box", background: "#F9FAFB", border: "1px solid rgba(15,23,42,.12)", borderRadius: 12, padding: "13px 14px", color: "#101828", fontSize: 15, outline: "none", marginBottom: 10 }} />
           <div style={{ position: "relative" }}>
             <input type={showPw ? "text" : "password"} autoFocus value={pwInput} onChange={(e) => setPwInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && doLogin()} placeholder="Mot de passe" style={{ width: "100%", boxSizing: "border-box", background: "#F9FAFB", border: `1px solid ${loginErr ? "#FF4D5E" : "rgba(15,23,42,.12)"}`, borderRadius: 12, padding: "13px 46px 13px 14px", color: "#101828", fontSize: 16, outline: "none" }} />
             <button type="button" onClick={() => setShowPw((v) => !v)} title={showPw ? "Masquer" : "Afficher"} style={{ position: "absolute", right: 6, top: "50%", transform: "translateY(-50%)", background: "transparent", border: "none", color: "#667085", cursor: "pointer", padding: 8, display: "inline-flex" }}>{showPw ? <EyeOff size={18} /> : <Eye size={18} />}</button>
           </div>
-          {loginErr && <div style={{ color: "#FF4D5E", fontSize: 13, marginTop: 10 }}>Identifiants incorrects.</div>}
+          {loginErr && <div style={{ color: "#FF4D5E", fontSize: 13, marginTop: 10 }}>{loginErr}</div>}
           <button onClick={doLogin} style={{ width: "100%", boxSizing: "border-box", marginTop: 16, background: "linear-gradient(95deg,#6A5CFF,#9D5CFF)", color: "#fff", border: "none", borderRadius: 12, padding: "14px", fontWeight: 700, fontSize: 15, cursor: "pointer" }}>Entrer →</button>
         </div>
       </div>

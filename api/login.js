@@ -23,17 +23,31 @@ module.exports = async (req, res) => {
   const username = String(body.username || "").trim();
   const password = String(body.password || "");
 
-  // ---- Compte équipe (nom + mot de passe personnel) ----
+  // ---- Compte équipe (identifiant OU prénom + mot de passe personnel) ----
   if (username) {
     if (!isConfigured()) { res.status(500).json({ ok: false, error: "Base KV non configurée." }); return; }
     try {
-      const s = await cmd(["HGET", "app:users", username.toLowerCase()]);
-      if (!s) { res.status(401).json({ ok: false, error: "Compte inconnu." }); return; }
+      // Tolérance de saisie : accents et majuscules ignorés, et on accepte
+      // aussi bien l'identifiant du compte que son nom affiché (prénom).
+      const norm = (x) => String(x || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
+      let key = username.toLowerCase();
+      let s = await cmd(["HGET", "app:users", key]);
+      if (!s) {
+        const flat = (await cmd(["HGETALL", "app:users"])) || [];
+        for (let i = 0; i < flat.length; i += 2) {
+          try {
+            const u2 = JSON.parse(flat[i + 1]);
+            if (norm(flat[i]) === norm(username) || norm(u2.name) === norm(username)) { key = flat[i]; s = flat[i + 1]; break; }
+          } catch {}
+        }
+      }
+      if (!s) { res.status(401).json({ ok: false, error: "Compte inconnu — vérifie l'identifiant créé dans Équipe." }); return; }
       const u = JSON.parse(s);
-      if (u.hash !== userHash(username, password)) { res.status(401).json({ ok: false, error: "Mot de passe invalide." }); return; }
-      const t = userToken(username, u.hash);
-      await cmd(["HSET", "app:sessions", t, JSON.stringify({ name: u.name || username, role: u.role || "closer" })]);
-      res.status(200).json({ ok: true, token: t, role: u.role || "closer", name: u.name || username });
+      // Le hash est salé avec l'IDENTIFIANT du compte (sa clé), pas la saisie.
+      if (u.hash !== userHash(key, password)) { res.status(401).json({ ok: false, error: "Mot de passe invalide." }); return; }
+      const t = userToken(key, u.hash);
+      await cmd(["HSET", "app:sessions", t, JSON.stringify({ name: u.name || key, role: u.role || "closer" })]);
+      res.status(200).json({ ok: true, token: t, role: u.role || "closer", name: u.name || key });
     } catch (e) {
       res.status(500).json({ ok: false, error: String(e.message || e) });
     }
