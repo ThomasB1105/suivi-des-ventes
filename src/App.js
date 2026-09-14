@@ -2500,6 +2500,14 @@ export default function App() {
         // ---- Calls du jour + score ----
         // Setter : groupe WA créé / non qualifié / cancel -> sort du planning du jour.
         const todayCalls = mine.filter((l) => dOfL(l) === today && !(isSetter && ["wa", "unqualified", "cancel"].includes(l.setStatus || ""))).sort((a, b) => (tOfL(a) || "99").localeCompare(tOfL(b) || "99"));
+        // Setter : préqualification au plus vite -> visibilité sur TOUS les
+        // calls à venir (aujourd'hui + prochains jours), triés par date.
+        const upcoming = isSetter
+          ? mine.filter((l) => dOfL(l) >= today && !["wa", "unqualified", "cancel"].includes(l.setStatus || "")).sort((a, b) => tsL(a).localeCompare(tsL(b)))
+          : [];
+        const tomorrow = toISO(new Date(Date.now() + 864e5));
+        const dayLbl = (d) => d === today ? "Aujourd'hui" : (d === tomorrow ? "Demain" : (() => { try { return parseLocal(d).toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short" }); } catch (e) { return d; } })());
+        const planList = isSetter ? upcoming : todayCalls;
         const processed = todayCalls.filter((l) => l.callResult || ["noshow", "cancelled"].includes(l.showUp || "")).length;
         const dayPct = todayCalls.length ? Math.round((processed / todayCalls.length) * 100) : 0;
 
@@ -2568,12 +2576,17 @@ export default function App() {
             <div className="kcard"><div className="kcard-l">Commission{rate ? ` (${rate}%)` : ""}</div><div className="kcard-v" style={{ color: "var(--cyan)" }}>{euro(commission)}</div><div className="kcard-f">sur le mois</div></div>
           </div>
 
-          <div className="esp-sec">🎯 {isSetter ? "Mes leads du jour" : "Mes calls aujourd'hui"} <span className="mnd-gcount">{todayCalls.length}</span></div>
+          <div className="esp-sec">{isSetter ? "📞 Calls à préqualifier — aujourd'hui & à venir" : "🎯 Mes calls aujourd'hui"} <span className="mnd-gcount">{planList.length}</span></div>
           <div className="card" style={{ padding: 0, overflow: "hidden" }}>
-            {todayCalls.length === 0 && <div className="empty" style={{ padding: 20 }}>Aucun call aujourd'hui.</div>}
-            {todayCalls.map((l) => (
+            {planList.length === 0 && <div className="empty" style={{ padding: 20 }}>{isSetter ? "Aucun call à venir." : "Aucun call aujourd'hui."}</div>}
+            {planList.map((l) => (
               <div className="cal-row" key={l.email}>
-                <div className="cal-time">{tOfL(l) || "—"}</div>
+                <div className="cal-time" style={isSetter ? { width: 92, lineHeight: 1.3 } : undefined}>
+                  {isSetter ? (<>
+                    <div style={{ fontSize: 11, fontWeight: 800, color: dOfL(l) === today ? "var(--green)" : "var(--muted)", textTransform: "capitalize" }}>{dayLbl(dOfL(l))}</div>
+                    {tOfL(l) || "—"}
+                  </>) : (tOfL(l) || "—")}
+                </div>
                 <div className="cal-main" style={{ cursor: "pointer" }} onClick={() => setLeadOpen(l.email)} title="Ouvrir la fiche">
                   <div className="cal-name">{nmOf(l)}</div>
                   <div className="cal-sub">{l.bookedEvent || (l.lastCall && l.lastCall.event) || ""}{l.phone ? ` · ${l.phone}` : ""}</div>
