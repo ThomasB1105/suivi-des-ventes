@@ -50,7 +50,11 @@ module.exports = async (req, res) => {
         };
         const today = new Intl.DateTimeFormat("fr-CA", { timeZone: "Europe/Paris", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
         const rows = await buildLeads(cmd);
+        // scope "optins" : les leads VSL/formulaire SANS call et sans setter.
+        // scope par défaut : les calls d'aujourd'hui et à venir.
+        const scope = body.bulkAssign.scope === "optins" ? "optins" : "upcoming";
         const targets = rows.filter((l) => {
+          if (scope === "optins") return l.hasCall === false && !["unqualified", "dead"].includes(l.stage) && !l.setter;
           if (l.hasCall === false || ["won", "lost"].includes(l.stage)) return false;
           const d = parisDay((l.lastCall && l.lastCall.date) || l.bookedAt);
           return d && d >= today;

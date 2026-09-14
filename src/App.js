@@ -95,7 +95,7 @@ const STORAGE_KEY = "melo_sales_v5";
 const CRM_META = {
   booked: ["Call booké", "#579BFC"], show: ["Call fait · en cours", "#FDAB3D"], won: ["Closé", "#00C875"],
   noshow: ["No-show", "#E2445C"], lost: ["Perdu", "#808080"], setting: ["À replanifier", "#A25DDC"],
-  unqualified: ["Non qualifié", "#676879"], new: ["Nouveau", "#66B2FF"],
+  unqualified: ["Non qualifié", "#676879"], new: ["Nouveau", "#66B2FF"], dead: ["💀 Dead", "#323B49"],
 };
 
 /* ------------------------------ styles ------------------------------ */
@@ -2470,11 +2470,11 @@ export default function App() {
           .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
         const week = Date.now() - 7 * 864e5;
         const weekN = optins.filter((l) => l.createdAt && new Date(l.createdAt).getTime() >= week).length;
-        const nq = optins.filter((l) => l.stage === "unqualified").length;
+        const nq = optins.filter((l) => ["unqualified", "dead"].includes(l.stage)).length;
         const initials = (n) => String(n).split(/[\s@._-]+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase() || "?";
         const avaColor = (e) => ["#579BFC", "#A25DDC", "#00C875", "#FDAB3D", "#E2445C", "#66B2FF"][(String(e).charCodeAt(0) + String(e).length) % 6];
         const frDT = (v) => { const t = toParis(v); return t ? `${t.slice(8, 10)}/${t.slice(5, 7)} · ${t.slice(11, 16)}` : "—"; };
-        const VSL_STAGES = { new: CRM_META.new, setting: CRM_META.setting, unqualified: CRM_META.unqualified };
+        const VSL_STAGES = { new: CRM_META.new, setting: CRM_META.setting, unqualified: CRM_META.unqualified, dead: CRM_META.dead };
         return (<>
           <div className="closers-head">
             <div className="closers-title"><Leaf size={16} /> Leads VSL · entrants sans call</div>
@@ -2483,6 +2483,25 @@ export default function App() {
                 <button className={`crm-chip ${vslView === "recent" ? "on" : ""}`} onClick={() => setVslView("recent")}>Nouveaux (14 j) <b>{recentN}</b></button>
                 <button className={`crm-chip ${vslView === "all" ? "on" : ""}`} onClick={() => setVslView("all")}>Tout <b>{optins.length}</b></button>
               </div>
+              {isAdmin && (team || []).some((u) => u.role === "setter") && (
+                <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                  <select className="attr-sel" id="bulk-vsl-setter" defaultValue={(team || []).filter((u) => u.role === "setter")[0]?.name || ""}>
+                    {(team || []).filter((u) => u.role === "setter").map((u) => <option key={u.username} value={u.name}>{u.name}</option>)}
+                  </select>
+                  <button className="refresh-btn" title="Attribue tous les leads VSL sans setter à ce setter"
+                    onClick={async () => {
+                      const nm = document.getElementById("bulk-vsl-setter").value;
+                      if (!window.confirm(`Attribuer tous les leads VSL non attribués à ${nm} ?`)) return;
+                      try {
+                        const r = await authFetch("/api/crm", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ bulkAssign: { role: "setter", name: nm, scope: "optins" } }) });
+                        const d = await r.json().catch(() => ({}));
+                        if (!r.ok) throw new Error(d.error || `Erreur ${r.status}`);
+                        flash(`${d.updated} lead(s) VSL attribué(s) à ${nm} ✅`);
+                        loadCrm();
+                      } catch (e) { flash(`Attribution : ${e.message}`); }
+                    }}>⚡ Attribuer les non-attribués</button>
+                </div>
+              )}
               <div className="crm-search"><Search size={14} /><input value={crmQ} onChange={(e) => setCrmQ(e.target.value)} placeholder="Rechercher (nom, email, setter…)" /></div>
               <button className={`refresh-btn ${crmLoading ? "is-loading" : ""}`} onClick={() => loadCrm()} disabled={crmLoading}><RotateCcw size={15} className={crmLoading ? "spin" : ""} /> Actualiser</button>
             </div>
@@ -2491,7 +2510,7 @@ export default function App() {
             <div className="kcard"><div className="kcard-l">Opt-ins reçus</div><div className="kcard-v">{optins.length}</div><div className="kcard-f">toutes périodes</div></div>
             <div className="kcard"><div className="kcard-l">7 derniers jours</div><div className="kcard-v" style={{ color: "var(--cyan)" }}>{weekN}</div><div className="kcard-f">nouveaux entrants</div></div>
             <div className="kcard"><div className="kcard-l">À qualifier</div><div className="kcard-v green">{optins.length - nq}</div><div className="kcard-f">objectif : booker un call</div></div>
-            <div className="kcard"><div className="kcard-l">Non qualifiés</div><div className="kcard-v" style={{ color: "var(--muted)" }}>{nq}</div><div className="kcard-f">écartés</div></div>
+            <div className="kcard"><div className="kcard-l">Non qualifiés / Dead</div><div className="kcard-v" style={{ color: "var(--muted)" }}>{nq}</div><div className="kcard-f">écartés</div></div>
           </div>
           <div className="card mnd-card" style={{ marginTop: 18, borderLeft: "6px solid #2BD9A0" }}>
             <table className="mnd-tbl" style={{ minWidth: 1150 }}>
@@ -2521,6 +2540,7 @@ export default function App() {
                           <option value="new">🌱 Nouveau</option>
                           <option value="setting">📞 En qualification</option>
                           <option value="unqualified">🚫 Non qualifié</option>
+                          <option value="dead">💀 Dead — ne plus appeler</option>
                         </select>
                       </td>
                       <td>
@@ -2599,14 +2619,14 @@ export default function App() {
         const needResult = isSetter ? [] : recent.filter((l) => !l.callResult && !["noshow", "cancelled"].includes(l.showUp || "") && !["won", "lost"].includes(l.stage));
         const needFathom = isSetter ? [] : recent.filter((l) => (l.showUp === "present" || ["won", "lost"].includes(l.stage)) && !l.fathom);
         // Follow-ups : c'est le CLOSER qui relance ses prospects — pas le setter.
-        const followUps = isSetter ? [] : mine.filter((l) => l.followUp === "yes" && l.stage !== "won").sort((a, b) => dOfL(b).localeCompare(dOfL(a)));
-        const relance = mine.filter((l) => (l.stage === "noshow" || l.showUp === "cancelled") && l.followUp !== "yes" && l.stage !== "won");
+        const followUps = isSetter ? [] : mine.filter((l) => l.followUp === "yes" && !["won", "dead"].includes(l.stage)).sort((a, b) => dOfL(b).localeCompare(dOfL(a)));
+        const relance = mine.filter((l) => (l.stage === "noshow" || l.showUp === "cancelled") && l.followUp !== "yes" && !["won", "dead"].includes(l.stage));
         // Leads ENTRANTS à traiter : les NOUVEAUX (14 derniers jours) — les
         // siens + ceux pas encore attribués. L'historique complet reste dans
         // l'onglet Leads VSL.
         const vslSince = Date.now() - 14 * 864e5;
         const aQualifier = isSetter
-          ? (crm.leads || []).filter((l) => l.hasCall === false && l.stage !== "unqualified" && (same(l.setter) || !l.setter)
+          ? (crm.leads || []).filter((l) => l.hasCall === false && !["unqualified", "dead"].includes(l.stage) && (same(l.setter) || !l.setter)
               && l.createdAt && new Date(l.createdAt).getTime() >= vslSince)
             .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")))
           : [];
@@ -2618,7 +2638,7 @@ export default function App() {
         const processLeads = isSetter ? mine.filter((l) => l.stage === "booked" && dOfL(l) >= today && !SETTING_DONE.includes(l.setStatus || "")) : [];
         const yesterday = toISO(new Date(Date.now() - 864e5));
         const noShowVeille = isSetter ? mine.filter((l) => l.stage === "noshow" && dOfL(l) >= yesterday && dOfL(l) <= today) : [];
-        const setRelance = isSetter ? mine.filter((l) => ["nrp", "cancel"].includes(l.setStatus || "") && l.stage !== "won") : [];
+        const setRelance = isSetter ? mine.filter((l) => ["nrp", "cancel"].includes(l.setStatus || "") && !["won", "dead"].includes(l.stage)) : [];
         const todos = [
           ...processLeads.map((l) => ({ ico: "💬", txt: l.setStatus === "nrp" ? "NRP : rappeler + créer le groupe WA" : "Appeler le lead + créer le groupe WhatsApp", l, patch: { setStatus: "wa" }, done: "✓ WA créé" })),
           ...noShowVeille.map((l) => ({ ico: "🚨", txt: "No-show d'hier : rappeler pour re-booker", l })),
@@ -2742,11 +2762,12 @@ export default function App() {
                           <div className="cal-sub">{l.email}{l.phone ? ` · ${l.phone}` : ""}</div>
                         </div>
                         <span className="mnd-src">{l.source || "VSL"}</span>
-                        <select className="mnd-status" value={["new", "setting", "unqualified"].includes(l.stage) ? l.stage : "new"} style={{ backgroundColor: (CRM_META[l.stage] || CRM_META.new)[1] }}
+                        <select className="mnd-status" value={["new", "setting", "unqualified", "dead"].includes(l.stage) ? l.stage : "new"} style={{ backgroundColor: (CRM_META[l.stage] || CRM_META.new)[1] }}
                           onChange={(e) => updateLead(l.email, { stage: e.target.value })}>
                           <option value="new">🌱 Nouveau</option>
                           <option value="setting">📞 En qualification</option>
                           <option value="unqualified">🚫 Non qualifié</option>
+                          <option value="dead">💀 Dead — ne plus appeler</option>
                         </select>
                         {l.phone ? <a className="ls-link ls-join" style={{ flex: "none", textDecoration: "none" }} href={`tel:${String(l.phone).replace(/[^+0-9]/g, "")}`}>📱 Appeler</a> : null}
                         <button className="esp-open" onClick={() => setLeadOpen(l.email)}>Ouvrir la fiche</button>
