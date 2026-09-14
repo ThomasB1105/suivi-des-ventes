@@ -22,7 +22,10 @@ module.exports = async (req, res) => {
   const isAdmin = me.role === "admin";
   // Un membre voit SES leads, qu'il soit dans la colonne closer OU setter
   // (un rôle mal configuré dans le matching ne doit pas vider son espace).
-  const isMine = (l) => isPerson(l.closer, me.name) || isPerson(l.setter, me.name);
+  // Un SETTER voit aussi les leads entrants pas encore attribués : les
+  // entrants à traiter ne doivent jamais rester invisibles.
+  const isMine = (l) => isPerson(l.closer, me.name) || isPerson(l.setter, me.name)
+    || (me.role === "setter" && !l.setter && l.hasCall === false);
 
   try {
     // ---- Mise à jour d'un lead ----

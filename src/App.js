@@ -2588,9 +2588,14 @@ export default function App() {
         const recent = mine.filter((l) => { const d = dOfL(l); return d && d <= today && d >= weekAgo; });
         const needResult = isSetter ? [] : recent.filter((l) => !l.callResult && !["noshow", "cancelled"].includes(l.showUp || "") && !["won", "lost"].includes(l.stage));
         const needFathom = isSetter ? [] : recent.filter((l) => (l.showUp === "present" || ["won", "lost"].includes(l.stage)) && !l.fathom);
-        const followUps = mine.filter((l) => l.followUp === "yes" && l.stage !== "won").sort((a, b) => dOfL(b).localeCompare(dOfL(a)));
+        // Follow-ups : c'est le CLOSER qui relance ses prospects — pas le setter.
+        const followUps = isSetter ? [] : mine.filter((l) => l.followUp === "yes" && l.stage !== "won").sort((a, b) => dOfL(b).localeCompare(dOfL(a)));
         const relance = mine.filter((l) => (l.stage === "noshow" || l.showUp === "cancelled") && l.followUp !== "yes" && l.stage !== "won");
-        const aQualifier = isSetter ? mineAll.filter((l) => l.hasCall === false) : [];
+        // Leads ENTRANTS à traiter : les siens + ceux pas encore attribués
+        // (un entrant sans setter ne doit jamais rester invisible).
+        const aQualifier = isSetter
+          ? (crm.leads || []).filter((l) => l.hasCall === false && l.stage !== "unqualified" && (same(l.setter) || !l.setter))
+          : [];
         // Process setting : dès qu'un lead a PRIS un call -> l'appeler + créer
         // le groupe WhatsApp (cochable en un clic, la tâche disparaît).
         // Statut setting « terminé » : groupe WA créé / non qualifié / cancel
