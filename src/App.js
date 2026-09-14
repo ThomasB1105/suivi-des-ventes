@@ -602,7 +602,13 @@ export default function App() {
     }));
     let signed = 0, clients = 0;
     sales.forEach((s) => { if (s.closeDate >= from && s.closeDate <= to) { signed += s.total; clients++; } });
-    return { collected, outstanding, overdueAmt, overdueCount, org, paid, expected, signed, clients };
+    // Nouveaux élèves : PREMIÈRE mensualité encaissée sur la période.
+    let newStudents = 0;
+    sales.forEach((s) => {
+      const first = s.schedule.filter((i) => i.paid).map((i) => i.dueDate).sort()[0];
+      if (first && first >= from && first <= to) newStudents++;
+    });
+    return { collected, outstanding, overdueAmt, overdueCount, org, paid, expected, signed, clients, newStudents };
   };
   const kp = useMemo(() => metricsFor(periodRange.from, periodRange.to), [sales, periodRange]); // eslint-disable-line
   const kpPrev = useMemo(() => metricsFor(periodRange.prevFrom, periodRange.prevTo), [sales, periodRange]); // eslint-disable-line
@@ -1582,6 +1588,7 @@ export default function App() {
 
       {tab === "clients" && (<>
       <div className="kpis kpis-home">
+        <div className="card"><div className="kpi-label">🎓 Nouveaux élèves</div><div className="kpi-val" style={{ color: "var(--cyan)" }}>{kp.newStudents}</div><div className="kpi-foot">1ʳᵉ mensualité payée sur la période<br />{Delta(kp.newStudents, kpPrev.newStudents, "MoM")}{Delta(kp.newStudents, kpYoy.newStudents, "YoY")}</div></div>
         <div className="card"><div className="kpi-label">CA contracté</div><div className="kpi-val">{euro(kp.signed)}</div><div className="kpi-foot">{kp.clients} vente{kp.clients > 1 ? "s" : ""} signée{kp.clients > 1 ? "s" : ""}<br />{Delta(kp.signed, kpPrev.signed, "MoM")}{Delta(kp.signed, kpYoy.signed, "YoY")}</div></div>
         <div className="card"><div className="kpi-label">CA collecté</div><div className="kpi-val" style={{ color: "var(--green)" }}>{euro(kp.collected)}</div><div className="kpi-foot">{kp.expected ? Math.round((kp.collected / kp.expected) * 100) : 0}% de l'attendu<br />{Delta(kp.collected, kpPrev.collected, "MoM")}{Delta(kp.collected, kpYoy.collected, "YoY")}</div></div>
         <div className="card"><div className="kpi-label">Reste à encaisser</div><div className="kpi-val">{euro(kp.outstanding)}</div><div className="kpi-foot">sur la période</div></div>
