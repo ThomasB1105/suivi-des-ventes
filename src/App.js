@@ -2505,8 +2505,6 @@ export default function App() {
         const upcoming = isSetter
           ? mine.filter((l) => dOfL(l) >= today && !["wa", "unqualified", "cancel"].includes(l.setStatus || "")).sort((a, b) => tsL(a).localeCompare(tsL(b)))
           : [];
-        const tomorrow = toISO(new Date(Date.now() + 864e5));
-        const dayLbl = (d) => d === today ? "Aujourd'hui" : (d === tomorrow ? "Demain" : (() => { try { return parseLocal(d).toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short" }); } catch (e) { return d; } })());
         const planList = isSetter ? upcoming : todayCalls;
         const processed = todayCalls.filter((l) => l.callResult || ["noshow", "cancelled"].includes(l.showUp || "")).length;
         const dayPct = todayCalls.length ? Math.round((processed / todayCalls.length) * 100) : 0;
@@ -2577,30 +2575,50 @@ export default function App() {
           </div>
 
           <div className="esp-sec">{isSetter ? "📞 Calls à préqualifier — aujourd'hui & à venir" : "🎯 Mes calls aujourd'hui"} <span className="mnd-gcount">{planList.length}</span></div>
-          <div className="card" style={{ padding: 0, overflow: "hidden" }}>
-            {planList.length === 0 && <div className="empty" style={{ padding: 20 }}>{isSetter ? "Aucun call à venir." : "Aucun call aujourd'hui."}</div>}
-            {planList.map((l) => (
-              <div className="cal-row" key={l.email}>
-                <div className="cal-time" style={isSetter ? { width: 92, lineHeight: 1.3 } : undefined}>
-                  {isSetter ? (<>
-                    <div style={{ fontSize: 11, fontWeight: 800, color: dOfL(l) === today ? "var(--green)" : "var(--muted)", textTransform: "capitalize" }}>{dayLbl(dOfL(l))}</div>
-                    {tOfL(l) || "—"}
-                  </>) : (tOfL(l) || "—")}
+          {planList.length === 0 && (
+            <div className="card" style={{ padding: 0, overflow: "hidden" }}>
+              <div className="empty" style={{ padding: 20 }}>{isSetter ? "Aucun call à venir." : "Aucun call aujourd'hui."}</div>
+            </div>
+          )}
+          {(() => {
+            // Même DA que le Calendrier : un bloc par jour, en-tête « Lundi 14
+            // Septembre · Aujourd'hui · n », lignes identiques.
+            const byDay = {};
+            planList.forEach((l) => { const d = dOfL(l) || "—"; (byDay[d] = byDay[d] || []).push(l); });
+            const fmtDay = (d) => { try { return parseLocal(d).toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" }); } catch (e) { return d; } };
+            return Object.keys(byDay).sort().map((d) => (
+              <div className="cal-day" key={d} style={{ margin: "12px 0 22px" }}>
+                <div className="cal-dhead">
+                  {fmtDay(d)}
+                  {d === today ? <span className="cal-today">Aujourd'hui</span> : null}
+                  <span className="mnd-gcount">{byDay[d].length}</span>
                 </div>
-                <div className="cal-main" style={{ cursor: "pointer" }} onClick={() => setLeadOpen(l.email)} title="Ouvrir la fiche">
-                  <div className="cal-name">{nmOf(l)}</div>
-                  <div className="cal-sub">{l.bookedEvent || (l.lastCall && l.lastCall.event) || ""}{l.phone ? ` · ${l.phone}` : ""}</div>
+                <div className="card" style={{ padding: 0, overflow: "hidden" }}>
+                  {byDay[d].map((l) => (
+                    <div className="cal-row" key={l.email}>
+                      <div className="cal-time">{tOfL(l) || "—"}</div>
+                      <div className="cal-main" style={{ cursor: "pointer" }} onClick={() => setLeadOpen(l.email)} title="Ouvrir la fiche">
+                        <div className="cal-name">{nmOf(l)}{isSetter && l.closer ? <span className="mut" style={{ fontWeight: 500 }}> · {l.closer}</span> : null}</div>
+                        <div className="cal-sub">{l.bookedEvent || (l.lastCall && l.lastCall.event) || ""}{l.phone ? ` · ${l.phone}` : ""}</div>
+                      </div>
+                      {l.links && l.links.join ? <button className="ls-link ls-join" onClick={(e) => { e.stopPropagation(); copyJoin(l); }}>📋 Copier lien</button> : null}
+                      <span className="mnd-src">{l.lastCall ? "iClosed" : (l.bookedAt ? "Calendly" : "—")}</span>
+                      {!isSetter && (
+                        <input className="crm-input" style={{ width: 168 }} placeholder="🎥 Coller le lien Fathom…" defaultValue={l.fathom || ""}
+                          onBlur={(e) => { const v = e.target.value.trim(); if (v !== (l.fathom || "")) updateLead(l.email, { fathom: v }); }} />
+                      )}
+                      {setStatusSelect(l)}
+                      <div className="out-row">{outSelects(l)}</div>
+                      <select className="mnd-status" value={l.stage} style={{ backgroundColor: (CRM_META[l.stage] || ["", "#666"])[1] }}
+                        onChange={(e) => updateLead(l.email, { stage: e.target.value })}>
+                        {Object.keys(CRM_META).map((s) => <option key={s} value={s}>{CRM_META[s][0]}</option>)}
+                      </select>
+                    </div>
+                  ))}
                 </div>
-                {l.links && l.links.join ? <button className="ls-link ls-join" onClick={(e) => { e.stopPropagation(); copyJoin(l); }}>📋 Copier lien</button> : null}
-                {!isSetter && (
-                  <input className="crm-input" style={{ width: 168 }} placeholder="🎥 Coller le lien Fathom…" defaultValue={l.fathom || ""}
-                    onBlur={(e) => { const v = e.target.value.trim(); if (v !== (l.fathom || "")) updateLead(l.email, { fathom: v }); }} />
-                )}
-                {isSetter && setStatusSelect(l)}
-                <div className="out-row">{outSelects(l)}</div>
               </div>
-            ))}
-          </div>
+            ));
+          })()}
 
           <div className="esp-sec">📝 Ma todo du jour <span className="mnd-gcount">{todos.length}</span></div>
           <div className="card" style={{ padding: 0, overflow: "hidden" }}>
