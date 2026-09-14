@@ -75,6 +75,22 @@ module.exports = async (req, res) => {
     let body = req.body;
     if (typeof body === "string") { try { body = JSON.parse(body); } catch { body = {}; } }
     body = body || {};
+    // Certains connecteurs (Make « data structure ») envoient tout le JSON
+    // dans UNE valeur texte ({"Vercel":"{\"email\":…}"}). On déplie les
+    // chaînes qui contiennent un objet JSON pour retrouver les vrais champs.
+    const unwrap = (obj, depth = 0) => {
+      if (!obj || typeof obj !== "object" || depth > 4) return obj;
+      Object.entries(obj).forEach(([k, v]) => {
+        if (typeof v === "string" && /^\s*\{[\s\S]*\}\s*$/.test(v)) {
+          try {
+            const p = JSON.parse(v);
+            if (p && typeof p === "object") Object.entries(p).forEach(([k2, v2]) => { if (obj[k2] === undefined) obj[k2] = v2; });
+          } catch (e) { /* pas du JSON */ }
+        } else if (v && typeof v === "object") unwrap(v, depth + 1);
+      });
+      return obj;
+    };
+    unwrap(body);
 
     // ---- Format Calendly (webhook v2) ----
     const calendlyEvent = String(body.event || "");
