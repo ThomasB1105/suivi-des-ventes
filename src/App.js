@@ -266,6 +266,22 @@ export default function App() {
       hydrated.current = true;
       syncSio({ silent: true });
     };
+    // Un MEMBRE (closer/setter) n'a pas accès aux endpoints financiers :
+    // /api/state lui répondait 401 -> boucle de redirection vers le login.
+    // On valide sa session via /api/me (qui accepte les tokens équipe).
+    const isMember = (() => { try { return (localStorage.getItem("melo_role") || "admin") !== "admin"; } catch (e) { return false; } })();
+    if (isMember) {
+      authFetch("/api/me").then((r) => {
+        if (!on) return;
+        if (r.status === 401) {
+          // session expirée / mdp changé -> on nettoie pour repartir proprement
+          try { localStorage.removeItem("melo_token"); localStorage.removeItem("melo_role"); localStorage.removeItem("melo_name"); } catch (e) { /* ignore */ }
+          setAuthed(false); return;
+        }
+        setAuthed(true);
+      }).catch(() => { if (!on) return; setAuthed(true); });
+      return () => { on = false; };
+    }
     authFetch("/api/state").then(async (r) => {
       if (!on) return;
       if (r.status === 401) { setAuthed(false); return; } // mot de passe requis
