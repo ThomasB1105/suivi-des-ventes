@@ -2259,6 +2259,25 @@ export default function App() {
               </>)}
             </div>
             <div className="crm-search"><Search size={14} /><input value={crmQ} onChange={(e) => setCrmQ(e.target.value)} placeholder="Rechercher (nom, email, closer…)" /></div>
+            {isAdmin && isCal && (team || []).some((u) => u.role === "setter") && (
+              <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                <select className="attr-sel" id="bulk-setter" defaultValue={(team || []).filter((u) => u.role === "setter")[0]?.name || ""} title="Setter à qui attribuer les calls d'aujourd'hui et à venir">
+                  {(team || []).filter((u) => u.role === "setter").map((u) => <option key={u.username} value={u.name}>{u.name}</option>)}
+                </select>
+                <button className="refresh-btn" title="Attribue tous les calls d'aujourd'hui + à venir à ce setter"
+                  onClick={async () => {
+                    const nm = document.getElementById("bulk-setter").value;
+                    if (!window.confirm(`Attribuer TOUS les calls d'aujourd'hui et à venir à ${nm} (setter) ?`)) return;
+                    try {
+                      const r = await authFetch("/api/crm", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ bulkAssign: { role: "setter", name: nm } }) });
+                      const d = await r.json().catch(() => ({}));
+                      if (!r.ok) throw new Error(d.error || `Erreur ${r.status}`);
+                      flash(`${d.updated} call(s) attribué(s) à ${nm} ✅ (${d.matched} concernés).`);
+                      loadCrm();
+                    } catch (e) { flash(`Attribution en masse : ${e.message}`); }
+                  }}>⚡ Tout attribuer</button>
+              </div>
+            )}
             {isAdmin && (
               <button className={`refresh-btn ${calSync ? "is-loading" : ""}`} onClick={connectCalendly} disabled={calSync} style={{ background: "linear-gradient(135deg,#006BFF,#4D9AFF)", boxShadow: "0 4px 14px rgba(0,107,255,.3)" }} title="Importe les RDV Calendly (90 jours + à venir) et active le webhook temps réel">
                 <Calendar size={15} className={calSync ? "spin" : ""} /> {calSync ? "Calendly…" : "Connecter Calendly"}

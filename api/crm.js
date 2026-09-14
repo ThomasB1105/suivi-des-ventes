@@ -29,6 +29,46 @@ module.exports = async (req, res) => {
     if (req.method === "POST") {
       let body = req.body;
       if (typeof body === "string") { try { body = JSON.parse(body); } catch { body = {}; } }
+
+      // ---- Attribution EN MASSE (admin) : tous les calls d'aujourd'hui et à
+      // venir -> un setter/closer donné. { bulkAssign: { role, name } } ----
+      if (isAdmin && body && body.bulkAssign) {
+        const role = body.bulkAssign.role === "closer" ? "closer" : "setter";
+        const nm = String(body.bulkAssign.name || "").trim();
+        if (!nm) { res.status(400).json({ error: "Nom manquant." }); return; }
+        // « aujourd'hui » au sens heure de Paris (les dates plateformes sont en UTC)
+        const parisDay = (v) => {
+          const str = String(v || "");
+          if (!str) return "";
+          if (!/([zZ]|[+-]\d{2}:?\d{2})$/.test(str)) return str.slice(0, 10);
+          const d = new Date(str.replace(/\.(\d{3})\d+/, ".$1"));
+          if (isNaN(d)) return str.slice(0, 10);
+          return new Intl.DateTimeFormat("fr-CA", { timeZone: "Europe/Paris", year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
+        };
+        const today = new Intl.DateTimeFormat("fr-CA", { timeZone: "Europe/Paris", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+        const rows = await buildLeads(cmd);
+        const targets = rows.filter((l) => {
+          if (l.hasCall === false || ["won", "lost"].includes(l.stage)) return false;
+          const d = parisDay((l.lastCall && l.lastCall.date) || l.bookedAt);
+          return d && d >= today;
+        }).slice(0, 300);
+        let updated = 0;
+        for (const t of targets) {
+          let lead = null;
+          try { const s = await cmd(["HGET", "crm:leads", t.email]); lead = s ? JSON.parse(s) : null; } catch {}
+          if (!lead) lead = { email: t.email, createdAt: new Date().toISOString(), history: [] };
+          if (String(lead[role] || "") === nm) continue;
+          lead[role] = nm;
+          lead[role + "Auto"] = false; // choix admin : la synchro ne l'écrase pas
+          lead.updatedAt = new Date().toISOString();
+          lead.history = [...(lead.history || []), { at: lead.updatedAt, type: "assign", label: `Attribué à ${nm} (attribution en masse)` }].slice(-12);
+          await cmd(["HSET", "crm:leads", t.email, JSON.stringify(lead)]);
+          updated += 1;
+        }
+        res.status(200).json({ ok: true, updated, matched: targets.length, name: nm, role });
+        return;
+      }
+
       const email = String((body && body.email) || "").toLowerCase();
       if (!email) { res.status(400).json({ error: "Email manquant." }); return; }
 
