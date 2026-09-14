@@ -715,7 +715,7 @@ export default function App() {
   // base en continu ; l'interface se resynchronise toute seule (toutes les
   // 45 s quand l'onglet est visible, et au retour sur la fenêtre).
   useEffect(() => {
-    if (!(tab === "crm" || tab === "calendrier" || tab === "espace")) return;
+    if (!(tab === "crm" || tab === "calendrier" || tab === "espace" || tab === "vsl")) return;
     loadCrm(); if (isAdmin) loadTeam();
     const iv = setInterval(() => { if (document.visibilityState === "visible") loadCrm(true); }, 45000);
     const onFocus = () => { if (document.visibilityState !== "hidden") loadCrm(true); };
@@ -1040,7 +1040,7 @@ export default function App() {
   const overduesF = sortOverdue((impAll ? allOverdue : overdues).filter((i) => matchQ(i.sale)));
   const periodListF = periodList.filter((i) => matchQ(i.sale));
 
-  const SECTION = { clients: "Tableau de bord", cohortes: "Cohortes", mois: "Par mois", collecte: "À collecter", impayes: "Impayés", couts: "Coûts", closers: "Closers", crm: "CRM", calendrier: "Calendrier", equipe: "Équipe", espace: "Ma journée" };
+  const SECTION = { clients: "Tableau de bord", cohortes: "Cohortes", mois: "Par mois", collecte: "À collecter", impayes: "Impayés", couts: "Coûts", closers: "Closers", crm: "CRM", calendrier: "Calendrier", equipe: "Équipe", espace: "Ma journée", vsl: "Leads VSL" };
   const go = (t) => { setTab(t); setNavOpen(false); };
   const navCls = (t) => `nav-item ${tab === t ? "active" : ""}`;
   const logout = () => { try { localStorage.removeItem("melo_token"); localStorage.removeItem("melo_role"); localStorage.removeItem("melo_name"); } catch (e) { /* ignore */ } window.location.reload(); };
@@ -1527,6 +1527,7 @@ export default function App() {
             <button className={navCls("closers")} onClick={() => go("closers")}><UserCheck size={16} /> Closers</button>
             <div className="nav-label">CRM</div>
             <button className={navCls("crm")} onClick={() => go("crm")}><ClipboardList size={16} /> CRM</button>
+            <button className={navCls("vsl")} onClick={() => go("vsl")}><Leaf size={16} /> Leads VSL</button>
             <button className={navCls("calendrier")} onClick={() => go("calendrier")}><Calendar size={16} /> Calendrier</button>
             <button className={navCls("equipe")} onClick={() => go("equipe")}><Users size={16} /> Équipe</button>
           </>) : (<>
@@ -2451,6 +2452,79 @@ export default function App() {
         })()}
 
 
+        </>);
+      })()}
+
+      {/* LEADS VSL — CRM dédié aux opt-ins entrants SANS call pris (admin) */}
+      {tab === "vsl" && isAdmin && (() => {
+        const optins = (crm.leads || []).filter((l) => l.hasCall === false);
+        const q = crmQ.trim().toLowerCase();
+        const rows = optins
+          .filter((l) => !q || [l.name, l.email, l.phone, l.setter, l.campaign, l.source].some((v) => String(v || "").toLowerCase().includes(q)))
+          .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
+        const week = Date.now() - 7 * 864e5;
+        const weekN = optins.filter((l) => l.createdAt && new Date(l.createdAt).getTime() >= week).length;
+        const nq = optins.filter((l) => l.stage === "unqualified").length;
+        const initials = (n) => String(n).split(/[\s@._-]+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase() || "?";
+        const avaColor = (e) => ["#579BFC", "#A25DDC", "#00C875", "#FDAB3D", "#E2445C", "#66B2FF"][(String(e).charCodeAt(0) + String(e).length) % 6];
+        const frDT = (v) => { const t = toParis(v); return t ? `${t.slice(8, 10)}/${t.slice(5, 7)} · ${t.slice(11, 16)}` : "—"; };
+        const VSL_STAGES = { new: CRM_META.new, setting: CRM_META.setting, unqualified: CRM_META.unqualified };
+        return (<>
+          <div className="closers-head">
+            <div className="closers-title"><Leaf size={16} /> Leads VSL · entrants sans call</div>
+            <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+              <div className="crm-search"><Search size={14} /><input value={crmQ} onChange={(e) => setCrmQ(e.target.value)} placeholder="Rechercher (nom, email, setter…)" /></div>
+              <button className={`refresh-btn ${crmLoading ? "is-loading" : ""}`} onClick={() => loadCrm()} disabled={crmLoading}><RotateCcw size={15} className={crmLoading ? "spin" : ""} /> Actualiser</button>
+            </div>
+          </div>
+          <div className="kpis" style={{ marginTop: 4 }}>
+            <div className="kcard"><div className="kcard-l">Opt-ins reçus</div><div className="kcard-v">{optins.length}</div><div className="kcard-f">toutes périodes</div></div>
+            <div className="kcard"><div className="kcard-l">7 derniers jours</div><div className="kcard-v" style={{ color: "var(--cyan)" }}>{weekN}</div><div className="kcard-f">nouveaux entrants</div></div>
+            <div className="kcard"><div className="kcard-l">À qualifier</div><div className="kcard-v green">{optins.length - nq}</div><div className="kcard-f">objectif : booker un call</div></div>
+            <div className="kcard"><div className="kcard-l">Non qualifiés</div><div className="kcard-v" style={{ color: "var(--muted)" }}>{nq}</div><div className="kcard-f">écartés</div></div>
+          </div>
+          <div className="card mnd-card" style={{ marginTop: 18, borderLeft: "6px solid #2BD9A0" }}>
+            <table className="mnd-tbl" style={{ minWidth: 1150 }}>
+              <thead><tr><th>Lead</th><th>Arrivé</th><th>Source</th><th>Campagne</th><th>Setter</th><th>Statut</th><th>Notes</th></tr></thead>
+              <tbody>
+                {rows.slice(0, 200).map((l) => {
+                  const nm = l.name && l.name !== l.email ? l.name : l.email;
+                  return (
+                    <tr key={l.email}>
+                      <td>
+                        <div className="mnd-lead" style={{ cursor: "pointer" }} onClick={() => setLeadOpen(l.email)} title="Ouvrir la fiche">
+                          <span className="mnd-ava" style={{ background: avaColor(l.email) }}>{initials(nm)}</span>
+                          <div>
+                            <div className="mnd-name">{nm}</div>
+                            <div className="mnd-mail">{l.email}</div>
+                            {l.phone ? <a className="mnd-phone" href={`tel:${String(l.phone).replace(/[^+0-9]/g, "")}`} onClick={(e) => e.stopPropagation()}><Phone size={10} /> {l.phone}</a> : null}
+                          </div>
+                        </div>
+                      </td>
+                      <td><div className="mnd-call"><div className="d">{frDT(l.createdAt)}</div></div></td>
+                      <td><span className="mnd-src">{l.source || "VSL"}</span></td>
+                      <td className="mut" style={{ fontSize: 12.5 }}>{l.campaign || "—"}</td>
+                      <td>{assignSelect(l.setter, dashSetters, (v) => updateLead(l.email, { setter: v }), "Assigner…")}</td>
+                      <td>
+                        <select className="mnd-status" value={VSL_STAGES[l.stage] ? l.stage : "new"} style={{ backgroundColor: (CRM_META[l.stage] || CRM_META.new)[1] }}
+                          onChange={(e) => updateLead(l.email, { stage: e.target.value })}>
+                          <option value="new">🌱 Nouveau</option>
+                          <option value="setting">📞 En qualification</option>
+                          <option value="unqualified">🚫 Non qualifié</option>
+                        </select>
+                      </td>
+                      <td>
+                        <input className="crm-input crm-notes" defaultValue={l.notes || ""} placeholder="Ajouter une note…"
+                          onBlur={(e) => { const v = e.target.value; if (v !== (l.notes || "")) updateLead(l.email, { notes: v }); }} />
+                      </td>
+                    </tr>
+                  );
+                })}
+                {rows.length === 0 && <tr><td colSpan={7}><div className="empty" style={{ padding: 22 }}>Aucun opt-in en attente 🎉 Les leads VSL (Make) arrivent ici tant qu'ils n'ont pas booké de call — dès qu'ils bookent, ils basculent dans le CRM.</div></td></tr>}
+              </tbody>
+            </table>
+            {rows.length > 0 && <div className="mnd-foot"><span><b>{rows.length}</b> lead{rows.length > 1 ? "s" : ""}{rows.length > 200 ? " · 200 affichés, affine la recherche" : ""}</span></div>}
+          </div>
         </>);
       })()}
 
