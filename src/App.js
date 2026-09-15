@@ -95,7 +95,7 @@ const STORAGE_KEY = "melo_sales_v5";
 const CRM_META = {
   booked: ["Call booké", "#579BFC"], show: ["Call fait · en cours", "#FDAB3D"], won: ["Closé", "#00C875"],
   noshow: ["No-show", "#E2445C"], lost: ["Perdu", "#808080"], setting: ["À replanifier", "#A25DDC"],
-  unqualified: ["Non qualifié", "#676879"], new: ["Nouveau", "#66B2FF"], dead: ["💀 Dead", "#323B49"],
+  unqualified: ["Non qualifié", "#676879"], new: ["Nouveau", "#66B2FF"], nrp: ["NRP 📵", "#F79009"], dead: ["💀 Dead", "#323B49"],
 };
 
 /* ------------------------------ styles ------------------------------ */
@@ -2474,7 +2474,7 @@ export default function App() {
         const initials = (n) => String(n).split(/[\s@._-]+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase() || "?";
         const avaColor = (e) => ["#579BFC", "#A25DDC", "#00C875", "#FDAB3D", "#E2445C", "#66B2FF"][(String(e).charCodeAt(0) + String(e).length) % 6];
         const frDT = (v) => { const t = toParis(v); return t ? `${t.slice(8, 10)}/${t.slice(5, 7)} · ${t.slice(11, 16)}` : "—"; };
-        const VSL_STAGES = { new: CRM_META.new, setting: CRM_META.setting, unqualified: CRM_META.unqualified, dead: CRM_META.dead };
+        const VSL_STAGES = { new: CRM_META.new, setting: CRM_META.setting, unqualified: CRM_META.unqualified, dead: CRM_META.dead, nrp: CRM_META.nrp };
         return (<>
           <div className="closers-head">
             <div className="closers-title"><Leaf size={16} /> Leads VSL · entrants sans call</div>
@@ -2539,6 +2539,7 @@ export default function App() {
                           onChange={(e) => updateLead(l.email, { stage: e.target.value })}>
                           <option value="new">🌱 Nouveau</option>
                           <option value="setting">📞 En qualification</option>
+                          <option value="nrp">📵 NRP — ne répond pas</option>
                           <option value="unqualified">🚫 Non qualifié</option>
                           <option value="dead">💀 Dead — ne plus appeler</option>
                         </select>
@@ -2762,10 +2763,11 @@ export default function App() {
                           <div className="cal-sub">{l.email}{l.phone ? ` · ${l.phone}` : ""}</div>
                         </div>
                         <span className="mnd-src">{l.source || "VSL"}</span>
-                        <select className="mnd-status" value={["new", "setting", "unqualified", "dead"].includes(l.stage) ? l.stage : "new"} style={{ backgroundColor: (CRM_META[l.stage] || CRM_META.new)[1] }}
+                        <select className="mnd-status" value={["new", "setting", "unqualified", "dead", "nrp"].includes(l.stage) ? l.stage : "new"} style={{ backgroundColor: (CRM_META[l.stage] || CRM_META.new)[1] }}
                           onChange={(e) => updateLead(l.email, { stage: e.target.value })}>
                           <option value="new">🌱 Nouveau</option>
                           <option value="setting">📞 En qualification</option>
+                          <option value="nrp">📵 NRP — ne répond pas</option>
                           <option value="unqualified">🚫 Non qualifié</option>
                           <option value="dead">💀 Dead — ne plus appeler</option>
                         </select>
