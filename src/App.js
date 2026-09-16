@@ -764,6 +764,11 @@ export default function App() {
       <option value="yes">Follow-up : oui 🔁</option>
       <option value="no">Follow-up : non</option>
     </select>
+    {l.followUp === "yes" ? (
+      <input type="date" className="fup-date" value={l.followUpAt || ""} title="Date de relance — la tâche apparaît dans la todo du closer le jour J"
+        onClick={(e) => e.stopPropagation()}
+        onChange={(e) => updateLead(l.email, { followUpAt: e.target.value })} />
+    ) : null}
   </>);
 
   // Aperçu admin de l'espace d'un membre (Équipe → « Voir son espace »).
@@ -1437,11 +1442,11 @@ export default function App() {
         .cal-day{margin:24px 0;}
         .cal-dhead{display:flex;align-items:center;gap:10px;font-family:'Montserrat';font-weight:800;font-size:15.5px;margin:0 0 10px 2px;text-transform:capitalize;}
         .cal-today{background:#00C875;color:#fff;padding:3px 11px;border-radius:999px;font-size:11px;font-weight:800;font-family:'Inter';text-transform:none;}
-        .cal-row{display:flex;align-items:center;gap:18px;padding:14px 18px;border-top:1px solid rgba(15,23,42,.05);}
+        .cal-row{display:flex;align-items:center;gap:14px;padding:14px 18px;border-top:1px solid rgba(15,23,42,.05);flex-wrap:wrap;}
         .cal-row:first-child{border-top:none;}
         .cal-row:hover{background:rgba(15,23,42,.03);}
         .cal-time{font-weight:800;font-size:14.5px;min-width:56px;color:var(--cyan);font-variant-numeric:tabular-nums;}
-        .cal-main{flex:1;min-width:0;}
+        .cal-main{flex:1 1 220px;min-width:180px;}
         .cal-name{font-weight:600;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
         .cal-sub{font-size:12px;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
         @media(max-width:700px){ .cal-row{flex-wrap:wrap;gap:10px;} }
@@ -1472,6 +1477,9 @@ export default function App() {
         .out-select:focus{outline:none;border-color:var(--cyan);box-shadow:0 0 0 3px rgba(108,92,231,.12);}
         .out-select:has(option:checked[value=""]){color:#98A2B3;font-weight:600;border-style:dashed;box-shadow:none;}
         .out-select option{color:#111;background:#fff;font-weight:600;}
+        .fup-date{border:1.5px solid #D9D6FE;background:#F4F3FF;color:#5925DC;border-radius:999px;padding:7px 12px;font-family:'Inter';font-size:11.5px;font-weight:700;cursor:pointer;width:186px;box-sizing:border-box;}
+        .fup-date:focus{outline:none;border-color:var(--cyan);box-shadow:0 0 0 3px rgba(108,92,231,.12);}
+        .cal-note{flex:0 1 240px;width:auto;max-width:280px;min-width:120px;}
         /* Équipe */
         .team-form{display:flex;gap:10px;flex-wrap:wrap;align-items:center;}
         .team-form .tf{background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:10px;padding:10px 13px;font-family:'Inter';font-size:13px;min-width:150px;}
@@ -2436,6 +2444,10 @@ export default function App() {
                       <div className="cal-name">{l.name && l.name !== l.email ? l.name : l.email}{l.closer ? <span className="mut" style={{ fontWeight: 500 }}> · {l.closer}</span> : null}</div>
                       <div className="cal-sub">{callEvent(l) || srcOf(l)}{l.phone ? ` · ${l.phone}` : ""}</div>
                     </div>
+                    <input className="crm-input cal-note" placeholder="📝 Note setting…" defaultValue={l.notes || ""} key={l.email + "|n|" + (l.notes || "")}
+                      title="Note setting — visible par le closer et sur la fiche"
+                      onClick={(e) => e.stopPropagation()}
+                      onBlur={(e) => { const v = e.target.value; if (v !== (l.notes || "")) updateLead(l.email, { notes: v }); }} />
                     {l.links && l.links.join ? <button className="ls-link ls-join" onClick={(e) => { e.stopPropagation(); try { navigator.clipboard.writeText(l.links.join); flash("Lien du call copié 📋"); } catch (e2) { window.prompt("Copie le lien :", l.links.join); } }}>📋 Copier lien</button> : null}
                     {l.fathom ? <a className="ls-link ls-join" href={l.fathom} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>🎥 Fathom</a> : null}
                     <span className="mnd-src">{srcOf(l)}</span>
@@ -2620,7 +2632,11 @@ export default function App() {
         const needResult = isSetter ? [] : recent.filter((l) => !l.callResult && !["noshow", "cancelled"].includes(l.showUp || "") && !["won", "lost"].includes(l.stage));
         const needFathom = isSetter ? [] : recent.filter((l) => (l.showUp === "present" || ["won", "lost"].includes(l.stage)) && !l.fathom);
         // Follow-ups : c'est le CLOSER qui relance ses prospects — pas le setter.
-        const followUps = isSetter ? [] : mine.filter((l) => l.followUp === "yes" && !["won", "dead"].includes(l.stage)).sort((a, b) => dOfL(b).localeCompare(dOfL(a)));
+        // Avec une date de relance, la tâche n'apparaît dans la todo QUE le
+        // jour J (ou en retard) ; sans date, elle reste visible tout de suite.
+        const followUpsAll = isSetter ? [] : mine.filter((l) => l.followUp === "yes" && !["won", "dead"].includes(l.stage));
+        const followUps = followUpsAll.filter((l) => !l.followUpAt || l.followUpAt <= today).sort((a, b) => String(a.followUpAt || dOfL(a)).localeCompare(String(b.followUpAt || dOfL(b))));
+        const followUpsLater = followUpsAll.filter((l) => l.followUpAt && l.followUpAt > today).sort((a, b) => String(a.followUpAt).localeCompare(String(b.followUpAt)));
         const relance = mine.filter((l) => (l.stage === "noshow" || l.showUp === "cancelled") && l.followUp !== "yes" && !["won", "dead"].includes(l.stage));
         // Leads ENTRANTS à traiter : les NOUVEAUX (14 derniers jours) — les
         // siens + ceux pas encore attribués. L'historique complet reste dans
@@ -2646,7 +2662,7 @@ export default function App() {
           ...needResult.map((l) => ({ ico: "📝", txt: "Renseigner le résultat du call", l })),
           ...needFathom.map((l) => ({ ico: "🎥", txt: "Coller le lien Fathom", l })),
           ...relance.filter((l) => !noShowVeille.includes(l)).map((l) => ({ ico: "🔄", txt: l.stage === "noshow" ? "No-show : re-booker un call" : "Annulé : re-booker un call", l })),
-          ...followUps.map((l) => ({ ico: "🔁", txt: "Follow-up : relancer", l })),
+          ...followUps.map((l) => ({ ico: "🔁", txt: l.followUpAt ? (l.followUpAt < today ? "Follow-up EN RETARD : relancer" : "Follow-up du jour : relancer") : "Follow-up : relancer", l })),
         ];
         const copyJoin = (l) => { try { navigator.clipboard.writeText(l.links.join); flash("Lien du call copié 📋"); } catch (e) { window.prompt("Copie le lien :", l.links.join); } };
         const dateFr = new Date().toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" });
@@ -2714,13 +2730,21 @@ export default function App() {
                         <div className="cal-name">{nmOf(l)}{isSetter && l.closer ? <span className="mut" style={{ fontWeight: 500 }}> · {l.closer}</span> : null}</div>
                         <div className="cal-sub">{l.bookedEvent || (l.lastCall && l.lastCall.event) || ""}{l.phone ? ` · ${l.phone}` : ""}</div>
                       </div>
+                      <input className="crm-input cal-note" placeholder="📝 Note setting…" defaultValue={l.notes || ""} key={l.email + "|n|" + (l.notes || "")}
+                        title="Note setting — visible par le closer et sur la fiche"
+                        onClick={(e) => e.stopPropagation()}
+                        onBlur={(e) => { const v = e.target.value; if (v !== (l.notes || "")) updateLead(l.email, { notes: v }); }} />
                       {l.links && l.links.join ? <button className="ls-link ls-join" onClick={(e) => { e.stopPropagation(); copyJoin(l); }}>📋 Copier lien</button> : null}
                       <span className="mnd-src">{l.lastCall ? "iClosed" : (l.bookedAt ? "Calendly" : "—")}</span>
                       {!isSetter && (
                         <input className="crm-input" style={{ width: 168 }} placeholder="🎥 Coller le lien Fathom…" defaultValue={l.fathom || ""}
                           onBlur={(e) => { const v = e.target.value.trim(); if (v !== (l.fathom || "")) updateLead(l.email, { fathom: v }); }} />
                       )}
-                      {setStatusSelect(l)}
+                      {isSetter ? setStatusSelect(l) : (l.setStatus ? (
+                        <span className="esp-tag" style={{ ...SET_TONES[l.setStatus], marginLeft: 0 }}>
+                          {{ wa: "WA créé ✅", nrp: "NRP 📵", cancel: "Cancel", unqualified: "Non qualifié" }[l.setStatus]}
+                        </span>
+                      ) : null)}
                       <div className="out-row">{outSelects(l)}</div>
                       <select className="mnd-status" value={l.stage} style={{ backgroundColor: (CRM_META[l.stage] || ["", "#666"])[1] }}
                         onChange={(e) => updateLead(l.email, { stage: e.target.value })}>
@@ -2804,6 +2828,7 @@ export default function App() {
             {(followUps.length + relance.length + setRelance.length) === 0 && <div className="empty" style={{ padding: 20 }}>Personne à relancer 🎉</div>}
             {[
               ...followUps.map((l) => ({ l, tag: "Follow-up 🔁", tone: TONES.yes })),
+              ...followUpsLater.map((l) => ({ l, tag: `🔁 Relance le ${frD(l.followUpAt)}`, tone: TONES.yes })),
               ...relance.map((l) => ({ l, tag: l.stage === "noshow" ? "No-show" : "Annulé", tone: l.stage === "noshow" ? TONES.noshow : TONES.cancelled })),
               ...setRelance.filter((l) => !relance.includes(l)).map((l) => ({ l, tag: l.setStatus === "nrp" ? "NRP 📵" : "Cancel", tone: SET_TONES[l.setStatus] })),
             ].map(({ l, tag, tone }) => (
@@ -2996,6 +3021,12 @@ export default function App() {
                     <option value="no">Non</option>
                   </select>
                 </label>
+                {L.followUp === "yes" ? (
+                  <label className="ls-out-l">Relancer le
+                    <input type="date" className="fup-date" style={{ borderRadius: 8 }} value={L.followUpAt || ""}
+                      onChange={(e) => updateLead(L.email, { followUpAt: e.target.value })} />
+                  </label>
+                ) : null}
               </div>
 
               {L.bookedAt || L.lastCall ? (<>

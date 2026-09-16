@@ -128,6 +128,12 @@ module.exports = async (req, res) => {
       if (body.followUp !== undefined) {
         const v = ["yes", "no", ""].includes(body.followUp) ? body.followUp : "";
         lead.followUp = v || undefined;
+        if (v !== "yes") lead.followUpAt = undefined; // plus de follow-up -> plus de date
+      }
+      // Date de relance du follow-up (apparaît dans la todo du closer le jour J)
+      if (body.followUpAt !== undefined) {
+        const v = String(body.followUpAt || "");
+        lead.followUpAt = /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : undefined;
       }
       if (body.autoStage === true) lead.manualStage = false;
       lead.updatedAt = new Date().toISOString();
