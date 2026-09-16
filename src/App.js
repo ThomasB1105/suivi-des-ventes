@@ -856,7 +856,7 @@ export default function App() {
     } catch (e) { flash(`Matching : ${e.message}`); }
   };
   useEffect(() => { if (tab === "equipe" && isAdmin) loadTeam(); }, [tab]); // eslint-disable-line
-  useEffect(() => { if (isAdmin) loadTeam(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (isAdmin) { loadTeam(); loadCrm(true); } }, []); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (isAdmin) return;
     authFetch("/api/me").then((r) => r.json()).then((d) => { if (d && d.stats) setMeStats({ ...d.stats, rate: d.rate }); }).catch(() => {});
@@ -1809,6 +1809,75 @@ export default function App() {
           })}
         </div>
       )}
+
+      {/* ACOMPTES — clients qui n'ont payé QUE 100 € ou 200 € (à compléter) */}
+      {tab === "clients" && (() => {
+        const deposits = sales
+          .map((sl) => ({ s: sl, paid: sl.schedule.filter((i) => i.paid).reduce((a, i) => a + i.amount, 0), lastPaid: sl.schedule.filter((i) => i.paid).map((i) => i.dueDate).sort().pop() }))
+          .filter((x) => x.paid === 100 || x.paid === 200)
+          .sort((a, b) => String(b.lastPaid || "").localeCompare(String(a.lastPaid || "")));
+        return (<>
+          <div className="section-h" style={{ marginTop: 28 }}><Landmark size={15} /> Acomptes à compléter · payé uniquement 100 € ou 200 € <span className="mnd-gcount">{deposits.length}</span></div>
+          <div className="card" style={{ padding: 0, overflowX: "auto" }}>
+            <table className="tbl">
+              <thead><tr><th>Client</th><th>Email</th><th>Téléphone</th><th className="num">Acompte payé</th><th className="num">Total contracté</th><th className="num">Reste dû</th><th>Payé le</th><th>Offre</th><th /></tr></thead>
+              <tbody>
+                {deposits.map(({ s: sl, paid, lastPaid }) => (
+                  <tr key={sl.id}>
+                    <td className="lab"><button className="client-link" onClick={() => openEdit(sl)}>{sl.client} <Pencil size={11} /></button></td>
+                    <td className="mut" style={{ fontSize: 12.5 }}>{sl.email || "—"}</td>
+                    <td>{sl.phone ? <a href={`tel:${String(sl.phone).replace(/[^+0-9]/g, "")}`} style={{ color: "var(--cyan)", textDecoration: "none", fontWeight: 600 }}>{sl.phone}</a> : <span className="mut">—</span>}</td>
+                    <td className="num" style={{ fontWeight: 800, color: "var(--amber)" }}>{euro(paid)}</td>
+                    <td className="num">{euro(sl.total)}</td>
+                    <td className="num" style={{ fontWeight: 700, color: "var(--red)" }}>{euro(Math.max(0, sl.total - paid))}</td>
+                    <td className="mut" style={{ fontSize: 12.5 }}>{lastPaid ? dateLabel(lastPaid) : "—"}</td>
+                    <td className="mut" style={{ fontSize: 12.5 }}>{sl.offer || "—"}</td>
+                    <td className="num"><button className="esp-open" onClick={() => openEdit(sl)}>Ouvrir</button></td>
+                  </tr>
+                ))}
+                {deposits.length === 0 && <tr><td colSpan={9}><div className="empty" style={{ padding: 18 }}>Aucun acompte isolé — tous les payeurs ont dépassé 100/200 € 🎉</div></td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </>);
+      })()}
+
+      {/* FOLLOW-UPS — tous les leads à relancer, avec ou sans date */}
+      {tab === "clients" && (() => {
+        const t0 = toISO(new Date());
+        const fus = (crm.leads || [])
+          .filter((l) => l.followUp === "yes" && !["won", "dead"].includes(l.stage))
+          .sort((a, b) => String(a.followUpAt || "9999").localeCompare(String(b.followUpAt || "9999")));
+        const dd = (d) => `${d.slice(8, 10)}/${d.slice(5, 7)}`;
+        const badge = (l) => {
+          if (!l.followUpAt) return <span className="esp-tag" style={{ color: "#475467", borderColor: "#E3E6EA", background: "#F9FAFB", marginLeft: 0 }}>Sans date</span>;
+          if (l.followUpAt < t0) return <span className="esp-tag" style={{ color: "#B42318", borderColor: "#FECDCA", background: "#FEF3F2", marginLeft: 0 }}>Dépassé · {dd(l.followUpAt)}</span>;
+          if (l.followUpAt === t0) return <span className="esp-tag" style={{ color: "#067647", borderColor: "#ABEFC6", background: "#ECFDF3", marginLeft: 0 }}>Aujourd'hui</span>;
+          return <span className="esp-tag" style={{ color: "#5925DC", borderColor: "#D9D6FE", background: "#F4F3FF", marginLeft: 0 }}>Le {dd(l.followUpAt)}</span>;
+        };
+        return (<>
+          <div className="section-h" style={{ marginTop: 28 }}><RotateCcw size={15} /> Follow-ups à relancer <span className="mnd-gcount">{fus.length}</span></div>
+          <div className="card" style={{ padding: 0, overflowX: "auto" }}>
+            <table className="tbl">
+              <thead><tr><th>Lead</th><th>Email</th><th>Téléphone</th><th>Closer</th><th>Relance prévue</th><th>Dernier call</th><th /></tr></thead>
+              <tbody>
+                {fus.map((l) => (
+                  <tr key={l.email}>
+                    <td className="lab"><button className="client-link" onClick={() => setLeadOpen(l.email)}>{l.name && l.name !== l.email ? l.name : l.email} <Pencil size={11} /></button></td>
+                    <td className="mut" style={{ fontSize: 12.5 }}>{l.email}</td>
+                    <td>{l.phone ? <a href={`tel:${String(l.phone).replace(/[^+0-9]/g, "")}`} style={{ color: "var(--cyan)", textDecoration: "none", fontWeight: 600 }}>{l.phone}</a> : <span className="mut">—</span>}</td>
+                    <td className="mut" style={{ fontSize: 12.5 }}>{l.closer || "—"}</td>
+                    <td>{badge(l)}</td>
+                    <td className="mut" style={{ fontSize: 12.5 }}>{(toParis((l.lastCall && l.lastCall.date) || l.bookedAt || "").slice(0, 10) || "—")}</td>
+                    <td className="num"><button className="esp-open" onClick={() => setLeadOpen(l.email)}>Ouvrir la fiche</button></td>
+                  </tr>
+                ))}
+                {fus.length === 0 && <tr><td colSpan={7}><div className="empty" style={{ padding: 18 }}>Aucun lead en follow-up.</div></td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </>);
+      })()}
 
       {/* COHORTES — matrice façon tableur */}
       {tab === "cohortes" && (

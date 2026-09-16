@@ -186,6 +186,7 @@ module.exports = async (req, res) => {
         if (l) {
           if (l.closer) s.closer = resolve(l.closer);
           if (l.setter) s.setter = resolve(l.setter);
+          if (l.phone && !s.phone) s.phone = String(l.phone); // téléphone du CRM (liste des acomptes)
         }
       });
     } catch (e) { /* CRM optionnel */ }
