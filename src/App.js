@@ -2666,9 +2666,12 @@ export default function App() {
         // Avec une date de relance, la tâche n'apparaît dans la todo QUE le
         // jour J (ou en retard) ; sans date, elle reste visible tout de suite.
         const followUpsAll = isSetter ? [] : mine.filter((l) => l.followUp === "yes" && !["won", "dead"].includes(l.stage));
-        const followUps = followUpsAll.filter((l) => !l.followUpAt || l.followUpAt <= today).sort((a, b) => String(a.followUpAt || dOfL(a)).localeCompare(String(b.followUpAt || dOfL(b))));
+        const fupAge = (l) => l.followUpAt ? Math.round((parseLocal(today) - parseLocal(l.followUpAt)) / 864e5) : 0; // jours depuis la date de relance
+        const followUps = followUpsAll.filter((l) => !l.followUpAt || (l.followUpAt <= today && fupAge(l) <= 3)).sort((a, b) => String(a.followUpAt || dOfL(a)).localeCompare(String(b.followUpAt || dOfL(b))));
         const followUpsLater = followUpsAll.filter((l) => l.followUpAt && l.followUpAt > today).sort((a, b) => String(a.followUpAt).localeCompare(String(b.followUpAt)));
-        const relance = mine.filter((l) => (l.stage === "noshow" || l.showUp === "cancelled") && l.followUp !== "yes" && !["won", "dead"].includes(l.stage));
+        const followUpsOld = followUpsAll.filter((l) => l.followUpAt && fupAge(l) > 3).sort((a, b) => String(b.followUpAt).localeCompare(String(a.followUpAt)));
+        // Re-booker les no-shows / annulés : c'est le job du SETTER, pas du closer.
+        const relance = isSetter ? mine.filter((l) => (l.stage === "noshow" || l.showUp === "cancelled") && l.followUp !== "yes" && !["won", "dead"].includes(l.stage)) : [];
         // Leads ENTRANTS à traiter : les NOUVEAUX (14 derniers jours) — les
         // siens + ceux pas encore attribués. L'historique complet reste dans
         // l'onglet Leads VSL.
@@ -2693,7 +2696,7 @@ export default function App() {
           ...needResult.map((l) => ({ ico: "📝", txt: "Renseigner le résultat du call", l })),
           ...needFathom.map((l) => ({ ico: "🎥", txt: "Coller le lien Fathom", l })),
           ...relance.filter((l) => !noShowVeille.includes(l)).map((l) => ({ ico: "🔄", txt: l.stage === "noshow" ? "No-show : re-booker un call" : "Annulé : re-booker un call", l })),
-          ...followUps.map((l) => ({ ico: "🔁", txt: l.followUpAt ? (l.followUpAt < today ? "Follow-up EN RETARD : relancer" : "Follow-up du jour : relancer") : "Follow-up : relancer", l })),
+          ...followUps.map((l) => ({ ico: "🔁", txt: l.followUpAt ? (l.followUpAt < today ? `Follow-up (J+${fupAge(l)}) : relancer` : "Follow-up du jour : relancer") : "Follow-up : relancer", l })),
         ];
         const copyJoin = (l) => { try { navigator.clipboard.writeText(l.links.join); flash("Lien du call copié 📋"); } catch (e) { window.prompt("Copie le lien :", l.links.join); } };
         const dateFr = new Date().toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" });
@@ -2854,12 +2857,13 @@ export default function App() {
             {todos.length > 30 && <div className="mnd-foot"><span>+{todos.length - 30} autres tâches</span></div>}
           </div>
 
-          <div className="esp-sec">🔁 À relancer & follow-ups <span className="mnd-gcount">{followUps.length + relance.length + setRelance.length}</span></div>
+          <div className="esp-sec">🔁 À relancer & follow-ups <span className="mnd-gcount">{followUps.length + followUpsLater.length + followUpsOld.length + relance.length + setRelance.length}</span></div>
           <div className="card" style={{ padding: 0, overflow: "hidden", marginBottom: 26 }}>
-            {(followUps.length + relance.length + setRelance.length) === 0 && <div className="empty" style={{ padding: 20 }}>Personne à relancer 🎉</div>}
+            {(followUps.length + followUpsLater.length + followUpsOld.length + relance.length + setRelance.length) === 0 && <div className="empty" style={{ padding: 20 }}>Personne à relancer 🎉</div>}
             {[
               ...followUps.map((l) => ({ l, tag: "Follow-up 🔁", tone: TONES.yes })),
               ...followUpsLater.map((l) => ({ l, tag: `🔁 Relance le ${frD(l.followUpAt)}`, tone: TONES.yes })),
+              ...followUpsOld.map((l) => ({ l, tag: `Follow-up dépassé (${frD(l.followUpAt)})`, tone: TONES.lost })),
               ...relance.map((l) => ({ l, tag: l.stage === "noshow" ? "No-show" : "Annulé", tone: l.stage === "noshow" ? TONES.noshow : TONES.cancelled })),
               ...setRelance.filter((l) => !relance.includes(l)).map((l) => ({ l, tag: l.setStatus === "nrp" ? "NRP 📵" : "Cancel", tone: SET_TONES[l.setStatus] })),
             ].map(({ l, tag, tone }) => (
