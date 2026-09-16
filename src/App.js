@@ -716,7 +716,7 @@ export default function App() {
   // base en continu ; l'interface se resynchronise toute seule (toutes les
   // 45 s quand l'onglet est visible, et au retour sur la fenêtre).
   useEffect(() => {
-    if (!(tab === "crm" || tab === "calendrier" || tab === "espace" || tab === "vsl")) return;
+    if (!(tab === "crm" || tab === "calendrier" || tab === "espace" || tab === "vsl" || tab === "followups")) return;
     loadCrm(); if (isAdmin) loadTeam();
     const iv = setInterval(() => { if (document.visibilityState === "visible") loadCrm(true); }, 45000);
     const onFocus = () => { if (document.visibilityState !== "hidden") loadCrm(true); };
@@ -1062,7 +1062,7 @@ export default function App() {
   const overduesF = sortOverdue((impAll ? allOverdue : overdues).filter((i) => matchQ(i.sale)));
   const periodListF = periodList.filter((i) => matchQ(i.sale));
 
-  const SECTION = { clients: "Tableau de bord", cohortes: "Cohortes", mois: "Par mois", collecte: "À collecter", impayes: "Impayés", couts: "Coûts", closers: "Closers", crm: "CRM", calendrier: "Calendrier", equipe: "Équipe", espace: "Ma journée", vsl: "Leads VSL" };
+  const SECTION = { clients: "Tableau de bord", cohortes: "Cohortes", mois: "Par mois", collecte: "À collecter", impayes: "Impayés", couts: "Coûts", closers: "Closers", crm: "CRM", calendrier: "Calendrier", equipe: "Équipe", espace: "Ma journée", vsl: "Leads VSL", acomptes: "Acomptes", followups: "Follow-ups" };
   const go = (t) => { setTab(t); setNavOpen(false); };
   const navCls = (t) => `nav-item ${tab === t ? "active" : ""}`;
   const logout = () => { try { localStorage.removeItem("melo_token"); localStorage.removeItem("melo_role"); localStorage.removeItem("melo_name"); } catch (e) { /* ignore */ } window.location.reload(); };
@@ -1570,6 +1570,9 @@ export default function App() {
             <button className={navCls("vsl")} onClick={() => go("vsl")}><Leaf size={16} /> Leads VSL</button>
             <button className={navCls("calendrier")} onClick={() => go("calendrier")}><Calendar size={16} /> Calendrier</button>
             <button className={navCls("equipe")} onClick={() => go("equipe")}><Users size={16} /> Équipe</button>
+            <div className="nav-label">Suivi</div>
+            <button className={navCls("acomptes")} onClick={() => go("acomptes")}><Landmark size={16} /> Acomptes</button>
+            <button className={navCls("followups")} onClick={() => go("followups")}><RotateCcw size={16} /> Follow-ups</button>
           </>) : (<>
             <div className="nav-label">Mon espace</div>
             <button className={navCls("espace")} onClick={() => go("espace")}><UserCheck size={16} /> Ma journée</button>
@@ -1811,7 +1814,7 @@ export default function App() {
       )}
 
       {/* ACOMPTES — clients qui n'ont payé QUE 100 € ou 200 € (à compléter) */}
-      {tab === "clients" && (() => {
+      {tab === "acomptes" && (() => {
         const deposits = sales
           .map((sl) => ({ s: sl, paid: sl.schedule.filter((i) => i.paid).reduce((a, i) => a + i.amount, 0), lastPaid: sl.schedule.filter((i) => i.paid).map((i) => i.dueDate).sort().pop() }))
           .filter((x) => x.paid === 100 || x.paid === 200)
@@ -1843,7 +1846,7 @@ export default function App() {
       })()}
 
       {/* FOLLOW-UPS — tous les leads à relancer, avec ou sans date */}
-      {tab === "clients" && (() => {
+      {tab === "followups" && (() => {
         const t0 = toISO(new Date());
         const fus = (crm.leads || [])
           .filter((l) => l.followUp === "yes" && !["won", "dead"].includes(l.stage))
