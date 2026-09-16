@@ -764,12 +764,31 @@ export default function App() {
       <option value="yes">Follow-up : oui 🔁</option>
       <option value="no">Follow-up : non</option>
     </select>
-    {l.followUp === "yes" ? (
-      <input type="date" className="fup-date" value={l.followUpAt || ""} title="Date de relance — la tâche apparaît dans la todo du closer le jour J"
-        onClick={(e) => e.stopPropagation()}
-        onChange={(e) => updateLead(l.email, { followUpAt: e.target.value })} />
-    ) : null}
+    {l.followUp === "yes" ? fupDateSelect(l) : null}
   </>);
+
+  // Date de relance : menu de raccourcis (demain, +3 j, 1 semaine…) — bien
+  // plus agréable que le calendrier natif du navigateur.
+  const fupDateSelect = (l) => {
+    const mk = (n) => toISO(new Date(Date.now() + n * 864e5));
+    const dd = (d) => `${d.slice(8, 10)}/${d.slice(5, 7)}`;
+    return (
+      <select className="out-select" style={l.followUpAt ? TONES.yes : {}} value={l.followUpAt || ""} title="Quand relancer ? La tâche apparaît dans la todo du closer le jour J"
+        onClick={(e) => e.stopPropagation()}
+        onChange={(e) => updateLead(l.email, { followUpAt: e.target.value })}>
+        {l.followUpAt
+          ? <option value={l.followUpAt}>🔁 Relance le {dd(l.followUpAt)}</option>
+          : <option value="">Quand relancer ?</option>}
+        <option value={mk(1)}>Demain · {dd(mk(1))}</option>
+        <option value={mk(2)}>Dans 2 jours · {dd(mk(2))}</option>
+        <option value={mk(3)}>Dans 3 jours · {dd(mk(3))}</option>
+        <option value={mk(7)}>Dans 1 semaine · {dd(mk(7))}</option>
+        <option value={mk(14)}>Dans 2 semaines · {dd(mk(14))}</option>
+        <option value={mk(30)}>Dans 1 mois · {dd(mk(30))}</option>
+        {l.followUpAt ? <option value="">— retirer la date —</option> : null}
+      </select>
+    );
+  };
 
   // Aperçu admin de l'espace d'un membre (Équipe → « Voir son espace »).
   const [viewAs, setViewAs] = useState(null); // { name, role, rate }
@@ -1479,9 +1498,9 @@ export default function App() {
         .out-select option{color:#111;background:#fff;font-weight:600;}
         .fup-date{border:1.5px solid #D9D6FE;background:#F4F3FF;color:#5925DC;border-radius:999px;padding:7px 12px;font-family:'Inter';font-size:11.5px;font-weight:700;cursor:pointer;width:186px;box-sizing:border-box;}
         .fup-date:focus{outline:none;border-color:var(--cyan);box-shadow:0 0 0 3px rgba(108,92,231,.12);}
-        .cal-note{flex:1 1 320px;width:auto;max-width:560px;min-width:220px;min-height:56px;background:#FFFDF3;border:1.5px solid #FDE68A;border-radius:12px;padding:10px 13px;font-family:'Inter';font-size:13px;line-height:1.5;color:#54430A;resize:vertical;transition:border-color .12s, box-shadow .12s;}
-        .cal-note::placeholder{color:#B49B4A;}
-        .cal-note:focus{outline:none;border-color:#F0C420;box-shadow:0 0 0 3px rgba(240,196,32,.15);}
+        .cal-note{flex:1 1 420px;width:auto;max-width:none;min-width:260px;min-height:56px;background:#FFFFFF;border:1.5px solid #E3E6EA;border-radius:12px;padding:10px 14px;font-family:'Inter';font-size:13.5px;line-height:1.55;color:var(--text);resize:vertical;transition:border-color .12s, box-shadow .12s;}
+        .cal-note::placeholder{color:#98A2B3;}
+        .cal-note:focus{outline:none;border-color:var(--cyan);box-shadow:0 0 0 3px rgba(108,92,231,.12);}
         /* Équipe */
         .team-form{display:flex;gap:10px;flex-wrap:wrap;align-items:center;}
         .team-form .tf{background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:10px;padding:10px 13px;font-family:'Inter';font-size:13px;min-width:150px;}
@@ -3025,8 +3044,7 @@ export default function App() {
                 </label>
                 {L.followUp === "yes" ? (
                   <label className="ls-out-l">Relancer le
-                    <input type="date" className="fup-date" style={{ borderRadius: 8 }} value={L.followUpAt || ""}
-                      onChange={(e) => updateLead(L.email, { followUpAt: e.target.value })} />
+                    {fupDateSelect(L)}
                   </label>
                 ) : null}
               </div>
