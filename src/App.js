@@ -767,26 +767,23 @@ export default function App() {
     {l.followUp === "yes" ? fupDateSelect(l) : null}
   </>);
 
-  // Date de relance : menu de raccourcis (demain, +3 j, 1 semaine…) — bien
-  // plus agréable que le calendrier natif du navigateur.
+  // Date de relance : calendrier custom (popover), dans la DA de l'app.
+  const [fupPick, setFupPick] = useState(null); // { email, x, y, month, value }
+  const openFupCal = (e, l) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    const H = 340;
+    const top = (r.bottom + H > window.innerHeight) ? Math.max(10, r.top - H) : r.bottom + 6;
+    const left = Math.min(r.left, Math.max(10, (window.innerWidth || 1200) - 290));
+    setFupPick({ email: l.email, x: left, y: top, month: (l.followUpAt || toISO(new Date())).slice(0, 7), value: l.followUpAt || "" });
+  };
   const fupDateSelect = (l) => {
-    const mk = (n) => toISO(new Date(Date.now() + n * 864e5));
     const dd = (d) => `${d.slice(8, 10)}/${d.slice(5, 7)}`;
     return (
-      <select className="out-select" style={l.followUpAt ? TONES.yes : {}} value={l.followUpAt || ""} title="Quand relancer ? La tâche apparaît dans la todo du closer le jour J"
-        onClick={(e) => e.stopPropagation()}
-        onChange={(e) => updateLead(l.email, { followUpAt: e.target.value })}>
-        {l.followUpAt
-          ? <option value={l.followUpAt}>🔁 Relance le {dd(l.followUpAt)}</option>
-          : <option value="">Quand relancer ?</option>}
-        <option value={mk(1)}>Demain · {dd(mk(1))}</option>
-        <option value={mk(2)}>Dans 2 jours · {dd(mk(2))}</option>
-        <option value={mk(3)}>Dans 3 jours · {dd(mk(3))}</option>
-        <option value={mk(7)}>Dans 1 semaine · {dd(mk(7))}</option>
-        <option value={mk(14)}>Dans 2 semaines · {dd(mk(14))}</option>
-        <option value={mk(30)}>Dans 1 mois · {dd(mk(30))}</option>
-        {l.followUpAt ? <option value="">— retirer la date —</option> : null}
-      </select>
+      <button type="button" className="out-select" title="Choisir la date de relance — la tâche tombe dans la todo le jour J"
+        style={l.followUpAt ? TONES.yes : { borderStyle: "dashed", color: "#98A2B3", fontWeight: 600 }}
+        onClick={(e) => { e.stopPropagation(); openFupCal(e, l); }}>
+        {l.followUpAt ? `🔁 Relance le ${dd(l.followUpAt)}` : "📅 Quand relancer ?"}
+      </button>
     );
   };
 
@@ -1498,6 +1495,19 @@ export default function App() {
         .out-select option{color:#111;background:#fff;font-weight:600;}
         .fup-date{border:1.5px solid #D9D6FE;background:#F4F3FF;color:#5925DC;border-radius:999px;padding:7px 12px;font-family:'Inter';font-size:11.5px;font-weight:700;cursor:pointer;width:186px;box-sizing:border-box;}
         .fup-date:focus{outline:none;border-color:var(--cyan);box-shadow:0 0 0 3px rgba(108,92,231,.12);}
+        .fupcal-veil{position:fixed;inset:0;z-index:200;}
+        .fupcal{position:fixed;z-index:201;background:#fff;border:1px solid #E6E8EE;border-radius:14px;box-shadow:0 18px 50px rgba(16,24,40,.18);padding:14px;width:266px;box-sizing:border-box;}
+        .fupcal-h{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;font-weight:800;font-size:13.5px;text-transform:capitalize;font-family:'Montserrat';}
+        .fupcal-h button{border:1px solid #E3E6EA;background:#fff;border-radius:8px;width:28px;height:28px;cursor:pointer;font-size:15px;color:var(--text);display:flex;align-items:center;justify-content:center;}
+        .fupcal-h button:hover{border-color:var(--cyan);color:var(--cyan);}
+        .fupcal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:3px;}
+        .fupcal-wd{font-size:10.5px;font-weight:700;color:var(--muted);text-align:center;padding:4px 0;}
+        .fupcal-d{border:none;background:transparent;border-radius:8px;padding:7px 0;font-family:'Inter';font-size:12.5px;font-weight:600;color:var(--text);cursor:pointer;transition:background .1s;}
+        .fupcal-d:hover{background:#F1EEFF;color:#5B3DF5;}
+        .fupcal-d.tod{box-shadow:inset 0 0 0 1.5px #C7BEF9;}
+        .fupcal-d.sel{background:var(--cyan);color:#fff;}
+        .fupcal-d.past{color:#B6BEC9;}
+        .fupcal-clear{margin-top:10px;width:100%;border:1px solid #FECDCA;background:#FEF3F2;color:#B42318;border-radius:9px;padding:8px;font-weight:700;font-size:12px;cursor:pointer;font-family:'Inter';}
         .cal-note{flex:1 1 420px;width:auto;max-width:none;min-width:260px;min-height:56px;background:#FFFFFF;border:1.5px solid #E3E6EA;border-radius:12px;padding:10px 14px;font-family:'Inter';font-size:13.5px;line-height:1.55;color:var(--text);resize:vertical;transition:border-color .12s, box-shadow .12s;}
         .cal-note::placeholder{color:#98A2B3;}
         .cal-note:focus{outline:none;border-color:var(--cyan);box-shadow:0 0 0 3px rgba(108,92,231,.12);}
@@ -2980,6 +2990,44 @@ export default function App() {
       </>)}
 
       </main>
+
+      {/* Calendrier custom de date de relance (follow-up) */}
+      {fupPick && (() => {
+        const [Y, M] = fupPick.month.split("-").map(Number);
+        const first = new Date(Y, M - 1, 1);
+        const startIdx = (first.getDay() + 6) % 7; // semaine qui commence lundi
+        const nbDays = new Date(Y, M, 0).getDate();
+        const cells = [...Array(startIdx).fill(null), ...Array.from({ length: nbDays }, (_, i) => i + 1)];
+        const mLabel = first.toLocaleDateString("fr-FR", { month: "long", year: "numeric" });
+        const p2 = (n) => String(n).padStart(2, "0");
+        const shift = (d) => { const n = new Date(Y, M - 1 + d, 1); setFupPick({ ...fupPick, month: `${n.getFullYear()}-${p2(n.getMonth() + 1)}` }); };
+        const todayIso = toISO(new Date());
+        const pick = (day) => { const v = `${Y}-${p2(M)}-${p2(day)}`; updateLead(fupPick.email, { followUpAt: v }); setFupPick(null); };
+        return (<>
+          <div className="fupcal-veil" onClick={() => setFupPick(null)} />
+          <div className="fupcal" style={{ left: fupPick.x, top: fupPick.y }}>
+            <div className="fupcal-h">
+              <button type="button" onClick={() => shift(-1)}>‹</button>
+              <span>{mLabel}</span>
+              <button type="button" onClick={() => shift(1)}>›</button>
+            </div>
+            <div className="fupcal-grid">
+              {["L", "M", "M", "J", "V", "S", "D"].map((d, i) => <span key={"wd" + i} className="fupcal-wd">{d}</span>)}
+              {cells.map((d, i) => {
+                if (d === null) return <span key={i} />;
+                const iso = `${Y}-${p2(M)}-${p2(d)}`;
+                return (
+                  <button type="button" key={i} onClick={() => pick(d)}
+                    className={`fupcal-d${iso === fupPick.value ? " sel" : ""}${iso === todayIso ? " tod" : ""}${iso < todayIso ? " past" : ""}`}>
+                    {d}
+                  </button>
+                );
+              })}
+            </div>
+            {fupPick.value ? <button type="button" className="fupcal-clear" onClick={() => { updateLead(fupPick.email, { followUpAt: "" }); setFupPick(null); }}>Retirer la date</button> : null}
+          </div>
+        </>);
+      })()}
 
       {/* FICHE LEAD — réponses aux questions, coordonnées, notes, historique */}
       {leadOpen && (() => {
