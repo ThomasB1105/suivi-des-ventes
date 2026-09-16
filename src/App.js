@@ -1479,7 +1479,9 @@ export default function App() {
         .out-select option{color:#111;background:#fff;font-weight:600;}
         .fup-date{border:1.5px solid #D9D6FE;background:#F4F3FF;color:#5925DC;border-radius:999px;padding:7px 12px;font-family:'Inter';font-size:11.5px;font-weight:700;cursor:pointer;width:186px;box-sizing:border-box;}
         .fup-date:focus{outline:none;border-color:var(--cyan);box-shadow:0 0 0 3px rgba(108,92,231,.12);}
-        .cal-note{flex:0 1 240px;width:auto;max-width:280px;min-width:120px;}
+        .cal-note{flex:1 1 320px;width:auto;max-width:560px;min-width:220px;min-height:56px;background:#FFFDF3;border:1.5px solid #FDE68A;border-radius:12px;padding:10px 13px;font-family:'Inter';font-size:13px;line-height:1.5;color:#54430A;resize:vertical;transition:border-color .12s, box-shadow .12s;}
+        .cal-note::placeholder{color:#B49B4A;}
+        .cal-note:focus{outline:none;border-color:#F0C420;box-shadow:0 0 0 3px rgba(240,196,32,.15);}
         /* Équipe */
         .team-form{display:flex;gap:10px;flex-wrap:wrap;align-items:center;}
         .team-form .tf{background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:10px;padding:10px 13px;font-family:'Inter';font-size:13px;min-width:150px;}
@@ -2444,7 +2446,7 @@ export default function App() {
                       <div className="cal-name">{l.name && l.name !== l.email ? l.name : l.email}{l.closer ? <span className="mut" style={{ fontWeight: 500 }}> · {l.closer}</span> : null}</div>
                       <div className="cal-sub">{callEvent(l) || srcOf(l)}{l.phone ? ` · ${l.phone}` : ""}</div>
                     </div>
-                    <input className="crm-input cal-note" placeholder="📝 Note setting…" defaultValue={l.notes || ""} key={l.email + "|n|" + (l.notes || "")}
+                    <textarea className="cal-note" rows={2} placeholder="📝 Note setting…" defaultValue={l.notes || ""} key={l.email + "|n|" + (l.notes || "")}
                       title="Note setting — visible par le closer et sur la fiche"
                       onClick={(e) => e.stopPropagation()}
                       onBlur={(e) => { const v = e.target.value; if (v !== (l.notes || "")) updateLead(l.email, { notes: v }); }} />
@@ -2730,7 +2732,7 @@ export default function App() {
                         <div className="cal-name">{nmOf(l)}{isSetter && l.closer ? <span className="mut" style={{ fontWeight: 500 }}> · {l.closer}</span> : null}</div>
                         <div className="cal-sub">{l.bookedEvent || (l.lastCall && l.lastCall.event) || ""}{l.phone ? ` · ${l.phone}` : ""}</div>
                       </div>
-                      <input className="crm-input cal-note" placeholder="📝 Note setting…" defaultValue={l.notes || ""} key={l.email + "|n|" + (l.notes || "")}
+                      <textarea className="cal-note" rows={2} placeholder="📝 Note setting…" defaultValue={l.notes || ""} key={l.email + "|n|" + (l.notes || "")}
                         title="Note setting — visible par le closer et sur la fiche"
                         onClick={(e) => e.stopPropagation()}
                         onBlur={(e) => { const v = e.target.value; if (v !== (l.notes || "")) updateLead(l.email, { notes: v }); }} />
