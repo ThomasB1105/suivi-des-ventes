@@ -695,6 +695,7 @@ export default function App() {
   const [calView, setCalView] = useState("upcoming"); // calendrier : "today" | "upcoming" | "past"
   const [vslView, setVslView] = useState("recent"); // Leads VSL : "recent" (14 j) | "all"
   const [sapView, setSapView] = useState("30"); // Saphia : fenêtre en jours ("7"|"30"|"90"|"all")
+  const [sapCloser, setSapCloser] = useState("all"); // Saphia : filtre par closer
   const loadCrm = async (silent) => {
     if (!silent) setCrmLoading(true);
     try { const r = await authFetch("/api/crm"); const d = await r.json(); if (d && d.leads) setCrm(d); } catch (e) { /* ignore */ }
@@ -1899,8 +1900,10 @@ export default function App() {
         const minD = toISO(new Date(Date.now() - winDays * 864e5));
         const base = (crm.leads || []).filter((l) => l.hasCall !== false && !["won", "dead"].includes(l.stage) && dOfL(l) && dOfL(l) <= today0);
         const q = crmQ.trim().toLowerCase();
+        const closersList = [...new Set(base.map((l) => l.closer).filter(Boolean))].sort();
         const rows = base
           .filter((l) => dOfL(l) >= minD)
+          .filter((l) => sapCloser === "all" || String(l.closer || "").toLowerCase() === sapCloser.toLowerCase())
           .filter((l) => !q || [l.name, l.email, l.phone, l.closer].some((v) => String(v || "").toLowerCase().includes(q)))
           .sort((a, b) => dOfL(b).localeCompare(dOfL(a)));
         const OUT_META = {
@@ -1923,6 +1926,10 @@ export default function App() {
                   <button key={v} className={`crm-chip ${sapView === v ? "on" : ""}`} onClick={() => setSapView(v)}>{lbl}</button>
                 ))}
               </div>
+              <select className="attr-sel" value={sapCloser} onChange={(e) => setSapCloser(e.target.value)} title="Filtrer par closer (ex. uniquement les calls de Melo)">
+                <option value="all">Tous les closers</option>
+                {closersList.map((n) => <option key={n} value={n}>{n}</option>)}
+              </select>
               <div className="crm-search"><Search size={14} /><input value={crmQ} onChange={(e) => setCrmQ(e.target.value)} placeholder="Rechercher (nom, email, closer…)" /></div>
               <button className={`refresh-btn ${crmLoading ? "is-loading" : ""}`} onClick={() => loadCrm()} disabled={crmLoading}><RotateCcw size={15} className={crmLoading ? "spin" : ""} /> Actualiser</button>
             </div>
