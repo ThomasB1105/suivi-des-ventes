@@ -1067,7 +1067,7 @@ export default function App() {
   const overduesF = sortOverdue((impAll ? allOverdue : overdues).filter((i) => matchQ(i.sale)));
   const periodListF = periodList.filter((i) => matchQ(i.sale));
 
-  const SECTION = { clients: "Tableau de bord", cohortes: "Cohortes", mois: "Par mois", collecte: "À collecter", impayes: "Impayés", couts: "Coûts", closers: "Closers", crm: "CRM", calendrier: "Calendrier", equipe: "Équipe", espace: "Ma journée", vsl: "Leads VSL", acomptes: "Acomptes", followups: "Follow-ups", saphia: "Saphia · Récup" };
+  const SECTION = { clients: "Tableau de bord", cohortes: "Cohortes", mois: "Par mois", collecte: "À collecter", impayes: "Impayés", couts: "Coûts", closers: "Closers", crm: "CRM", calendrier: "Calendrier", equipe: "Équipe", espace: "Ma journée", vsl: "Leads VSL", acomptes: "Acomptes", followups: "Follow-ups", saphia: "Saphia follow up" };
   const go = (t) => { setTab(t); setNavOpen(false); };
   const navCls = (t) => `nav-item ${tab === t ? "active" : ""}`;
   const logout = () => { try { localStorage.removeItem("melo_token"); localStorage.removeItem("melo_role"); localStorage.removeItem("melo_name"); } catch (e) { /* ignore */ } window.location.reload(); };
@@ -1579,12 +1579,12 @@ export default function App() {
             <div className="nav-label">Suivi</div>
             <button className={navCls("acomptes")} onClick={() => go("acomptes")}><Landmark size={16} /> Acomptes</button>
             <button className={navCls("followups")} onClick={() => go("followups")}><RotateCcw size={16} /> Follow-ups</button>
-            <button className={navCls("saphia")} onClick={() => go("saphia")}><Phone size={16} /> Saphia · Récup</button>
+            <button className={navCls("saphia")} onClick={() => go("saphia")}><Phone size={16} /> Saphia follow up</button>
           </>) : (<>
             <div className="nav-label">Mon espace</div>
             <button className={navCls("espace")} onClick={() => go("espace")}><UserCheck size={16} /> Ma journée</button>
             {me.role === "setter" && <button className={navCls("vsl")} onClick={() => go("vsl")}><Leaf size={16} /> Leads VSL</button>}
-            {isSaphiaUser && <button className={navCls("saphia")} onClick={() => go("saphia")}><Phone size={16} /> Récup</button>}
+            {isSaphiaUser && <button className={navCls("saphia")} onClick={() => go("saphia")}><Phone size={16} /> Follow up</button>}
             <button className={navCls("calendrier")} onClick={() => go("calendrier")}><Calendar size={16} /> Mon agenda</button>
             <button className={navCls("crm")} onClick={() => go("crm")}><ClipboardList size={16} /> Mes calls</button>
           </>)}
@@ -1920,7 +1920,7 @@ export default function App() {
         const frD2 = (d) => (d ? `${d.slice(8, 10)}/${d.slice(5, 7)}` : "—");
         return (<>
           <div className="closers-head">
-            <div className="closers-title"><Phone size={16} /> Récup Saphia · calls pris non closés</div>
+            <div className="closers-title"><Phone size={16} /> Saphia follow up · calls pris non closés</div>
             <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
               <div className="crm-views">
                 {[["7", "7 j"], ["30", "30 j"], ["90", "90 j"], ["all", "Tout"]].map(([v, lbl]) => (
@@ -1935,6 +1935,20 @@ export default function App() {
               <button className={`refresh-btn ${crmLoading ? "is-loading" : ""}`} onClick={() => loadCrm()} disabled={crmLoading}><RotateCcw size={15} className={crmLoading ? "spin" : ""} /> Actualiser</button>
             </div>
           </div>
+          {(() => {
+            const saved = (crm.leads || []).filter((l) => l.outreach && l.stage === "won").length;
+            const pctMac = Math.min(100, saved);
+            return (
+              <div className="card" style={{ padding: "16px 20px", marginBottom: 14, display: "flex", alignItems: "center", gap: 18, flexWrap: "wrap" }}>
+                <div style={{ fontFamily: "'Montserrat'", fontWeight: 800, fontSize: 15, whiteSpace: "nowrap" }}>💻 Opération MacBook Pro</div>
+                <div style={{ flex: "1 1 240px", height: 12, borderRadius: 999, background: "#EEF0F4", overflow: "hidden" }}>
+                  <div style={{ width: `${pctMac}%`, minWidth: saved > 0 ? 10 : 0, height: "100%", borderRadius: 999, background: "linear-gradient(90deg,#6C5CE7,#12B76A)", transition: "width .4s" }} />
+                </div>
+                <div style={{ fontWeight: 800, fontSize: 14, whiteSpace: "nowrap" }}>{saved}/100 closés récupérés</div>
+                <div className="mut" style={{ fontSize: 12.5 }}>{saved >= 100 ? "🎉 MacBook Pro débloqué !" : `encore ${100 - saved} et il est à toi 😤`}</div>
+              </div>
+            );
+          })()}
           <div className="kpis" style={{ marginTop: 4 }}>
             <div className="kcard"><div className="kcard-l">À récupérer</div><div className="kcard-v">{rows.length}</div><div className="kcard-f">{sapView === "all" ? "toutes périodes" : `${sapView} derniers jours`}</div></div>
             <div className="kcard"><div className="kcard-l">À traiter</div><div className="kcard-v" style={{ color: "var(--amber)" }}>{nTodo}</div><div className="kcard-f">aucune action posée</div></div>
