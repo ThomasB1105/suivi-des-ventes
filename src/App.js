@@ -1898,12 +1898,13 @@ export default function App() {
         const tOfL = (l) => { const m = toParis((l.lastCall && l.lastCall.date) || l.bookedAt || "").match(/T(\d{2}:\d{2})/); return m ? m[1] : ""; };
         const winDays = sapView === "all" ? 100000 : Number(sapView);
         const minD = toISO(new Date(Date.now() - winDays * 864e5));
-        const base = (crm.leads || []).filter((l) => l.hasCall !== false && !["won", "dead"].includes(l.stage) && dOfL(l) && dOfL(l) <= today0);
+        // TOUT lead ayant pris un appel (passé OU à venir), non closé.
+        const base = (crm.leads || []).filter((l) => l.hasCall !== false && !["won", "dead"].includes(l.stage) && dOfL(l));
         const q = crmQ.trim().toLowerCase();
         const closersList = [...new Set(base.map((l) => l.closer).filter(Boolean))].sort();
         const rows = base
           .filter((l) => dOfL(l) >= minD)
-          .filter((l) => sapCloser === "all" || String(l.closer || "").toLowerCase() === sapCloser.toLowerCase())
+          .filter((l) => sapCloser === "all" || String(l.closer || "").trim().toLowerCase() === sapCloser.trim().toLowerCase())
           .filter((l) => !q || [l.name, l.email, l.phone, l.closer].some((v) => String(v || "").toLowerCase().includes(q)))
           .sort((a, b) => dOfL(b).localeCompare(dOfL(a)));
         const OUT_META = {
@@ -1942,7 +1943,7 @@ export default function App() {
           </div>
           <div className="card" style={{ padding: 0, overflow: "hidden", marginTop: 16 }}>
             {rows.length === 0 && <div className="empty" style={{ padding: 22 }}>Rien à récupérer sur cette période 🎉</div>}
-            {rows.slice(0, 150).map((l) => (
+            {rows.slice(0, 400).map((l) => (
               <div className="cal-row" key={l.email}>
                 <div className="cal-time" style={{ width: 62 }}>{frD2(dOfL(l))}<div style={{ fontSize: 10.5, color: "var(--muted)", fontWeight: 600 }}>{tOfL(l)}</div></div>
                 <span className="mnd-ava" style={{ background: avaColor(l.email), width: 36, height: 36, fontSize: 13, flex: "none" }}>{initials(l.name && l.name !== l.email ? l.name : l.email)}</span>
@@ -1950,6 +1951,7 @@ export default function App() {
                   <div className="cal-name">{l.name && l.name !== l.email ? l.name : l.email}{l.closer ? <span className="mut" style={{ fontWeight: 500 }}> · {l.closer}</span> : null}</div>
                   <div className="cal-sub">{l.email}{l.phone ? ` · ${l.phone}` : ""}</div>
                 </div>
+                {dOfL(l) > today0 ? <span className="esp-tag" style={{ color: "#175CD3", borderColor: "#B2DDFF", background: "#EFF8FF", marginLeft: 0 }}>À venir</span> : null}
                 <span className="esp-tag" style={{ ...( { noshow: { color: "#B42318", borderColor: "#FECDCA", background: "#FEF3F2" }, lost: { color: "#475467", borderColor: "#E3E6EA", background: "#F9FAFB" } }[l.stage] || { color: "#175CD3", borderColor: "#B2DDFF", background: "#EFF8FF" }), marginLeft: 0 }}>{(CRM_META[l.stage] || ["?"])[0]}</span>
                 {l.followUpAt ? <span className="esp-tag" style={{ color: "#5925DC", borderColor: "#D9D6FE", background: "#F4F3FF", marginLeft: 0 }}>🔁 {frD2(l.followUpAt)}</span> : null}
                 <select className="out-select" style={l.outreach ? OUT_META[l.outreach][1] : {}} value={l.outreach || ""} title="Suivi de récupération"
@@ -1966,7 +1968,7 @@ export default function App() {
                 <button className="esp-open" onClick={() => setLeadOpen(l.email)}>Ouvrir la fiche</button>
               </div>
             ))}
-            {rows.length > 150 && <div className="mnd-foot"><span>+{rows.length - 150} autres — affine la période ou la recherche</span></div>}
+            {rows.length > 400 && <div className="mnd-foot"><span>+{rows.length - 400} autres — affine la période ou la recherche</span></div>}
           </div>
         </>);
       })()}
