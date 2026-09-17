@@ -149,27 +149,49 @@ module.exports = async (req, res) => {
       Object.entries(ov).forEach(([id, nm]) => { if (nm) userMap[String(id)] = String(nm); });
     } catch (e) { /* JSON invalide -> ignoré */ }
 
-    // Import complet (pagination défensive : limit + offset).
+    // Import complet — pagination ADAPTATIVE : l'API iClosed n'accepte pas
+    // forcément « offset » ; on détecte le paramètre qui rapporte du neuf
+    // (offset / page / skip / startFrom), sinon on s'arrêtait à 100 calls.
     const all = [];
     const seenIds = new Set();
-    let guard = 0;
+    const extractArr = (page) => Array.isArray(page) ? page : (page.eventCalls || (page.data && (page.data.eventCalls || page.data.items || (Array.isArray(page.data) ? page.data : null))) || page.items || page.results || []);
+    const addAll = (arr, et) => {
+      let added = 0;
+      (Array.isArray(arr) ? arr : []).forEach((x) => {
+        if (!x || typeof x !== "object") return;
+        const id = `${et}-${x.id || x.callId || x.uuid || x._id || ""}`;
+        if (seenIds.has(id)) return;
+        seenIds.add(id); x.__eventType = et; all.push(x); added += 1;
+      });
+      return added;
+    };
+    let pagingParam = null;
     for (const et of ["PAST", "UPCOMING"]) {
-      let offset = 0;
-      while (guard++ < 40) {                 // garde-fou strict (anti-boucle infinie)
-        let page; try { page = await icGet("/eventCalls", key, { eventType: et, limit: 100, offset }); } catch (e) { break; }
-        const arr = Array.isArray(page) ? page : (page.eventCalls || (page.data && (page.data.eventCalls || page.data.items || (Array.isArray(page.data) ? page.data : null))) || page.items || page.results || []);
+      let first; try { first = await icGet("/eventCalls", key, { eventType: et, limit: 100 }); } catch (e) { continue; }
+      const arr0 = extractArr(first);
+      addAll(arr0, et);
+      if (!Array.isArray(arr0) || arr0.length < 100) continue; // tout tient sur une page
+      // trouve un paramètre de pagination qui fonctionne pour cet endpoint
+      let param = pagingParam, idx = 2;
+      if (!param) {
+        for (const p of ["offset", "page", "skip", "startFrom"]) {
+          let pg2; try { pg2 = await icGet("/eventCalls", key, { eventType: et, limit: 100, [p]: p === "page" ? 2 : 100 }); } catch (e) { continue; }
+          if (addAll(extractArr(pg2), et) > 0) { param = p; pagingParam = p; break; }
+        }
+        if (!param) continue; // aucune pagination reconnue : on garde la 1re page
+      } else {
+        let pg2; try { pg2 = await icGet("/eventCalls", key, { eventType: et, limit: 100, [param]: param === "page" ? 2 : 100 }); } catch (e) { continue; }
+        if (addAll(extractArr(pg2), et) === 0) continue;
+      }
+      let guard = 0;
+      while (guard++ < 60) {                 // garde-fou strict (anti-boucle infinie)
+        idx += 1;
+        const val = param === "page" ? idx : (idx - 1) * 100;
+        let pg; try { pg = await icGet("/eventCalls", key, { eventType: et, limit: 100, [param]: val }); } catch (e) { break; }
+        const arr = extractArr(pg);
         if (!Array.isArray(arr) || !arr.length) break;
-        // On n'ajoute que les NOUVEAUX ids. Si une page n'apporte rien de neuf
-        // (l'API ignore offset), on s'arrête -> plus de boucle de 300 requêtes.
-        let added = 0;
-        arr.forEach((x) => {
-          if (!x || typeof x !== "object") return;
-          const id = `${et}-${x.id || x.callId || x.uuid || x._id || ""}`;
-          if (seenIds.has(id)) return;
-          seenIds.add(id); x.__eventType = et; all.push(x); added += 1;
-        });
+        const added = addAll(arr, et);
         if (added === 0 || arr.length < 100) break;
-        offset += 100;
       }
     }
     const recs = all.map((c) => mapCall(c, userMap));
@@ -184,7 +206,7 @@ module.exports = async (req, res) => {
       batch.forEach((r) => { args.push(r.id, JSON.stringify(r)); });
       if (args.length > 2) { await cmd(args); stored += batch.length; }
     }
-    res.status(200).json({ ok: true, fetched: all.length, stored, sample: recs[0] || null });
+    res.status(200).json({ ok: true, fetched: all.length, stored, pagination: pagingParam || "une seule page", sample: recs[0] || null });
   } catch (e) {
     res.status(e.status || 500).json({ error: String(e.message || e), detail: e.body });
   }
