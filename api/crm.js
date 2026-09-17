@@ -26,6 +26,10 @@ module.exports = async (req, res) => {
   // entrants à traiter ne doivent jamais rester invisibles.
   const isMine = (l) => isPerson(l.closer, me.name) || isPerson(l.setter, me.name)
     || (me.role === "setter" && !l.setter && l.hasCall === false);
+  // Le compte « Saphia » (récup) voit tous les calls pris non closés.
+  const normName = String(me.name || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+  const isRecup = normName === "saphia";
+  const canSee = (l) => isMine(l) || (isRecup && l.hasCall !== false && l.stage !== "won");
 
   try {
     // ---- Mise à jour d'un lead ----
@@ -83,7 +87,7 @@ module.exports = async (req, res) => {
       if (!isAdmin) {
         const rows = await buildLeads(cmd);
         const row = rows.find((l) => l.email === email);
-        if (!row || !isMine(row)) { res.status(403).json({ error: "Lead non assigné à ton compte." }); return; }
+        if (!row || !canSee(row)) { res.status(403).json({ error: "Lead non assigné à ton compte." }); return; }
         // et ne peut pas se réassigner les leads des autres
         delete body.closer; delete body.setter;
       }
@@ -125,6 +129,12 @@ module.exports = async (req, res) => {
         if (v === "noshow") { lead.stage = "noshow"; lead.manualStage = true; }
         if (v === "present" && !["won", "lost"].includes(lead.stage)) { lead.stage = "show"; lead.manualStage = true; }
       }
+      // Suivi de récupération (onglet Saphia)
+      if (body.outreach !== undefined) {
+        const v = ["contact", "fup", "rebooked", "nrp", "stop", ""].includes(body.outreach) ? body.outreach : "";
+        lead.outreach = v || undefined;
+        lead.outreachAt = v ? new Date().toISOString() : undefined;
+      }
       if (body.followUp !== undefined) {
         const v = ["yes", "no", ""].includes(body.followUp) ? body.followUp : "";
         lead.followUp = v || undefined;
@@ -145,7 +155,7 @@ module.exports = async (req, res) => {
 
     // ---- Lecture du board ----
     let leads = await buildLeads(cmd);
-    if (!isAdmin) leads = leads.filter(isMine);
+    if (!isAdmin) leads = leads.filter(canSee);
 
     res.setHeader("Cache-Control", "no-store");
     res.status(200).json({ leads, me: { role: me.role, name: me.name } });

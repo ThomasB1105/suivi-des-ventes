@@ -313,6 +313,7 @@ export default function App() {
     catch (e) { return { role: "admin", name: "Admin" }; }
   }, []);
   const isAdmin = me.role === "admin";
+  const isSaphiaUser = String(me.name || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim() === "saphia";
   const doLogin = async () => {
     setLoginErr("");
     try {
@@ -693,6 +694,7 @@ export default function App() {
   const [leadOpen, setLeadOpen] = useState(null); // email de la fiche lead ouverte
   const [calView, setCalView] = useState("upcoming"); // calendrier : "today" | "upcoming" | "past"
   const [vslView, setVslView] = useState("recent"); // Leads VSL : "recent" (14 j) | "all"
+  const [sapView, setSapView] = useState("30"); // Saphia : fenêtre en jours ("7"|"30"|"90"|"all")
   const loadCrm = async (silent) => {
     if (!silent) setCrmLoading(true);
     try { const r = await authFetch("/api/crm"); const d = await r.json(); if (d && d.leads) setCrm(d); } catch (e) { /* ignore */ }
@@ -718,7 +720,7 @@ export default function App() {
   // base en continu ; l'interface se resynchronise toute seule (toutes les
   // 45 s quand l'onglet est visible, et au retour sur la fenêtre).
   useEffect(() => {
-    if (!(tab === "crm" || tab === "calendrier" || tab === "espace" || tab === "vsl" || tab === "followups")) return;
+    if (!(tab === "crm" || tab === "calendrier" || tab === "espace" || tab === "vsl" || tab === "followups" || tab === "saphia")) return;
     loadCrm(); if (isAdmin) loadTeam();
     const iv = setInterval(() => { if (document.visibilityState === "visible") loadCrm(true); }, 45000);
     const onFocus = () => { if (document.visibilityState !== "hidden") loadCrm(true); };
@@ -1064,7 +1066,7 @@ export default function App() {
   const overduesF = sortOverdue((impAll ? allOverdue : overdues).filter((i) => matchQ(i.sale)));
   const periodListF = periodList.filter((i) => matchQ(i.sale));
 
-  const SECTION = { clients: "Tableau de bord", cohortes: "Cohortes", mois: "Par mois", collecte: "À collecter", impayes: "Impayés", couts: "Coûts", closers: "Closers", crm: "CRM", calendrier: "Calendrier", equipe: "Équipe", espace: "Ma journée", vsl: "Leads VSL", acomptes: "Acomptes", followups: "Follow-ups" };
+  const SECTION = { clients: "Tableau de bord", cohortes: "Cohortes", mois: "Par mois", collecte: "À collecter", impayes: "Impayés", couts: "Coûts", closers: "Closers", crm: "CRM", calendrier: "Calendrier", equipe: "Équipe", espace: "Ma journée", vsl: "Leads VSL", acomptes: "Acomptes", followups: "Follow-ups", saphia: "Saphia · Récup" };
   const go = (t) => { setTab(t); setNavOpen(false); };
   const navCls = (t) => `nav-item ${tab === t ? "active" : ""}`;
   const logout = () => { try { localStorage.removeItem("melo_token"); localStorage.removeItem("melo_role"); localStorage.removeItem("melo_name"); } catch (e) { /* ignore */ } window.location.reload(); };
@@ -1576,10 +1578,12 @@ export default function App() {
             <div className="nav-label">Suivi</div>
             <button className={navCls("acomptes")} onClick={() => go("acomptes")}><Landmark size={16} /> Acomptes</button>
             <button className={navCls("followups")} onClick={() => go("followups")}><RotateCcw size={16} /> Follow-ups</button>
+            <button className={navCls("saphia")} onClick={() => go("saphia")}><Phone size={16} /> Saphia · Récup</button>
           </>) : (<>
             <div className="nav-label">Mon espace</div>
             <button className={navCls("espace")} onClick={() => go("espace")}><UserCheck size={16} /> Ma journée</button>
             {me.role === "setter" && <button className={navCls("vsl")} onClick={() => go("vsl")}><Leaf size={16} /> Leads VSL</button>}
+            {isSaphiaUser && <button className={navCls("saphia")} onClick={() => go("saphia")}><Phone size={16} /> Récup</button>}
             <button className={navCls("calendrier")} onClick={() => go("calendrier")}><Calendar size={16} /> Mon agenda</button>
             <button className={navCls("crm")} onClick={() => go("crm")}><ClipboardList size={16} /> Mes calls</button>
           </>)}
@@ -1882,6 +1886,80 @@ export default function App() {
                 {fus.length === 0 && <tr><td colSpan={7}><div className="empty" style={{ padding: 18 }}>Aucun lead en follow-up.</div></td></tr>}
               </tbody>
             </table>
+          </div>
+        </>);
+      })()}
+
+      {/* SAPHIA · RÉCUP — calls pris (iClosed + Calendly) non closés */}
+      {tab === "saphia" && (isAdmin || isSaphiaUser) && (() => {
+        const today0 = toISO(new Date());
+        const dOfL = (l) => toParis((l.lastCall && l.lastCall.date) || l.bookedAt || "").slice(0, 10);
+        const tOfL = (l) => { const m = toParis((l.lastCall && l.lastCall.date) || l.bookedAt || "").match(/T(\d{2}:\d{2})/); return m ? m[1] : ""; };
+        const winDays = sapView === "all" ? 100000 : Number(sapView);
+        const minD = toISO(new Date(Date.now() - winDays * 864e5));
+        const base = (crm.leads || []).filter((l) => l.hasCall !== false && !["won", "dead"].includes(l.stage) && dOfL(l) && dOfL(l) <= today0);
+        const q = crmQ.trim().toLowerCase();
+        const rows = base
+          .filter((l) => dOfL(l) >= minD)
+          .filter((l) => !q || [l.name, l.email, l.phone, l.closer].some((v) => String(v || "").toLowerCase().includes(q)))
+          .sort((a, b) => dOfL(b).localeCompare(dOfL(a)));
+        const OUT_META = {
+          contact: ["Contacté ✅", { color: "#067647", borderColor: "#ABEFC6", background: "#ECFDF3" }],
+          fup: ["Poursuivre le follow-up 🔁", { color: "#5925DC", borderColor: "#D9D6FE", background: "#F4F3FF" }],
+          rebooked: ["Re-booké 📅", { color: "#175CD3", borderColor: "#B2DDFF", background: "#EFF8FF" }],
+          nrp: ["NRP 📵", { color: "#B54708", borderColor: "#FEDF89", background: "#FFFAEB" }],
+          stop: ["Stop ❌", { color: "#475467", borderColor: "#E3E6EA", background: "#F9FAFB" }],
+        };
+        const nTodo = rows.filter((l) => !l.outreach).length;
+        const initials = (n) => String(n).split(/[\s@._-]+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase() || "?";
+        const avaColor = (e) => ["#579BFC", "#A25DDC", "#00C875", "#FDAB3D", "#E2445C", "#66B2FF"][(String(e).charCodeAt(0) + String(e).length) % 6];
+        const frD2 = (d) => (d ? `${d.slice(8, 10)}/${d.slice(5, 7)}` : "—");
+        return (<>
+          <div className="closers-head">
+            <div className="closers-title"><Phone size={16} /> Récup Saphia · calls pris non closés</div>
+            <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+              <div className="crm-views">
+                {[["7", "7 j"], ["30", "30 j"], ["90", "90 j"], ["all", "Tout"]].map(([v, lbl]) => (
+                  <button key={v} className={`crm-chip ${sapView === v ? "on" : ""}`} onClick={() => setSapView(v)}>{lbl}</button>
+                ))}
+              </div>
+              <div className="crm-search"><Search size={14} /><input value={crmQ} onChange={(e) => setCrmQ(e.target.value)} placeholder="Rechercher (nom, email, closer…)" /></div>
+              <button className={`refresh-btn ${crmLoading ? "is-loading" : ""}`} onClick={() => loadCrm()} disabled={crmLoading}><RotateCcw size={15} className={crmLoading ? "spin" : ""} /> Actualiser</button>
+            </div>
+          </div>
+          <div className="kpis" style={{ marginTop: 4 }}>
+            <div className="kcard"><div className="kcard-l">À récupérer</div><div className="kcard-v">{rows.length}</div><div className="kcard-f">{sapView === "all" ? "toutes périodes" : `${sapView} derniers jours`}</div></div>
+            <div className="kcard"><div className="kcard-l">À traiter</div><div className="kcard-v" style={{ color: "var(--amber)" }}>{nTodo}</div><div className="kcard-f">aucune action posée</div></div>
+            <div className="kcard"><div className="kcard-l">Contactés</div><div className="kcard-v green">{rows.filter((l) => l.outreach === "contact").length}</div><div className="kcard-f">+ {rows.filter((l) => l.outreach === "fup").length} en follow-up</div></div>
+            <div className="kcard"><div className="kcard-l">Re-bookés</div><div className="kcard-v" style={{ color: "var(--cyan)" }}>{rows.filter((l) => l.outreach === "rebooked").length}</div><div className="kcard-f">objectif : les ramener en call</div></div>
+          </div>
+          <div className="card" style={{ padding: 0, overflow: "hidden", marginTop: 16 }}>
+            {rows.length === 0 && <div className="empty" style={{ padding: 22 }}>Rien à récupérer sur cette période 🎉</div>}
+            {rows.slice(0, 150).map((l) => (
+              <div className="cal-row" key={l.email}>
+                <div className="cal-time" style={{ width: 62 }}>{frD2(dOfL(l))}<div style={{ fontSize: 10.5, color: "var(--muted)", fontWeight: 600 }}>{tOfL(l)}</div></div>
+                <span className="mnd-ava" style={{ background: avaColor(l.email), width: 36, height: 36, fontSize: 13, flex: "none" }}>{initials(l.name && l.name !== l.email ? l.name : l.email)}</span>
+                <div className="cal-main" style={{ cursor: "pointer" }} onClick={() => setLeadOpen(l.email)} title="Ouvrir la fiche">
+                  <div className="cal-name">{l.name && l.name !== l.email ? l.name : l.email}{l.closer ? <span className="mut" style={{ fontWeight: 500 }}> · {l.closer}</span> : null}</div>
+                  <div className="cal-sub">{l.email}{l.phone ? ` · ${l.phone}` : ""}</div>
+                </div>
+                <span className="esp-tag" style={{ ...( { noshow: { color: "#B42318", borderColor: "#FECDCA", background: "#FEF3F2" }, lost: { color: "#475467", borderColor: "#E3E6EA", background: "#F9FAFB" } }[l.stage] || { color: "#175CD3", borderColor: "#B2DDFF", background: "#EFF8FF" }), marginLeft: 0 }}>{(CRM_META[l.stage] || ["?"])[0]}</span>
+                {l.followUpAt ? <span className="esp-tag" style={{ color: "#5925DC", borderColor: "#D9D6FE", background: "#F4F3FF", marginLeft: 0 }}>🔁 {frD2(l.followUpAt)}</span> : null}
+                <select className="out-select" style={l.outreach ? OUT_META[l.outreach][1] : {}} value={l.outreach || ""} title="Suivi de récupération"
+                  onClick={(e) => e.stopPropagation()}
+                  onChange={(e) => updateLead(l.email, { outreach: e.target.value })}>
+                  <option value="">Suivi…</option>
+                  <option value="contact">Contacté ✅</option>
+                  <option value="fup">Poursuivre le follow-up 🔁</option>
+                  <option value="rebooked">Re-booké 📅</option>
+                  <option value="nrp">NRP 📵</option>
+                  <option value="stop">Stop ❌</option>
+                </select>
+                {l.phone ? <a className="ls-link ls-join" style={{ flex: "none", textDecoration: "none" }} href={`tel:${String(l.phone).replace(/[^+0-9]/g, "")}`}>📱 Appeler</a> : null}
+                <button className="esp-open" onClick={() => setLeadOpen(l.email)}>Ouvrir la fiche</button>
+              </div>
+            ))}
+            {rows.length > 150 && <div className="mnd-foot"><span>+{rows.length - 150} autres — affine la période ou la recherche</span></div>}
           </div>
         </>);
       })()}
