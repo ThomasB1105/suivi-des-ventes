@@ -398,7 +398,9 @@ export default function App() {
         loc.schedule.forEach((i) => { if (String(i.id).startsWith("m-")) schedule.push(i); });
         schedule.sort((a, b) => String(a.dueDate).localeCompare(String(b.dueDate)));
         const total = schedule.reduce((a, i) => a + (i.cancelled || i.refunded ? 0 : i.amount), 0);
-        return { ...inc, client: loc.client, phone: loc.phone || inc.phone, email: loc.email || inc.email, closer: loc.closer, source: loc.source, channel: loc.channel, ov, deletedInsts: loc.deletedInsts || [], schedule, total };
+        const channel = loc.channelManual ? loc.channel
+          : ((inc.channel === "none" && loc.channel === "paid") ? "paid" : (inc.channel || loc.channel));
+        return { ...inc, client: loc.client, phone: loc.phone || inc.phone, email: loc.email || inc.email, closer: loc.closer, source: inc.source && inc.source !== "À attribuer" ? inc.source : loc.source, channel, channelManual: loc.channelManual, ov, deletedInsts: loc.deletedInsts || [], schedule, total };
       });
       // conserver les ventes purement manuelles (ajoutées via "Ajouter une vente").
       // Les fiches d'origine serveur (id "sio-…") absentes de la réponse ont été
@@ -557,7 +559,7 @@ export default function App() {
   };
   // Attribution manuelle du lead (Organique / Ads).
   const setChannel = (id, channel) =>
-    persist(sales.map((s) => s.id !== id ? s : { ...s, channel }));
+    persist(sales.map((s) => s.id !== id ? s : { ...s, channel, channelManual: true }));
 
   const pv = (() => {
     const total = parseFloat(String(form.total).replace(",", ".")) || 0;
@@ -612,7 +614,7 @@ export default function App() {
     sales.forEach((s) => s.schedule.forEach((i) => {
       if (i.dueDate >= from && i.dueDate <= to && isActive(i)) {
         expected += i.amount;
-        if (i.paid) { collected += i.amount; if (s.channel === "paid") paid += i.amount; else org += i.amount; }
+        if (i.paid) { collected += i.amount; if (s.channel === "paid") paid += i.amount; else if (s.channel !== "none") org += i.amount; }
         else { outstanding += i.amount; if (statusOf(i) === "overdue") { overdueAmt += i.amount; overdueCount++; } }
       }
     }));
@@ -1148,6 +1150,7 @@ export default function App() {
         .chan-sel{background:var(--panel2);border:1px solid var(--line);border-radius:7px;padding:3px 8px;font:inherit;font-size:11px;font-weight:600;cursor:pointer;color-scheme:dark;}
         .chan-sel.src-organic{color:#2BD9A0;border-color:rgba(43,217,160,.4);background:rgba(43,217,160,.08);}
         .chan-sel.src-paid{color:#7C5CFF;border-color:rgba(124,92,255,.4);background:rgba(124,92,255,.08);}
+        .chan-sel.src-none{color:#667085;border-color:#E3E6EA;background:#F9FAFB;}
         .client-link{display:inline-flex;align-items:center;gap:6px;cursor:pointer;background:none;border:none;color:inherit;font:inherit;font-weight:inherit;padding:0;}
         .client-link svg{opacity:.4;transition:.15s;}
         .client-link:hover{color:var(--cyan);text-decoration:underline;}
@@ -1753,9 +1756,10 @@ export default function App() {
                 <div>
                   <div className="client-name client-link" title="Voir / éditer la fiche" onClick={() => openEdit(s)}>{s.client} <Pencil size={12} /></div>
                   <div className="client-meta">
-                    <select className={`chan-sel src-${s.channel === "paid" ? "paid" : "organic"}`} value={s.channel} onClick={(e) => e.stopPropagation()} onChange={(e) => { e.stopPropagation(); setChannel(s.id, e.target.value); }} title="Attribuer le lead">
-                      <option value="organic">🌱 Organique</option>
-                      <option value="paid">📣 Ads</option>
+                    <select className={`chan-sel src-${s.channel === "paid" ? "paid" : (s.channel === "none" ? "none" : "organic")}`} value={s.channel || "none"} onClick={(e) => e.stopPropagation()} onChange={(e) => { e.stopPropagation(); setChannel(s.id, e.target.value); }} title="Canal d'acquisition — auto : VSL = Ads, iClosed = YouTube ; modifiable à la main">
+                      <option value="organic">🌱 Organique (YouTube)</option>
+                      <option value="paid">📣 Ads (VSL)</option>
+                      <option value="none">❔ Non attribué</option>
                     </select>
                     <span className="tag attr-tag" title="Closer — relié au CRM et à son espace"><UserCheck size={12} />
                       {assignSelect(s.closer !== "—" ? s.closer : "", dashClosers, (v) => setSaleAttrib(s, { closer: v }), "Closer…")}

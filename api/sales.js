@@ -156,10 +156,12 @@ module.exports = async (req, res) => {
     const sales = groupIntoSales(events);
 
     // Enrichissement iClosed (closer + source/canal) par email.
+    let icSet = new Set(); // emails passés par iClosed (calls YouTube)
     try {
       const icFlat = (await cmd(["HGETALL", "iclosed:contacts"])) || [];
       const ic = {};
       for (let i = 0; i < icFlat.length; i += 2) { try { ic[icFlat[i]] = JSON.parse(icFlat[i + 1]); } catch {} }
+      icSet = new Set(Object.keys(ic).map((k) => String(k).toLowerCase()));
       if (Object.keys(ic).length) {
         sales.forEach((s) => {
           const m = ic[(s.email || "").toLowerCase()];
@@ -182,12 +184,19 @@ module.exports = async (req, res) => {
       const lm = {};
       for (let i = 0; i < lf.length; i += 2) { try { lm[String(lf[i]).toLowerCase()] = JSON.parse(lf[i + 1]); } catch {} }
       sales.forEach((s) => {
-        const l = lm[String(s.email || "").toLowerCase()];
+        const em = String(s.email || "").toLowerCase();
+        const l = lm[em];
         if (l) {
           if (l.closer) s.closer = resolve(l.closer);
           if (l.setter) s.setter = resolve(l.setter);
           if (l.phone && !s.phone) s.phone = String(l.phone); // téléphone du CRM (liste des acomptes)
         }
+        // Canal AUTO : VSL -> Ads (paid) · iClosed -> YouTube (organique) ·
+        // email inconnu du CRM -> non attribué (à choisir dans le dashboard).
+        const src = String((l && l.source) || "").toLowerCase();
+        if (/vsl/.test(src)) { s.channel = "paid"; if (!s.source || s.source === "À attribuer") s.source = "VSL · Ads"; }
+        else if (icSet.has(em) || /iclosed/.test(src)) { s.channel = "organic"; if (!s.source || s.source === "À attribuer") s.source = "YouTube"; }
+        else s.channel = "none";
       });
     } catch (e) { /* CRM optionnel */ }
 
