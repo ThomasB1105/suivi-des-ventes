@@ -724,7 +724,7 @@ export default function App() {
   // base en continu ; l'interface se resynchronise toute seule (toutes les
   // 45 s quand l'onglet est visible, et au retour sur la fenêtre).
   useEffect(() => {
-    if (!(tab === "crm" || tab === "calendrier" || tab === "espace" || tab === "vsl" || tab === "followups" || tab === "saphia" || tab === "reporting")) return;
+    if (!(tab === "crm" || tab === "calendrier" || tab === "espace" || tab === "vsl" || tab === "followups" || tab === "saphia" || tab === "reporting" || tab === "ads")) return;
     loadCrm(); if (isAdmin) loadTeam();
     const iv = setInterval(() => { if (document.visibilityState === "visible") loadCrm(true); }, 45000);
     const onFocus = () => { if (document.visibilityState !== "hidden") loadCrm(true); };
@@ -1070,7 +1070,7 @@ export default function App() {
   const overduesF = sortOverdue((impAll ? allOverdue : overdues).filter((i) => matchQ(i.sale)));
   const periodListF = periodList.filter((i) => matchQ(i.sale));
 
-  const SECTION = { clients: "Tableau de bord", cohortes: "Cohortes", mois: "Par mois", collecte: "À collecter", impayes: "Impayés", couts: "Coûts", closers: "Closers", crm: "CRM", calendrier: "Calendrier", equipe: "Équipe", espace: "Ma journée", vsl: "Leads VSL", acomptes: "Acomptes", followups: "Follow-ups", saphia: "Saphia follow up", reporting: "Reporting hebdo" };
+  const SECTION = { clients: "Tableau de bord", cohortes: "Cohortes", mois: "Par mois", collecte: "À collecter", impayes: "Impayés", couts: "Coûts", closers: "Closers", crm: "CRM", calendrier: "Calendrier", equipe: "Équipe", espace: "Ma journée", vsl: "Leads VSL", acomptes: "Acomptes", followups: "Follow-ups", saphia: "Saphia follow up", reporting: "Reporting hebdo", ads: "Reporting Ads" };
   const go = (t) => { setTab(t); setNavOpen(false); };
   const navCls = (t) => `nav-item ${tab === t ? "active" : ""}`;
   const logout = () => { try { localStorage.removeItem("melo_token"); localStorage.removeItem("melo_role"); localStorage.removeItem("melo_name"); } catch (e) { /* ignore */ } window.location.reload(); };
@@ -1575,6 +1575,7 @@ export default function App() {
             <button className={navCls("couts")} onClick={() => go("couts")}><Wallet size={16} /> Coûts</button>
             <button className={navCls("closers")} onClick={() => go("closers")}><UserCheck size={16} /> Closers</button>
             <button className={navCls("reporting")} onClick={() => go("reporting")}><TrendingUp size={16} /> Reporting</button>
+            <button className={navCls("ads")} onClick={() => go("ads")}><Megaphone size={16} /> Ads</button>
             <div className="nav-label">CRM</div>
             <button className={navCls("crm")} onClick={() => go("crm")}><ClipboardList size={16} /> CRM</button>
             <button className={navCls("vsl")} onClick={() => go("vsl")}><Leaf size={16} /> Leads VSL</button>
@@ -1991,6 +1992,68 @@ export default function App() {
         </>);
       })()}
 
+      {/* ADS — reporting par utm_campaign (rubrique dédiée) */}
+      {tab === "ads" && (() => {
+        const leads = crm.leads || [];
+        return (() => {
+            // ---- Reporting ADS : une ligne par utm_campaign (= une pub) ----
+            const campOf = (l) => String(l.campaign || "").trim();
+            const anyCamp = leads.some((l) => campOf(l));
+            if (!anyCamp) return (
+              <div className="empty" style={{ padding: 18, marginTop: 24 }}>📣 Reporting Ads : aucune utm_campaign reçue pour l'instant — elles arrivent avec les leads VSL (champ utm_campaign dans Make).</div>
+            );
+            const today0a = toISO(new Date());
+            const heldA = (l) => ["show", "won", "lost"].includes(l.stage) || (l.stage === "booked" && toParis((l.lastCall && l.lastCall.date) || l.bookedAt || "").slice(0, 10) < today0a);
+            const dOfA = (l) => toParis((l.lastCall && l.lastCall.date) || l.bookedAt || "").slice(0, 10);
+            const wk = adsScope === "week";
+            const inWeek = (d) => d >= periodRange.from && d <= periodRange.to;
+            const from = periodRange.from, to = periodRange.to;
+            const camps = {};
+            leads.forEach((l) => { const c = campOf(l) || "— sans campagne —"; (camps[c] = camps[c] || []).push(l); });
+            const rows = Object.entries(camps).map(([c, ls]) => {
+              const scoped = wk ? ls.filter((l) => { const d = toParis(l.createdAt || "").slice(0, 10); return d >= from && d <= to; }) : ls;
+              const callLs = ls.filter((l) => l.hasCall !== false && (!wk || inWeek(dOfA(l))));
+              const held = callLs.filter(heldA).length;
+              const ns = callLs.filter((l) => l.stage === "noshow").length;
+              const emails = new Set(ls.map((l) => String(l.email).toLowerCase()));
+              const campSales = sales.filter((sl) => emails.has(String(sl.email || "").toLowerCase()));
+              const collected = campSales.reduce((a, sl) => a + sl.schedule.filter((i) => i.paid && (!wk || inWeek(i.dueDate))).reduce((b, i) => b + i.amount, 0), 0);
+              const signed = campSales.filter((sl) => !wk || inWeek(sl.closeDate));
+              const contracted = signed.reduce((a, sl) => a + sl.total, 0);
+              return { c, leads: scoped.length, calls: callLs.length, held, ns, showRate: held + ns ? held / (held + ns) : 0, collected, contracted, ventes: signed.filter((sl) => sl.schedule.some((i) => i.paid)).length };
+            })
+              .filter((r) => r.leads || r.calls || r.collected || r.contracted)
+              .sort((a, b) => (a.c === "— sans campagne —") - (b.c === "— sans campagne —") || b.collected - a.collected || b.leads - a.leads);
+            return (<>
+              <div className="closers-head">
+                <div className="closers-title"><Megaphone size={16} /> Reporting Ads · une ligne par utm_campaign</div>
+                <button className={`refresh-btn ${crmLoading ? "is-loading" : ""}`} onClick={() => loadCrm()} disabled={crmLoading}><RotateCcw size={15} className={crmLoading ? "spin" : ""} /> Actualiser</button>
+              </div>
+              <div className="crm-views" style={{ margin: "0 0 12px" }}>
+                <button className={`crm-chip ${adsScope === "all" ? "on" : ""}`} onClick={() => setAdsScope("all")}>Tout l'historique</button>
+                <button className={`crm-chip ${adsScope === "week" ? "on" : ""}`} onClick={() => setAdsScope("week")}>Période sélectionnée</button>
+              </div>
+              <div className="card" style={{ padding: 0, overflowX: "auto" }}>
+                <table className="tbl">
+                  <thead><tr><th style={{ minWidth: 260 }}>Campagne (utm_campaign)</th><th className="num">Leads</th><th className="num">Calls</th><th className="num">Show-up</th><th className="num">Cash collecté</th><th className="num">Cash contracté</th></tr></thead>
+                  <tbody>
+                    {rows.map((r) => (
+                      <tr key={r.c} style={r.c === "— sans campagne —" ? { opacity: .62 } : undefined}>
+                        <td className="lab" style={{ maxWidth: 380, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={r.c}>{r.c}</td>
+                        <td className="num">{r.leads}</td>
+                        <td className="num">{r.calls}</td>
+                        <td className="num">{r.held + r.ns ? pct(r.showRate) : "—"}</td>
+                        <td className="num green" style={{ fontWeight: 800 }}>{euro(r.collected)}</td>
+                        <td className="num" style={{ fontWeight: 700 }}>{euro(r.contracted)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>);
+        })();
+      })()}
+
       {/* REPORTING HEBDO — semaine dernière (lundi -> dimanche) + vue par closer */}
       {tab === "reporting" && (() => {
         const now = new Date();
@@ -2083,59 +2146,6 @@ export default function App() {
               </tbody>
             </table>
           </div>
-
-          {(() => {
-            // ---- Reporting ADS : une ligne par utm_campaign (= une pub) ----
-            const campOf = (l) => String(l.campaign || "").trim();
-            const anyCamp = leads.some((l) => campOf(l));
-            if (!anyCamp) return (
-              <div className="empty" style={{ padding: 18, marginTop: 24 }}>📣 Reporting Ads : aucune utm_campaign reçue pour l'instant — elles arrivent avec les leads VSL (champ utm_campaign dans Make).</div>
-            );
-            const today0a = toISO(new Date());
-            const heldA = (l) => ["show", "won", "lost"].includes(l.stage) || (l.stage === "booked" && toParis((l.lastCall && l.lastCall.date) || l.bookedAt || "").slice(0, 10) < today0a);
-            const dOfA = (l) => toParis((l.lastCall && l.lastCall.date) || l.bookedAt || "").slice(0, 10);
-            const wk = adsScope === "week";
-            const camps = {};
-            leads.forEach((l) => { const c = campOf(l) || "— sans campagne —"; (camps[c] = camps[c] || []).push(l); });
-            const rows = Object.entries(camps).map(([c, ls]) => {
-              const scoped = wk ? ls.filter((l) => { const d = toParis(l.createdAt || "").slice(0, 10); return d >= from && d <= to; }) : ls;
-              const callLs = ls.filter((l) => l.hasCall !== false && (!wk || inWeek(dOfA(l))));
-              const held = callLs.filter(heldA).length;
-              const ns = callLs.filter((l) => l.stage === "noshow").length;
-              const emails = new Set(ls.map((l) => String(l.email).toLowerCase()));
-              const campSales = sales.filter((sl) => emails.has(String(sl.email || "").toLowerCase()));
-              const collected = campSales.reduce((a, sl) => a + sl.schedule.filter((i) => i.paid && (!wk || inWeek(i.dueDate))).reduce((b, i) => b + i.amount, 0), 0);
-              const signed = campSales.filter((sl) => !wk || inWeek(sl.closeDate));
-              const contracted = signed.reduce((a, sl) => a + sl.total, 0);
-              return { c, leads: scoped.length, calls: callLs.length, held, ns, showRate: held + ns ? held / (held + ns) : 0, collected, contracted, ventes: signed.filter((sl) => sl.schedule.some((i) => i.paid)).length };
-            })
-              .filter((r) => r.leads || r.calls || r.collected || r.contracted)
-              .sort((a, b) => (a.c === "— sans campagne —") - (b.c === "— sans campagne —") || b.collected - a.collected || b.leads - a.leads);
-            return (<>
-              <div className="section-h" style={{ marginTop: 26 }}><Megaphone size={15} /> Reporting Ads · par utm_campaign</div>
-              <div className="crm-views" style={{ margin: "0 0 12px" }}>
-                <button className={`crm-chip ${adsScope === "all" ? "on" : ""}`} onClick={() => setAdsScope("all")}>Tout l'historique</button>
-                <button className={`crm-chip ${adsScope === "week" ? "on" : ""}`} onClick={() => setAdsScope("week")}>Semaine affichée</button>
-              </div>
-              <div className="card" style={{ padding: 0, overflowX: "auto" }}>
-                <table className="tbl">
-                  <thead><tr><th style={{ minWidth: 260 }}>Campagne (utm_campaign)</th><th className="num">Leads</th><th className="num">Calls</th><th className="num">Show-up</th><th className="num">Cash collecté</th><th className="num">Cash contracté</th></tr></thead>
-                  <tbody>
-                    {rows.map((r) => (
-                      <tr key={r.c} style={r.c === "— sans campagne —" ? { opacity: .62 } : undefined}>
-                        <td className="lab" style={{ maxWidth: 380, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={r.c}>{r.c}</td>
-                        <td className="num">{r.leads}</td>
-                        <td className="num">{r.calls}</td>
-                        <td className="num">{r.held + r.ns ? pct(r.showRate) : "—"}</td>
-                        <td className="num green" style={{ fontWeight: 800 }}>{euro(r.collected)}</td>
-                        <td className="num" style={{ fontWeight: 700 }}>{euro(r.contracted)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </>);
-          })()}
 
           {(() => {
             // ---- Profils par réponse au formulaire : UN tableau aligné,
