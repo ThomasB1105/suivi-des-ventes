@@ -696,7 +696,7 @@ export default function App() {
   const [vslView, setVslView] = useState("recent"); // Leads VSL : "recent" (14 j) | "all"
   const [sapView, setSapView] = useState("30"); // Saphia : fenêtre en jours ("7"|"30"|"90"|"all")
   const [sapCloser, setSapCloser] = useState("all"); // Saphia : filtre par closer
-  const [repWeek, setRepWeek] = useState(0); // Reporting : 0 = semaine en cours, 1 = semaine dernière…
+  const [repWeek, setRepWeek] = useState(0); // Reporting : 0 = semaine dernière, 1 = -2 semaines…
   const [repQScope, setRepQScope] = useState("all"); // "all" | "week"
   const loadCrm = async (silent) => {
     if (!silent) setCrmLoading(true);
@@ -1994,7 +1994,7 @@ export default function App() {
       {tab === "reporting" && (() => {
         const now = new Date();
         const dow = (now.getDay() + 6) % 7; // lundi = 0
-        const start = addDays(now, -dow - 7 * repWeek); // 0 = semaine EN COURS
+        const start = addDays(now, -dow - 7 * (1 + repWeek)); // 0 = semaine DERNIÈRE (lundi -> dimanche)
         const end = addDays(start, 6);
         const from = toISO(start), to = toISO(end);
         const inWeek = (d) => d >= from && d <= to;
@@ -2042,7 +2042,7 @@ export default function App() {
 
         return (<>
           <div className="closers-head">
-            <div className="closers-title"><TrendingUp size={16} /> Reporting · semaine du {fmt(start)} au {fmt(end)}{repWeek === 0 ? " (semaine en cours)" : (repWeek === 1 ? " (semaine dernière)" : "")}</div>
+            <div className="closers-title"><TrendingUp size={16} /> Reporting · semaine du {fmt(start)} au {fmt(end)}{repWeek === 0 ? " (semaine dernière)" : ""}</div>
             <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
               <button className="esp-open" onClick={() => setRepWeek(repWeek + 1)}>‹ Semaine précédente</button>
               <button className="esp-open" disabled={repWeek === 0} style={repWeek === 0 ? { opacity: .45, cursor: "default" } : undefined} onClick={() => setRepWeek(Math.max(0, repWeek - 1))}>Semaine suivante ›</button>
