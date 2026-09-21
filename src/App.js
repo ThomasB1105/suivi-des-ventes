@@ -698,6 +698,7 @@ export default function App() {
   const [sapCloser, setSapCloser] = useState("all"); // Saphia : filtre par closer
   const [repWeek, setRepWeek] = useState(0); // Reporting : 0 = semaine dernière, 1 = -2 semaines…
   const [repQScope, setRepQScope] = useState("all"); // "all" | "week"
+  const [adsScope, setAdsScope] = useState("all"); // Reporting Ads : "all" | "week"
   const loadCrm = async (silent) => {
     if (!silent) setCrmLoading(true);
     try { const r = await authFetch("/api/crm"); const d = await r.json(); if (d && d.leads) setCrm(d); } catch (e) { /* ignore */ }
@@ -2082,6 +2083,59 @@ export default function App() {
               </tbody>
             </table>
           </div>
+
+          {(() => {
+            // ---- Reporting ADS : une ligne par utm_campaign (= une pub) ----
+            const campOf = (l) => String(l.campaign || "").trim();
+            const anyCamp = leads.some((l) => campOf(l));
+            if (!anyCamp) return (
+              <div className="empty" style={{ padding: 18, marginTop: 24 }}>📣 Reporting Ads : aucune utm_campaign reçue pour l'instant — elles arrivent avec les leads VSL (champ utm_campaign dans Make).</div>
+            );
+            const today0a = toISO(new Date());
+            const heldA = (l) => ["show", "won", "lost"].includes(l.stage) || (l.stage === "booked" && toParis((l.lastCall && l.lastCall.date) || l.bookedAt || "").slice(0, 10) < today0a);
+            const dOfA = (l) => toParis((l.lastCall && l.lastCall.date) || l.bookedAt || "").slice(0, 10);
+            const wk = adsScope === "week";
+            const camps = {};
+            leads.forEach((l) => { const c = campOf(l) || "— sans campagne —"; (camps[c] = camps[c] || []).push(l); });
+            const rows = Object.entries(camps).map(([c, ls]) => {
+              const scoped = wk ? ls.filter((l) => { const d = toParis(l.createdAt || "").slice(0, 10); return d >= from && d <= to; }) : ls;
+              const callLs = ls.filter((l) => l.hasCall !== false && (!wk || inWeek(dOfA(l))));
+              const held = callLs.filter(heldA).length;
+              const ns = callLs.filter((l) => l.stage === "noshow").length;
+              const emails = new Set(ls.map((l) => String(l.email).toLowerCase()));
+              const campSales = sales.filter((sl) => emails.has(String(sl.email || "").toLowerCase()));
+              const collected = campSales.reduce((a, sl) => a + sl.schedule.filter((i) => i.paid && (!wk || inWeek(i.dueDate))).reduce((b, i) => b + i.amount, 0), 0);
+              const signed = campSales.filter((sl) => !wk || inWeek(sl.closeDate));
+              const contracted = signed.reduce((a, sl) => a + sl.total, 0);
+              return { c, leads: scoped.length, calls: callLs.length, held, ns, showRate: held + ns ? held / (held + ns) : 0, collected, contracted, ventes: signed.filter((sl) => sl.schedule.some((i) => i.paid)).length };
+            })
+              .filter((r) => r.leads || r.calls || r.collected || r.contracted)
+              .sort((a, b) => (a.c === "— sans campagne —") - (b.c === "— sans campagne —") || b.collected - a.collected || b.leads - a.leads);
+            return (<>
+              <div className="section-h" style={{ marginTop: 26 }}><Megaphone size={15} /> Reporting Ads · par utm_campaign</div>
+              <div className="crm-views" style={{ margin: "0 0 12px" }}>
+                <button className={`crm-chip ${adsScope === "all" ? "on" : ""}`} onClick={() => setAdsScope("all")}>Tout l'historique</button>
+                <button className={`crm-chip ${adsScope === "week" ? "on" : ""}`} onClick={() => setAdsScope("week")}>Semaine affichée</button>
+              </div>
+              <div className="card" style={{ padding: 0, overflowX: "auto" }}>
+                <table className="tbl">
+                  <thead><tr><th style={{ minWidth: 260 }}>Campagne (utm_campaign)</th><th className="num">Leads</th><th className="num">Calls</th><th className="num">Show-up</th><th className="num">Cash collecté</th><th className="num">Cash contracté</th></tr></thead>
+                  <tbody>
+                    {rows.map((r) => (
+                      <tr key={r.c} style={r.c === "— sans campagne —" ? { opacity: .62 } : undefined}>
+                        <td className="lab" style={{ maxWidth: 380, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={r.c}>{r.c}</td>
+                        <td className="num">{r.leads}</td>
+                        <td className="num">{r.calls}</td>
+                        <td className="num">{r.held + r.ns ? pct(r.showRate) : "—"}</td>
+                        <td className="num green" style={{ fontWeight: 800 }}>{euro(r.collected)}</td>
+                        <td className="num" style={{ fontWeight: 700 }}>{euro(r.contracted)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>);
+          })()}
 
           {(() => {
             // ---- Profils par réponse au formulaire : UN tableau aligné,
