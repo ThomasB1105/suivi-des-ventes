@@ -164,6 +164,8 @@ module.exports = async (req, res) => {
           if (links.join || links.reschedule || links.cancel) lead.links = { ...(lead.links || {}), ...links };
         }
         lead.source = lead.source || "Calendly";
+        // UTM du lien de booking (Calendly les stocke dans invitee.tracking)
+        if (p.tracking && p.tracking.utm_campaign && !lead.campaign) lead.campaign = String(p.tracking.utm_campaign);
         if (!lead.manualStage && !["won", "lost", "noshow", "show"].includes(lead.stage)) lead.stage = "booked";
         // L'HÔTE Calendly (membre qui prend le call) est attribué dans la
         // colonne de SON rôle (défini dans Qui est qui / comptes ; closer par
@@ -226,6 +228,7 @@ module.exports = async (req, res) => {
               if (!lead.phone && /phone|t[ée]l|num[ée]ro|whatsapp/i.test(String(q))) lead.phone = String(a);
               if ((!lead.name || lead.name === email) && /pr[ée]nom|^nom$|name/i.test(String(q))) lead.name = String(a);
             });
+            if (sub.tracking && sub.tracking.utm_campaign && !lead.campaign) { lead.campaign = String(sub.tracking.utm_campaign); touched = true; }
             if (touched) {
               lead.source = lead.source || "Calendly";
               lead.updatedAt = new Date().toISOString();

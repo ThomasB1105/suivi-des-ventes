@@ -150,6 +150,10 @@ module.exports = async (req, res) => {
         pushHistory(lead, "calendly_booked", `RDV booké${ev.name ? ` · ${ev.name}` : ""}${ev.start_time ? ` (${String(ev.start_time).slice(0, 10)})` : ""}`);
       }
       lead.source = lead.source || "Calendly";
+      // UTM transmis par Calendly (lien de booking taggé ?utm_campaign=…) :
+      // c'est ce qui relie le booking à la pub, même sans passer par Make.
+      const trk = p.tracking || {};
+      if (trk.utm_campaign && !lead.campaign) lead.campaign = String(trk.utm_campaign);
       // Hôte Calendly attribué dans la colonne de SON rôle (Qui est qui /
       // comptes ; closer par défaut). Remplace l'auto, jamais le manuel.
       const ms = Array.isArray(ev.event_memberships) ? ev.event_memberships : [];
