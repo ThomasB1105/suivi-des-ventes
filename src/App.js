@@ -698,7 +698,7 @@ export default function App() {
   const [sapCloser, setSapCloser] = useState("all"); // Saphia : filtre par closer
   const [repWeek, setRepWeek] = useState(0); // Reporting : 0 = semaine dernière, 1 = -2 semaines…
   const [repQScope, setRepQScope] = useState("all"); // "all" | "week"
-  const [adsScope, setAdsScope] = useState("all"); // Reporting Ads : "all" | "week"
+  const [adsScope, setAdsScope] = useState("week"); // Reporting Ads : suit la période sélectionnée par défaut
   const loadCrm = async (silent) => {
     if (!silent) setCrmLoading(true);
     try { const r = await authFetch("/api/crm"); const d = await r.json(); if (d && d.leads) setCrm(d); } catch (e) { /* ignore */ }
