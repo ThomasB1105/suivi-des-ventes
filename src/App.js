@@ -696,6 +696,7 @@ export default function App() {
   const [vslView, setVslView] = useState("recent"); // Leads VSL : "recent" (14 j) | "all"
   const [sapView, setSapView] = useState("30"); // Saphia : fenêtre en jours ("7"|"30"|"90"|"all")
   const [sapCloser, setSapCloser] = useState("all"); // Saphia : filtre par closer
+  const [repWeek, setRepWeek] = useState(0); // Reporting : 0 = semaine dernière, 1 = -2 semaines…
   const loadCrm = async (silent) => {
     if (!silent) setCrmLoading(true);
     try { const r = await authFetch("/api/crm"); const d = await r.json(); if (d && d.leads) setCrm(d); } catch (e) { /* ignore */ }
@@ -721,7 +722,7 @@ export default function App() {
   // base en continu ; l'interface se resynchronise toute seule (toutes les
   // 45 s quand l'onglet est visible, et au retour sur la fenêtre).
   useEffect(() => {
-    if (!(tab === "crm" || tab === "calendrier" || tab === "espace" || tab === "vsl" || tab === "followups" || tab === "saphia")) return;
+    if (!(tab === "crm" || tab === "calendrier" || tab === "espace" || tab === "vsl" || tab === "followups" || tab === "saphia" || tab === "reporting")) return;
     loadCrm(); if (isAdmin) loadTeam();
     const iv = setInterval(() => { if (document.visibilityState === "visible") loadCrm(true); }, 45000);
     const onFocus = () => { if (document.visibilityState !== "hidden") loadCrm(true); };
@@ -1067,7 +1068,7 @@ export default function App() {
   const overduesF = sortOverdue((impAll ? allOverdue : overdues).filter((i) => matchQ(i.sale)));
   const periodListF = periodList.filter((i) => matchQ(i.sale));
 
-  const SECTION = { clients: "Tableau de bord", cohortes: "Cohortes", mois: "Par mois", collecte: "À collecter", impayes: "Impayés", couts: "Coûts", closers: "Closers", crm: "CRM", calendrier: "Calendrier", equipe: "Équipe", espace: "Ma journée", vsl: "Leads VSL", acomptes: "Acomptes", followups: "Follow-ups", saphia: "Saphia follow up" };
+  const SECTION = { clients: "Tableau de bord", cohortes: "Cohortes", mois: "Par mois", collecte: "À collecter", impayes: "Impayés", couts: "Coûts", closers: "Closers", crm: "CRM", calendrier: "Calendrier", equipe: "Équipe", espace: "Ma journée", vsl: "Leads VSL", acomptes: "Acomptes", followups: "Follow-ups", saphia: "Saphia follow up", reporting: "Reporting hebdo" };
   const go = (t) => { setTab(t); setNavOpen(false); };
   const navCls = (t) => `nav-item ${tab === t ? "active" : ""}`;
   const logout = () => { try { localStorage.removeItem("melo_token"); localStorage.removeItem("melo_role"); localStorage.removeItem("melo_name"); } catch (e) { /* ignore */ } window.location.reload(); };
@@ -1571,6 +1572,7 @@ export default function App() {
             <button className={navCls("impayes")} onClick={() => go("impayes")}><AlertTriangle size={16} /> Impayés{allOverdue.length ? <span className="nav-badge">{allOverdue.length}</span> : null}</button>
             <button className={navCls("couts")} onClick={() => go("couts")}><Wallet size={16} /> Coûts</button>
             <button className={navCls("closers")} onClick={() => go("closers")}><UserCheck size={16} /> Closers</button>
+            <button className={navCls("reporting")} onClick={() => go("reporting")}><TrendingUp size={16} /> Reporting</button>
             <div className="nav-label">CRM</div>
             <button className={navCls("crm")} onClick={() => go("crm")}><ClipboardList size={16} /> CRM</button>
             <button className={navCls("vsl")} onClick={() => go("vsl")}><Leaf size={16} /> Leads VSL</button>
@@ -1983,6 +1985,96 @@ export default function App() {
               </div>
             ))}
             {rows.length > 400 && <div className="mnd-foot"><span>+{rows.length - 400} autres — affine la période ou la recherche</span></div>}
+          </div>
+        </>);
+      })()}
+
+      {/* REPORTING HEBDO — semaine dernière (lundi -> dimanche) + vue par closer */}
+      {tab === "reporting" && (() => {
+        const now = new Date();
+        const dow = (now.getDay() + 6) % 7; // lundi = 0
+        const start = addDays(now, -dow - 7 * (1 + repWeek));
+        const end = addDays(start, 6);
+        const from = toISO(start), to = toISO(end);
+        const inWeek = (d) => d >= from && d <= to;
+        const fmt = (d) => d.toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
+        const dOfL = (l) => toParis((l.lastCall && l.lastCall.date) || l.bookedAt || "").slice(0, 10);
+        const leads = crm.leads || [];
+
+        // ---- Calls de la semaine ----
+        const calls = leads.filter((l) => l.hasCall !== false && inWeek(dOfL(l)));
+        const present = calls.filter((l) => ["show", "won", "lost"].includes(l.stage));
+        const noshowN = calls.filter((l) => l.stage === "noshow").length;
+        const closed = calls.filter((l) => l.stage === "won");
+        const showRate = present.length + noshowN ? present.length / (present.length + noshowN) : 0;
+        const closingRate = present.length ? closed.length / present.length : 0;
+
+        // ---- Ventes & cash ----
+        const weekSales = sales.filter((sl) => inWeek(sl.closeDate));
+        const contracted = weekSales.reduce((a, sl) => a + sl.total, 0);
+        const collectedOnContracted = weekSales.reduce((a, sl) => a + sl.schedule.filter((i) => i.paid).reduce((b, i) => b + i.amount, 0), 0);
+        const pctCollected = contracted ? collectedOnContracted / contracted : 0;
+        const cashWeek = sales.reduce((a, sl) => a + sl.schedule.filter((i) => i.paid && inWeek(i.dueDate)).reduce((b, i) => b + i.amount, 0), 0);
+
+        // ---- Leads entrants traités ----
+        const received = leads.filter((l) => inWeek(toParis(l.createdAt || "").slice(0, 10)));
+        const treated = received.filter((l) => l.hasCall !== false || l.stage !== "new");
+
+        // ---- Vue par closer ----
+        const names = [...new Set([...calls.map((l) => l.closer), ...weekSales.map((sl) => sl.closer)].filter((n) => n && n !== "—"))].sort();
+        const perCloser = names.map((n) => {
+          const same = (v) => String(v || "").trim().toLowerCase() === n.trim().toLowerCase();
+          const c = calls.filter((l) => same(l.closer));
+          const p = c.filter((l) => ["show", "won", "lost"].includes(l.stage));
+          const ns = c.filter((l) => l.stage === "noshow").length;
+          const w = c.filter((l) => l.stage === "won").length;
+          const sSales = weekSales.filter((sl) => same(sl.closer));
+          const cash = sales.filter((sl) => same(sl.closer)).reduce((a, sl) => a + sl.schedule.filter((i) => i.paid && inWeek(i.dueDate)).reduce((b, i) => b + i.amount, 0), 0);
+          return { n, calls: c.length, present: p.length, ns, won: w, ventes: sSales.length, cash,
+            showRate: p.length + ns ? p.length / (p.length + ns) : 0, closingRate: p.length ? w / p.length : 0 };
+        }).sort((a, b) => b.cash - a.cash || b.won - a.won);
+
+        return (<>
+          <div className="closers-head">
+            <div className="closers-title"><TrendingUp size={16} /> Reporting · semaine du {fmt(start)} au {fmt(end)}{repWeek === 0 ? " (semaine dernière)" : ""}</div>
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <button className="esp-open" onClick={() => setRepWeek(repWeek + 1)}>‹ Semaine précédente</button>
+              <button className="esp-open" disabled={repWeek === 0} style={repWeek === 0 ? { opacity: .45, cursor: "default" } : undefined} onClick={() => setRepWeek(Math.max(0, repWeek - 1))}>Semaine suivante ›</button>
+              <button className={`refresh-btn ${crmLoading ? "is-loading" : ""}`} onClick={() => loadCrm()} disabled={crmLoading}><RotateCcw size={15} className={crmLoading ? "spin" : ""} /> Actualiser</button>
+            </div>
+          </div>
+
+          <div className="kpis" style={{ marginTop: 4 }}>
+            <div className="kcard"><div className="kcard-l">Calls</div><div className="kcard-v">{calls.length}</div><div className="kcard-f">{present.length} honorés · {noshowN} no-show</div></div>
+            <div className="kcard"><div className="kcard-l">Show-up</div><div className="kcard-v">{pct(showRate)}</div><div className="kcard-f">présents / (présents + no-show)</div></div>
+            <div className="kcard"><div className="kcard-l">Closés</div><div className="kcard-v green">{closed.length}</div><div className="kcard-f">taux de closing {pct(closingRate)}</div></div>
+            <div className="kcard"><div className="kcard-l">Ventes signées</div><div className="kcard-v">{weekSales.length}</div><div className="kcard-f">{euro(contracted)} contractés</div></div>
+            <div className="kcard"><div className="kcard-l">Cash collecté</div><div className="kcard-v green">{euro(cashWeek)}</div><div className="kcard-f">encaissé sur la semaine</div></div>
+            <div className="kcard"><div className="kcard-l">% collecté / contracté</div><div className="kcard-v" style={{ color: "var(--cyan)" }}>{contracted ? pct(pctCollected) : "—"}</div><div className="kcard-f">{euro(collectedOnContracted)} déjà encaissés sur les ventes de la semaine</div></div>
+            <div className="kcard"><div className="kcard-l">Leads traités</div><div className="kcard-v">{treated.length}<span className="mut" style={{ fontSize: 15, fontWeight: 600 }}> / {received.length}</span></div><div className="kcard-f">entrants reçus sur la semaine</div></div>
+          </div>
+
+          <div className="section-h" style={{ marginTop: 26 }}><UserCheck size={15} /> Par closer</div>
+          <div className="card" style={{ padding: 0, overflowX: "auto" }}>
+            <table className="tbl">
+              <thead><tr><th>Closer</th><th className="num">Calls</th><th className="num">Honorés</th><th className="num">No-show</th><th className="num">Show-up</th><th className="num">Closés</th><th className="num">Taux closing</th><th className="num">Ventes signées</th><th className="num">Cash collecté</th></tr></thead>
+              <tbody>
+                {perCloser.map((r) => (
+                  <tr key={r.n}>
+                    <td className="lab">{r.n}</td>
+                    <td className="num">{r.calls}</td>
+                    <td className="num">{r.present}</td>
+                    <td className="num" style={r.ns ? { color: "var(--red)", fontWeight: 700 } : undefined}>{r.ns}</td>
+                    <td className="num">{r.calls ? pct(r.showRate) : "—"}</td>
+                    <td className="num green" style={{ fontWeight: 700 }}>{r.won}</td>
+                    <td className="num">{r.present ? pct(r.closingRate) : "—"}</td>
+                    <td className="num">{r.ventes}</td>
+                    <td className="num green" style={{ fontWeight: 800 }}>{euro(r.cash)}</td>
+                  </tr>
+                ))}
+                {perCloser.length === 0 && <tr><td colSpan={9}><div className="empty" style={{ padding: 18 }}>Aucune activité sur cette semaine.</div></td></tr>}
+              </tbody>
+            </table>
           </div>
         </>);
       })()}
