@@ -697,7 +697,6 @@ export default function App() {
   const [sapView, setSapView] = useState("30"); // Saphia : fenêtre en jours ("7"|"30"|"90"|"all")
   const [sapCloser, setSapCloser] = useState("all"); // Saphia : filtre par closer
   const [repWeek, setRepWeek] = useState(0); // Reporting : 0 = semaine dernière, 1 = -2 semaines…
-  const [repQ, setRepQ] = useState(""); // Reporting : question du formulaire analysée
   const [repQScope, setRepQScope] = useState("all"); // "all" | "week"
   const loadCrm = async (silent) => {
     if (!silent) setCrmLoading(true);
@@ -2085,57 +2084,60 @@ export default function App() {
           </div>
 
           {(() => {
-            // ---- Profils par réponse au formulaire : qui close, qui no-show ----
+            // ---- Profils par réponse au formulaire : une carte par question,
+            //      façon « Cohortes » de l'onglet Closers (NB / no-show /
+            //      show-up / ventes / closing / revenu) ----
             const pool = (repQScope === "week" ? calls : leads.filter((l) => l.hasCall !== false)).filter((l) => l.answers && typeof l.answers === "object");
             const qCount = {};
             pool.forEach((l) => Object.keys(l.answers).forEach((q) => { qCount[q] = (qCount[q] || 0) + 1; }));
-            const questions = Object.entries(qCount).filter(([, n]) => n >= 3).sort((a, b) => b[1] - a[1]).map(([q]) => q);
+            const questions = Object.entries(qCount).filter(([, n]) => n >= 3).sort((a, b) => b[1] - a[1]).map(([q]) => q).slice(0, 10);
             if (!questions.length) return (
               <div className="empty" style={{ padding: 20, marginTop: 24 }}>Pas encore assez de réponses de formulaire (elles remontent de Calendly / iClosed via « Connecter Calendly » et l'import).</div>
             );
-            const activeQ = questions.includes(repQ) ? repQ : questions[0];
-            const byAns = {};
-            pool.forEach((l) => {
-              const a = l.answers[activeQ];
-              if (a == null || String(a).trim() === "") return;
-              const k = String(a).trim();
-              (byAns[k] = byAns[k] || []).push(l);
-            });
-            const rows = Object.entries(byAns).map(([ans, ls]) => {
-              const p = ls.filter((l) => ["show", "won", "lost"].includes(l.stage)).length;
-              const ns = ls.filter((l) => l.stage === "noshow").length;
-              const w = ls.filter((l) => l.stage === "won").length;
-              return { ans, n: ls.length, p, ns, w, showRate: p + ns ? p / (p + ns) : 0, closingRate: p ? w / p : 0 };
-            }).sort((a, b) => b.n - a.n).slice(0, 14);
             return (<>
-              <div className="section-h" style={{ marginTop: 26 }}><Search size={15} /> Profils · réponses au formulaire</div>
-              <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", margin: "0 0 12px" }}>
-                <select className="attr-sel" style={{ minWidth: 260, maxWidth: 460 }} value={activeQ} onChange={(e) => setRepQ(e.target.value)}>
-                  {questions.map((q) => <option key={q} value={q}>{q}</option>)}
-                </select>
-                <div className="crm-views">
-                  <button className={`crm-chip ${repQScope === "all" ? "on" : ""}`} onClick={() => setRepQScope("all")}>Tout l'historique</button>
-                  <button className={`crm-chip ${repQScope === "week" ? "on" : ""}`} onClick={() => setRepQScope("week")}>Semaine affichée</button>
-                </div>
+              <div className="section-h" style={{ marginTop: 26 }}><Grid3x3 size={15} /> Profils · par réponse au formulaire</div>
+              <div className="crm-views" style={{ margin: "0 0 12px" }}>
+                <button className={`crm-chip ${repQScope === "all" ? "on" : ""}`} onClick={() => setRepQScope("all")}>Tout l'historique</button>
+                <button className={`crm-chip ${repQScope === "week" ? "on" : ""}`} onClick={() => setRepQScope("week")}>Semaine affichée</button>
               </div>
-              <div className="card" style={{ padding: 0, overflowX: "auto" }}>
-                <table className="tbl">
-                  <thead><tr><th>Réponse</th><th className="num">Calls</th><th className="num">Honorés</th><th className="num">No-show</th><th className="num">Show-up</th><th className="num">Closés</th><th className="num">Taux closing</th></tr></thead>
-                  <tbody>
-                    {rows.map((r) => (
-                      <tr key={r.ans}>
-                        <td className="lab" style={{ maxWidth: 380, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={r.ans}>{r.ans}</td>
-                        <td className="num">{r.n}</td>
-                        <td className="num">{r.p}</td>
-                        <td className="num" style={r.ns ? { color: "var(--red)", fontWeight: 700 } : undefined}>{r.ns}</td>
-                        <td className="num">{r.p + r.ns ? pct(r.showRate) : "—"}</td>
-                        <td className="num green" style={{ fontWeight: 700 }}>{r.w}</td>
-                        <td className="num" style={{ fontWeight: 700 }}>{r.p ? pct(r.closingRate) : "—"}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              {questions.map((qq) => {
+                const byAns = {};
+                let total = 0;
+                pool.forEach((l) => {
+                  const a = l.answers[qq];
+                  if (a == null || String(a).trim() === "") return;
+                  const k = String(a).trim();
+                  (byAns[k] = byAns[k] || []).push(l); total += 1;
+                });
+                const rows = Object.entries(byAns).map(([ans, ls]) => {
+                  const p = ls.filter((l) => ["show", "won", "lost"].includes(l.stage)).length;
+                  const ns = ls.filter((l) => l.stage === "noshow").length;
+                  const won = ls.filter((l) => l.stage === "won");
+                  return { ans, n: ls.length, p, ns, w: won.length, rev: won.reduce((a2, l) => a2 + (l.amount || 0), 0),
+                    showRate: p + ns ? p / (p + ns) : 0, closingRate: p ? won.length / p : 0 };
+                }).sort((a, b) => b.n - a.n).slice(0, 12);
+                return (
+                  <div className="card" key={qq} style={{ padding: 0, overflowX: "auto", marginBottom: 16 }}>
+                    <div style={{ padding: "13px 18px 0", fontWeight: 800, fontSize: 13.5 }}>{qq} <span className="mut" style={{ fontWeight: 600, fontSize: 12 }}>· {total} appels</span></div>
+                    <table className="tbl">
+                      <thead><tr><th>Réponse</th><th className="num">NB</th><th className="num">No-show</th><th className="num">Show-up</th><th className="num">Ventes</th><th className="num">Closing</th><th className="num">Revenu</th></tr></thead>
+                      <tbody>
+                        {rows.map((r) => (
+                          <tr key={r.ans}>
+                            <td className="lab" style={{ maxWidth: 420, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={r.ans}>{r.ans}</td>
+                            <td className="num">{r.n}</td>
+                            <td className="num" style={r.ns ? { color: "var(--red)", fontWeight: 700 } : undefined}>{r.ns}</td>
+                            <td className="num">{r.p + r.ns ? pct(r.showRate) : "—"}</td>
+                            <td className="num" style={{ fontWeight: 700 }}>{r.w}</td>
+                            <td className="num" style={{ fontWeight: 700, color: r.closingRate >= 0.4 ? "var(--green)" : "var(--text)" }}>{r.p ? pct(r.closingRate) : "—"}</td>
+                            <td className="num green" style={{ fontWeight: 800 }}>{euro(r.rev)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                );
+              })}
             </>);
           })()}
         </>);
