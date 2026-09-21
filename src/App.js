@@ -696,7 +696,7 @@ export default function App() {
   const [vslView, setVslView] = useState("recent"); // Leads VSL : "recent" (14 j) | "all"
   const [sapView, setSapView] = useState("30"); // Saphia : fenêtre en jours ("7"|"30"|"90"|"all")
   const [sapCloser, setSapCloser] = useState("all"); // Saphia : filtre par closer
-  const [repWeek, setRepWeek] = useState(0); // Reporting : 0 = semaine dernière, 1 = -2 semaines…
+  const [repWeek, setRepWeek] = useState(0); // Reporting : 0 = semaine en cours, 1 = semaine dernière…
   const [repQScope, setRepQScope] = useState("all"); // "all" | "week"
   const loadCrm = async (silent) => {
     if (!silent) setCrmLoading(true);
@@ -1994,7 +1994,7 @@ export default function App() {
       {tab === "reporting" && (() => {
         const now = new Date();
         const dow = (now.getDay() + 6) % 7; // lundi = 0
-        const start = addDays(now, -dow - 7 * (1 + repWeek));
+        const start = addDays(now, -dow - 7 * repWeek); // 0 = semaine EN COURS
         const end = addDays(start, 6);
         const from = toISO(start), to = toISO(end);
         const inWeek = (d) => d >= from && d <= to;
@@ -2042,7 +2042,7 @@ export default function App() {
 
         return (<>
           <div className="closers-head">
-            <div className="closers-title"><TrendingUp size={16} /> Reporting · semaine du {fmt(start)} au {fmt(end)}{repWeek === 0 ? " (semaine dernière)" : ""}</div>
+            <div className="closers-title"><TrendingUp size={16} /> Reporting · semaine du {fmt(start)} au {fmt(end)}{repWeek === 0 ? " (semaine en cours)" : (repWeek === 1 ? " (semaine dernière)" : "")}</div>
             <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
               <button className="esp-open" onClick={() => setRepWeek(repWeek + 1)}>‹ Semaine précédente</button>
               <button className="esp-open" disabled={repWeek === 0} style={repWeek === 0 ? { opacity: .45, cursor: "default" } : undefined} onClick={() => setRepWeek(Math.max(0, repWeek - 1))}>Semaine suivante ›</button>
@@ -2090,12 +2090,21 @@ export default function App() {
             // (les no-shows sans formulaire n'en sortent plus).
             const scopeAll = repQScope === "week" ? calls : leads.filter((l) => l.hasCall !== false);
             const META_Q = /full ?name|^nom\b|^pr[ée]nom|name$|e-?mail|t[ée]l[ée]phone|phone|whatsapp|instagram|linkedin/i;
+            // « Quel âge as-tu ? » (Calendly) et « Quel âge as-tu » (iClosed)
+            // sont la même question : on fusionne par clé normalisée.
+            const normQ = (q) => String(q).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+            const canonical = {}; // clé normalisée -> libellé le plus fréquent
             const qCount = {};
-            scopeAll.forEach((l) => Object.keys(l.answers || {}).forEach((q) => { if (!META_Q.test(String(q).trim())) qCount[q] = (qCount[q] || 0) + 1; }));
+            scopeAll.forEach((l) => Object.keys(l.answers || {}).forEach((q) => {
+              if (META_Q.test(String(q).trim())) return;
+              const k = normQ(q);
+              if (!canonical[k]) canonical[k] = q;
+              qCount[k] = (qCount[k] || 0) + 1;
+            }));
             const ORDER = [/[âa]ge/i, /d[ée]crirais|profil|niveau/i, /situation|professionnel/i, /objectif/i, /investir|budget|combien/i, /[ée]chelle|motiv/i];
             const qRank = (q) => { const i = ORDER.findIndex((rx) => rx.test(q)); return i === -1 ? 99 : i; };
             const questions = Object.entries(qCount).filter(([, n]) => n >= 3)
-              .sort((a, b) => qRank(a[0]) - qRank(b[0]) || b[1] - a[1]).map(([q]) => q).slice(0, 10);
+              .sort((a, b) => qRank(canonical[a[0]]) - qRank(canonical[b[0]]) || b[1] - a[1]).map(([q]) => q).slice(0, 10);
             if (!questions.length) return (
               <div className="empty" style={{ padding: 20, marginTop: 24 }}>Pas encore assez de réponses de formulaire (clique « Connecter Calendly » pour rattacher les questionnaires).</div>
             );
@@ -2130,12 +2139,17 @@ export default function App() {
                     {questions.map((qq) => {
                       const byAns = {};
                       const answered = [];
+                      const ansOf = (l) => {
+                        if (!l.answers) return null;
+                        for (const [k2, v2] of Object.entries(l.answers)) { if (normQ(k2) === qq && v2 != null && String(v2).trim() !== "") return String(v2).trim(); }
+                        return null;
+                      };
                       scopeAll.forEach((l) => {
-                        const a = l.answers && l.answers[qq];
-                        if (a == null || String(a).trim() === "") return;
-                        (byAns[String(a).trim()] = byAns[String(a).trim()] || []).push(l); answered.push(l);
+                        const a = ansOf(l);
+                        if (a == null) return;
+                        (byAns[a] = byAns[a] || []).push(l); answered.push(l);
                       });
-                      const noAns = scopeAll.filter((l) => !(l.answers && l.answers[qq] != null && String(l.answers[qq]).trim() !== ""));
+                      const noAns = scopeAll.filter((l) => ansOf(l) == null);
                       const rows = Object.entries(byAns).map(([ans, ls]) => ({ ans, ...statsOf(ls) }))
                         .sort((a, b) => {
                           const na = firstNum(a.ans), nb = firstNum(b.ans);
@@ -2147,7 +2161,7 @@ export default function App() {
                       const nar = statsOf(noAns);
                       return (
                         <React.Fragment key={qq}>
-                          <tr className="grp-row"><td colSpan={7}>{qq}<span className="gmeta">{answered.length}/{scopeAll.length} calls renseignés</span></td></tr>
+                          <tr className="grp-row"><td colSpan={7}>{canonical[qq]}<span className="gmeta">{answered.length}/{scopeAll.length} calls renseignés</span></td></tr>
                           {rows.map((r) => (
                             <tr key={r.ans}>
                               <td className="lab" style={{ maxWidth: 420, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", paddingLeft: 26 }} title={r.ans}>{r.ans}</td>
