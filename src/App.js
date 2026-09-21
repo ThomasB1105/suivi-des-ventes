@@ -2088,8 +2088,10 @@ export default function App() {
             //      façon « Cohortes » de l'onglet Closers (NB / no-show /
             //      show-up / ventes / closing / revenu) ----
             const pool = (repQScope === "week" ? calls : leads.filter((l) => l.hasCall !== false)).filter((l) => l.answers && typeof l.answers === "object");
+            // Les champs d'identité ne sont PAS des questions de qualification.
+            const META_Q = /full ?name|^nom\b|^pr[ée]nom|name$|e-?mail|t[ée]l[ée]phone|phone|whatsapp|instagram|linkedin/i;
             const qCount = {};
-            pool.forEach((l) => Object.keys(l.answers).forEach((q) => { qCount[q] = (qCount[q] || 0) + 1; }));
+            pool.forEach((l) => Object.keys(l.answers).forEach((q) => { if (!META_Q.test(String(q).trim())) qCount[q] = (qCount[q] || 0) + 1; }));
             const questions = Object.entries(qCount).filter(([, n]) => n >= 3).sort((a, b) => b[1] - a[1]).map(([q]) => q).slice(0, 10);
             if (!questions.length) return (
               <div className="empty" style={{ padding: 20, marginTop: 24 }}>Pas encore assez de réponses de formulaire (elles remontent de Calendly / iClosed via « Connecter Calendly » et l'import).</div>
@@ -2109,8 +2111,10 @@ export default function App() {
                   const k = String(a).trim();
                   (byAns[k] = byAns[k] || []).push(l); total += 1;
                 });
+                const today0r = toISO(new Date());
+                const heldL = (l) => ["show", "won", "lost"].includes(l.stage) || (l.stage === "booked" && toParis((l.lastCall && l.lastCall.date) || l.bookedAt || "").slice(0, 10) < today0r); // non renseigné = a eu lieu
                 const rows = Object.entries(byAns).map(([ans, ls]) => {
-                  const p = ls.filter((l) => ["show", "won", "lost"].includes(l.stage)).length;
+                  const p = ls.filter(heldL).length;
                   const ns = ls.filter((l) => l.stage === "noshow").length;
                   const won = ls.filter((l) => l.stage === "won");
                   return { ans, n: ls.length, p, ns, w: won.length, rev: won.reduce((a2, l) => a2 + (l.amount || 0), 0),
