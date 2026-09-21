@@ -2015,12 +2015,13 @@ export default function App() {
               const callLs = ls.filter((l) => l.hasCall !== false && (!wk || inWeek(dOfA(l))));
               const held = callLs.filter(heldA).length;
               const ns = callLs.filter((l) => l.stage === "noshow").length;
+              const cancels = callLs.filter((l) => l.showUp === "cancelled").length;
               const emails = new Set(ls.map((l) => String(l.email).toLowerCase()));
               const campSales = sales.filter((sl) => emails.has(String(sl.email || "").toLowerCase()));
               const collected = campSales.reduce((a, sl) => a + sl.schedule.filter((i) => i.paid && (!wk || inWeek(i.dueDate))).reduce((b, i) => b + i.amount, 0), 0);
               const signed = campSales.filter((sl) => !wk || inWeek(sl.closeDate));
               const contracted = signed.reduce((a, sl) => a + sl.total, 0);
-              return { c, leads: scoped.length, calls: callLs.length, held, ns, showRate: held + ns ? held / (held + ns) : 0, collected, contracted, ventes: signed.filter((sl) => sl.schedule.some((i) => i.paid)).length };
+              return { c, leads: scoped.length, calls: callLs.length, held, ns, cancels, showRate: held + ns ? held / (held + ns) : 0, collected, contracted, ventes: signed.filter((sl) => sl.schedule.some((i) => i.paid)).length };
             })
               .filter((r) => r.leads || r.calls || r.collected || r.contracted)
               .sort((a, b) => (a.c === "— sans campagne —") - (b.c === "— sans campagne —") || b.collected - a.collected || b.leads - a.leads);
@@ -2035,13 +2036,15 @@ export default function App() {
               </div>
               <div className="card" style={{ padding: 0, overflowX: "auto" }}>
                 <table className="tbl">
-                  <thead><tr><th style={{ minWidth: 260 }}>Campagne (utm_campaign)</th><th className="num">Leads</th><th className="num">Calls</th><th className="num">Show-up</th><th className="num">Cash collecté</th><th className="num">Cash contracté</th></tr></thead>
+                  <thead><tr><th style={{ minWidth: 260 }}>Campagne (utm_campaign)</th><th className="num">Leads</th><th className="num">Calls</th><th className="num">Annulés</th><th className="num">No-show</th><th className="num">Show-up</th><th className="num">Cash collecté</th><th className="num">Cash contracté</th></tr></thead>
                   <tbody>
                     {rows.map((r) => (
                       <tr key={r.c} style={r.c === "— sans campagne —" ? { opacity: .62 } : undefined}>
                         <td className="lab" style={{ maxWidth: 380, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={r.c}>{r.c}</td>
                         <td className="num">{r.leads}</td>
                         <td className="num">{r.calls}</td>
+                        <td className="num" style={r.cancels ? { color: "var(--amber)", fontWeight: 700 } : undefined}>{r.cancels}</td>
+                        <td className="num" style={r.ns ? { color: "var(--red)", fontWeight: 700 } : undefined}>{r.ns}</td>
                         <td className="num">{r.held + r.ns ? pct(r.showRate) : "—"}</td>
                         <td className="num green" style={{ fontWeight: 800 }}>{euro(r.collected)}</td>
                         <td className="num" style={{ fontWeight: 700 }}>{euro(r.contracted)}</td>
