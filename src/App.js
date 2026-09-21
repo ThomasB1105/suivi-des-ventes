@@ -2021,15 +2021,20 @@ export default function App() {
         const treated = received.filter((l) => l.hasCall !== false || l.stage !== "new");
 
         // ---- Vue par closer ----
-        const names = [...new Set([...calls.map((l) => l.closer), ...weekSales.map((sl) => sl.closer)].filter((n) => n && n !== "—"))].sort();
+        // Le closer d'une vente est retrouvé via le LEAD CRM (même email,
+        // alias résolus) — le champ closer de la vente est souvent vide/brut.
+        const closerByEmail = {};
+        leads.forEach((l) => { if (l.closer) closerByEmail[String(l.email).toLowerCase()] = l.closer; });
+        const saleCloser = (sl) => closerByEmail[String(sl.email || "").toLowerCase()] || sl.closer;
+        const names = [...new Set([...calls.map((l) => l.closer), ...weekSales.map((sl) => saleCloser(sl))].filter((n) => n && n !== "—"))].sort();
         const perCloser = names.map((n) => {
           const same = (v) => String(v || "").trim().toLowerCase() === n.trim().toLowerCase();
           const c = calls.filter((l) => same(l.closer));
           const p = c.filter((l) => ["show", "won", "lost"].includes(l.stage));
           const ns = c.filter((l) => l.stage === "noshow").length;
           const w = c.filter((l) => l.stage === "won").length;
-          const sSales = weekSales.filter((sl) => same(sl.closer));
-          const cash = sales.filter((sl) => same(sl.closer)).reduce((a, sl) => a + sl.schedule.filter((i) => i.paid && inWeek(i.dueDate)).reduce((b, i) => b + i.amount, 0), 0);
+          const sSales = weekSales.filter((sl) => same(saleCloser(sl)));
+          const cash = sales.filter((sl) => same(saleCloser(sl))).reduce((a, sl) => a + sl.schedule.filter((i) => i.paid && inWeek(i.dueDate)).reduce((b, i) => b + i.amount, 0), 0);
           return { n, calls: c.length, present: p.length, ns, won: w, ventes: sSales.length, cash,
             showRate: p.length + ns ? p.length / (p.length + ns) : 0, closingRate: p.length ? w / p.length : 0 };
         }).sort((a, b) => b.cash - a.cash || b.won - a.won);
