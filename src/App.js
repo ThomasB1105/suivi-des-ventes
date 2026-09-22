@@ -696,6 +696,7 @@ export default function App() {
   const [vslView, setVslView] = useState("recent"); // Leads VSL : "recent" (14 j) | "all"
   const [sapView, setSapView] = useState("30"); // Saphia : fenêtre en jours ("7"|"30"|"90"|"all")
   const [sapCloser, setSapCloser] = useState("all"); // Saphia : filtre par closer
+  const [nsView, setNsView] = useState("7"); // onglet No-shows : fenêtre en jours
   const [repWeek, setRepWeek] = useState(0); // Reporting : 0 = semaine dernière, 1 = -2 semaines…
   const [repQScope, setRepQScope] = useState("all"); // "all" | "week"
   const [adsScope, setAdsScope] = useState("week"); // Reporting Ads : suit la période sélectionnée par défaut
@@ -724,7 +725,7 @@ export default function App() {
   // base en continu ; l'interface se resynchronise toute seule (toutes les
   // 45 s quand l'onglet est visible, et au retour sur la fenêtre).
   useEffect(() => {
-    if (!(tab === "crm" || tab === "calendrier" || tab === "espace" || tab === "vsl" || tab === "followups" || tab === "saphia" || tab === "reporting" || tab === "ads")) return;
+    if (!(tab === "crm" || tab === "calendrier" || tab === "espace" || tab === "vsl" || tab === "followups" || tab === "saphia" || tab === "reporting" || tab === "ads" || tab === "noshows")) return;
     loadCrm(); if (isAdmin) loadTeam();
     const iv = setInterval(() => { if (document.visibilityState === "visible") loadCrm(true); }, 45000);
     const onFocus = () => { if (document.visibilityState !== "hidden") loadCrm(true); };
@@ -1070,7 +1071,7 @@ export default function App() {
   const overduesF = sortOverdue((impAll ? allOverdue : overdues).filter((i) => matchQ(i.sale)));
   const periodListF = periodList.filter((i) => matchQ(i.sale));
 
-  const SECTION = { clients: "Tableau de bord", cohortes: "Cohortes", mois: "Par mois", collecte: "À collecter", impayes: "Impayés", couts: "Coûts", closers: "Closers", crm: "CRM", calendrier: "Calendrier", equipe: "Équipe", espace: "Ma journée", vsl: "Leads VSL", acomptes: "Acomptes", followups: "Follow-ups", saphia: "Saphia follow up", reporting: "Reporting hebdo", ads: "Reporting Ads" };
+  const SECTION = { clients: "Tableau de bord", cohortes: "Cohortes", mois: "Par mois", collecte: "À collecter", impayes: "Impayés", couts: "Coûts", closers: "Closers", crm: "CRM", calendrier: "Calendrier", equipe: "Équipe", espace: "Ma journée", vsl: "Leads VSL", acomptes: "Acomptes", followups: "Follow-ups", saphia: "Saphia follow up", reporting: "Reporting hebdo", ads: "Reporting Ads", noshows: "No-shows" };
   const go = (t) => { setTab(t); setNavOpen(false); };
   const navCls = (t) => `nav-item ${tab === t ? "active" : ""}`;
   const logout = () => { try { localStorage.removeItem("melo_token"); localStorage.removeItem("melo_role"); localStorage.removeItem("melo_name"); } catch (e) { /* ignore */ } window.location.reload(); };
@@ -1585,10 +1586,12 @@ export default function App() {
             <button className={navCls("acomptes")} onClick={() => go("acomptes")}><Landmark size={16} /> Acomptes</button>
             <button className={navCls("followups")} onClick={() => go("followups")}><RotateCcw size={16} /> Follow-ups</button>
             <button className={navCls("saphia")} onClick={() => go("saphia")}><Phone size={16} /> Saphia follow up</button>
+            <button className={navCls("noshows")} onClick={() => go("noshows")}><AlertTriangle size={16} /> No-shows</button>
           </>) : (<>
             <div className="nav-label">Mon espace</div>
             <button className={navCls("espace")} onClick={() => go("espace")}><UserCheck size={16} /> Ma journée</button>
             {me.role === "setter" && <button className={navCls("vsl")} onClick={() => go("vsl")}><Leaf size={16} /> Leads VSL</button>}
+            {me.role === "setter" && <button className={navCls("noshows")} onClick={() => go("noshows")}><AlertTriangle size={16} /> No-shows</button>}
             {isSaphiaUser && <button className={navCls("saphia")} onClick={() => go("saphia")}><Phone size={16} /> Follow up</button>}
             <button className={navCls("calendrier")} onClick={() => go("calendrier")}><Calendar size={16} /> Mon agenda</button>
             <button className={navCls("crm")} onClick={() => go("crm")}><ClipboardList size={16} /> Mes calls</button>
@@ -2942,6 +2945,53 @@ export default function App() {
         </>);
       })()}
 
+      {/* NO-SHOWS — liste complète, filtrable par date (setter + admin) */}
+      {tab === "noshows" && (isAdmin || me.role === "setter") && (() => {
+        const dOfL = (l) => toParis((l.lastCall && l.lastCall.date) || l.bookedAt || "").slice(0, 10);
+        const frD = (d) => (d ? `${d.slice(8, 10)}/${d.slice(5, 7)}` : "—");
+        const initials = (n) => String(n).split(/[\s@._-]+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase() || "?";
+        const avaColor = (e) => ["#579BFC", "#A25DDC", "#00C875", "#FDAB3D", "#E2445C", "#66B2FF"][(String(e).charCodeAt(0) + String(e).length) % 6];
+        const nmOf = (l) => (l.name && l.name !== l.email ? l.name : l.email);
+        const win = nsView === "all" ? 100000 : Number(nsView);
+        const minNs = toISO(new Date(Date.now() - win * 864e5));
+        const q = crmQ.trim().toLowerCase();
+        const rows = (crm.leads || [])
+          .filter((l) => l.stage === "noshow" && dOfL(l))
+          .filter((l) => nsView === "all" || dOfL(l) >= minNs)
+          .filter((l) => !q || [l.name, l.email, l.phone, l.closer, l.setter].some((v) => String(v || "").toLowerCase().includes(q)))
+          .sort((a, b) => dOfL(b).localeCompare(dOfL(a)));
+        return (<>
+          <div className="closers-head">
+            <div className="closers-title"><AlertTriangle size={16} /> No-shows à re-booker</div>
+            <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+              <div className="crm-views">
+                {[["7", "7 j"], ["30", "30 j"], ["90", "90 j"], ["all", "Tout"]].map(([v, lbl]) => (
+                  <button key={v} className={`crm-chip ${nsView === v ? "on" : ""}`} onClick={() => setNsView(v)}>{lbl}</button>
+                ))}
+              </div>
+              <div className="crm-search"><Search size={14} /><input value={crmQ} onChange={(e) => setCrmQ(e.target.value)} placeholder="Rechercher (nom, email, closer…)" /></div>
+              <button className={`refresh-btn ${crmLoading ? "is-loading" : ""}`} onClick={() => loadCrm()} disabled={crmLoading}><RotateCcw size={15} className={crmLoading ? "spin" : ""} /> Actualiser</button>
+            </div>
+          </div>
+          <div className="card" style={{ padding: 0, overflow: "hidden" }}>
+            {rows.length === 0 && <div className="empty" style={{ padding: 22 }}>Aucun no-show sur cette période 🎉</div>}
+            {rows.slice(0, 150).map((l) => (
+              <div className="esp-todo" key={"nst" + l.email}>
+                <span className="mnd-ava" style={{ background: avaColor(l.email), width: 34, height: 34, fontSize: 12.5 }}>{initials(nmOf(l))}</span>
+                <div style={{ minWidth: 0 }}>
+                  <div className="esp-todo-txt">{nmOf(l)}{l.closer ? <span className="mut" style={{ fontWeight: 500 }}> · {l.closer}</span> : null}</div>
+                  <div className="esp-todo-lead">call du {frD(dOfL(l))} · {l.email}{l.phone ? ` · ${l.phone}` : ""}</div>
+                </div>
+                <span className="esp-tag" style={{ color: "#B42318", borderColor: "#FECDCA", background: "#FEF3F2", marginLeft: "auto" }}>No-show</span>
+                {l.phone ? <a className="ls-link ls-join" style={{ flex: "none", textDecoration: "none" }} href={`tel:${String(l.phone).replace(/[^+0-9]/g, "")}`}>📱 Appeler</a> : null}
+                <button className="esp-open" onClick={() => setLeadOpen(l.email)}>Ouvrir la fiche</button>
+              </div>
+            ))}
+            {rows.length > 150 && <div className="mnd-foot"><span>+{rows.length - 150} autres — réduis la période ou affine la recherche</span></div>}
+          </div>
+        </>);
+      })()}
+
       {/* LEADS VSL — CRM dédié aux opt-ins entrants SANS call pris (admin) */}
       {tab === "vsl" && (isAdmin || me.role === "setter") && (() => {
         const optins = (crm.leads || []).filter((l) => l.hasCall === false);
@@ -3129,12 +3179,12 @@ export default function App() {
         // -> le lead SORT du planning du jour et de la todo du setter.
         const SETTING_DONE = ["wa", "unqualified", "cancel"];
         const processLeads = isSetter ? mine.filter((l) => l.stage === "booked" && dOfL(l) >= today && !SETTING_DONE.includes(l.setStatus || "")) : [];
-        const yesterday = toISO(new Date(Date.now() - 864e5));
-        const noShowVeille = isSetter ? mine.filter((l) => l.stage === "noshow" && dOfL(l) >= yesterday && dOfL(l) <= today) : [];
+        const ns7 = toISO(new Date(Date.now() - 7 * 864e5));
+        const noShowVeille = isSetter ? mine.filter((l) => l.stage === "noshow" && dOfL(l) >= ns7 && dOfL(l) <= today) : [];
         const setRelance = isSetter ? mine.filter((l) => ["nrp", "cancel"].includes(l.setStatus || "") && !["won", "dead"].includes(l.stage)) : [];
         const todos = [
           ...processLeads.map((l) => ({ ico: "💬", txt: l.setStatus === "nrp" ? "NRP : rappeler + créer le groupe WA" : "Appeler le lead + créer le groupe WhatsApp", l, patch: { setStatus: "wa" }, done: "✓ WA créé" })),
-          ...noShowVeille.map((l) => ({ ico: "🚨", txt: "No-show d'hier : rappeler pour re-booker", l })),
+          ...noShowVeille.map((l) => ({ ico: "🚨", txt: "No-show : rappeler pour re-booker", l })),
           ...needResult.map((l) => ({ ico: "📝", txt: "Renseigner le résultat du call", l })),
           ...needFathom.map((l) => ({ ico: "🎥", txt: "Coller le lien Fathom", l })),
           ...relance.filter((l) => !noShowVeille.includes(l)).map((l) => ({ ico: "🔄", txt: l.stage === "noshow" ? "No-show : re-booker un call" : "Annulé : re-booker un call", l })),
