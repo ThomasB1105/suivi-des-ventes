@@ -3119,15 +3119,16 @@ export default function App() {
         const avaColor = (e) => ["#579BFC", "#A25DDC", "#00C875", "#FDAB3D", "#E2445C", "#66B2FF"][(String(e).charCodeAt(0) + String(e).length) % 6];
         const nmOf = (l) => (l.name && l.name !== l.email ? l.name : l.email);
 
-        // ---- Stats du mois en cours ----
-        const mk = today.slice(0, 7);
-        const monthLeads = mine.filter((l) => dOfL(l).slice(0, 7) === mk);
+        // ---- Stats sur la PÉRIODE sélectionnée (défaut : mois en cours) ----
+        const inP = (d) => d >= periodRange.from && d <= periodRange.to;
+        const monthLeads = mine.filter((l) => inP(dOfL(l)));
         const showed = monthLeads.filter((l) => ["show", "won", "lost"].includes(l.stage)).length;
         const noshowN = monthLeads.filter((l) => l.stage === "noshow").length;
         const wonLeads = monthLeads.filter((l) => l.stage === "won");
         // Revenu du mois = CASH ENCAISSÉ ce mois-ci sur ses leads (peu importe
         // la date du call) -> un paiement attribué remonte immédiatement.
-        const revenue = mine.reduce((a, l) => a + ((l.paidMonths && l.paidMonths[mk]) || 0), 0);
+        const mFrom = periodRange.from.slice(0, 7), mTo = periodRange.to.slice(0, 7);
+        const revenue = mine.reduce((a, l) => a + Object.entries(l.paidMonths || {}).filter(([ym]) => ym >= mFrom && ym <= mTo).reduce((b, [, v]) => b + v, 0), 0);
         const showRate = showed + noshowN ? showed / (showed + noshowN) : 0;
         const closingRate = showed ? wonLeads.length / showed : 0;
         const rate = Number(persona.rate || 0);
@@ -3224,11 +3225,11 @@ export default function App() {
           </div>
 
           <div className="kpis" style={{ marginTop: 18 }}>
-            <div className="kcard"><div className="kcard-l">{isSetter ? "RDV bookés" : "Calls"}</div><div className="kcard-v">{isSetter ? bookedM : monthLeads.length}</div><div className="kcard-f">mois en cours</div></div>
+            <div className="kcard"><div className="kcard-l">{isSetter ? "RDV bookés" : "Calls"}</div><div className="kcard-v">{isSetter ? bookedM : monthLeads.length}</div><div className="kcard-f">{periodRange.label}</div></div>
             <div className="kcard"><div className="kcard-l">Show-up</div><div className="kcard-v">{pct(showRate)}</div><div className="kcard-f">{noshowN} no-show</div></div>
             {!isSetter && (<div className="kcard"><div className="kcard-l">Closing</div><div className="kcard-v green">{pct(closingRate)}</div><div className="kcard-f">{wonLeads.length} closés / {showed} présents</div></div>)}
-            <div className="kcard"><div className="kcard-l">Revenu généré</div><div className="kcard-v green">{euro(revenue)}</div><div className="kcard-f">encaissé ce mois-ci</div></div>
-            <div className="kcard"><div className="kcard-l">Commission{rate ? ` (${rate}%)` : ""}</div><div className="kcard-v" style={{ color: "var(--cyan)" }}>{euro(commission)}</div><div className="kcard-f">sur le mois</div></div>
+            <div className="kcard"><div className="kcard-l">Revenu généré</div><div className="kcard-v green">{euro(revenue)}</div><div className="kcard-f">encaissé · {periodRange.label}</div></div>
+            <div className="kcard"><div className="kcard-l">Commission{rate ? ` (${rate}%)` : ""}</div><div className="kcard-v" style={{ color: "var(--cyan)" }}>{euro(commission)}</div><div className="kcard-f">{periodRange.label}</div></div>
           </div>
 
           <div className="esp-sec">{isSetter ? "📞 Calls à préqualifier — aujourd'hui & à venir" : "🎯 Mes calls aujourd'hui"} <span className="mnd-gcount">{planList.length}</span></div>
