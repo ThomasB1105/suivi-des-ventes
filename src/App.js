@@ -1904,14 +1904,14 @@ export default function App() {
         const today0 = toISO(new Date());
         const dOfL = (l) => toParis((l.lastCall && l.lastCall.date) || l.bookedAt || "").slice(0, 10);
         const tOfL = (l) => { const m = toParis((l.lastCall && l.lastCall.date) || l.bookedAt || "").match(/T(\d{2}:\d{2})/); return m ? m[1] : ""; };
-        const winDays = sapView === "all" ? 100000 : Number(sapView);
+        const winDays = (sapView === "all" || sapView === "period") ? 100000 : Number(sapView);
         const minD = toISO(new Date(Date.now() - winDays * 864e5));
         // TOUT lead ayant pris un appel (passé OU à venir), non closé.
         const base = (crm.leads || []).filter((l) => l.hasCall !== false && !["won", "dead"].includes(l.stage) && dOfL(l));
         const q = crmQ.trim().toLowerCase();
         const closersList = [...new Set(base.map((l) => l.closer).filter(Boolean))].sort();
         const rows = base
-          .filter((l) => dOfL(l) >= minD)
+          .filter((l) => sapView === "period" ? (dOfL(l) >= periodRange.from && dOfL(l) <= periodRange.to) : dOfL(l) >= minD)
           .filter((l) => sapCloser === "all" || String(l.closer || "").trim().toLowerCase() === sapCloser.trim().toLowerCase())
           .filter((l) => !q || [l.name, l.email, l.phone, l.closer].some((v) => String(v || "").toLowerCase().includes(q)))
           .sort((a, b) => dOfL(b).localeCompare(dOfL(a)));
@@ -1931,8 +1931,8 @@ export default function App() {
             <div className="closers-title"><Phone size={16} /> Saphia follow up · calls pris non closés</div>
             <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
               <div className="crm-views">
-                {[["7", "7 j"], ["30", "30 j"], ["90", "90 j"], ["all", "Tout"]].map(([v, lbl]) => (
-                  <button key={v} className={`crm-chip ${sapView === v ? "on" : ""}`} onClick={() => setSapView(v)}>{lbl}</button>
+                {[["7", "7 j"], ["30", "30 j"], ["90", "90 j"], ["all", "Tout"], ["period", "📅 Période"]].map(([v, lbl]) => (
+                  <button key={v} className={`crm-chip ${sapView === v ? "on" : ""}`} onClick={() => setSapView(v)} title={v === "period" ? "Suit le sélecteur de dates en haut à droite" : undefined}>{lbl}</button>
                 ))}
               </div>
               <select className="attr-sel" value={sapCloser} onChange={(e) => setSapCloser(e.target.value)} title="Filtrer par closer (ex. uniquement les calls de Melo)">
@@ -2719,11 +2719,11 @@ export default function App() {
         const sun = new Date(mon); sun.setDate(mon.getDate() + 6);
         const wFrom = toISO(mon), wTo = toISO(sun);
         const dOf = (l) => { const t = (l.lastCall && l.lastCall.date) || l.bookedAt || ""; return toParis(t).slice(0, 10); };
-        const inView = (l) => crmView === "all" ? true : (crmView === "today" ? dOf(l) === todayISO : (dOf(l) >= wFrom && dOf(l) <= wTo));
+        const inView = (l) => crmView === "all" ? true : (crmView === "today" ? dOf(l) === todayISO : (crmView === "period" ? (dOf(l) >= periodRange.from && dOf(l) <= periodRange.to) : (dOf(l) >= wFrom && dOf(l) <= wTo)));
         // Calendrier : Aujourd'hui / À venir (aujourd'hui inclus, puis les jours
         // suivants) / Passés (anciens appels, plus récents en premier)
         const isCal = tab === "calendrier";
-        const inViewCal = (l) => calView === "today" ? dOf(l) === todayISO : (calView === "past" ? dOf(l) < todayISO : dOf(l) >= todayISO);
+        const inViewCal = (l) => calView === "today" ? dOf(l) === todayISO : (calView === "past" ? dOf(l) < todayISO : (calView === "period" ? (dOf(l) >= periodRange.from && dOf(l) <= periodRange.to) : dOf(l) >= todayISO));
         const activeFilter = isCal ? inViewCal : inView;
         const nUpcoming = all.filter((l) => dOf(l) >= todayISO).length;
         const nPast = all.filter((l) => dOf(l) < todayISO).length;
@@ -2742,7 +2742,7 @@ export default function App() {
         const scoped = all.filter(activeFilter);
         const periodLbl = isCal
           ? (calView === "today" ? "aujourd'hui" : (calView === "past" ? "appels passés" : "à venir"))
-          : (crmView === "today" ? "aujourd'hui" : (crmView === "week" ? "cette semaine" : "toutes périodes"));
+          : (crmView === "today" ? "aujourd'hui" : (crmView === "week" ? "cette semaine" : (crmView === "period" ? periodRange.label : "toutes périodes")));
         const nShow = scoped.filter((l) => ["show", "won", "lost"].includes(l.stage)).length;
         const nNoShow = scoped.filter((l) => l.stage === "noshow").length;
         const nWon = scoped.filter((l) => l.stage === "won").length;
@@ -2768,10 +2768,12 @@ export default function App() {
                 <button className={`crm-chip ${calView === "today" ? "on" : ""}`} onClick={() => setCalView("today")}>Aujourd'hui <b>{nToday}</b></button>
                 <button className={`crm-chip ${calView === "upcoming" ? "on" : ""}`} onClick={() => setCalView("upcoming")}>À venir <b>{nUpcoming}</b></button>
                 <button className={`crm-chip ${calView === "past" ? "on" : ""}`} onClick={() => setCalView("past")}>Passés <b>{nPast}</b></button>
+                <button className={`crm-chip ${calView === "period" ? "on" : ""}`} onClick={() => setCalView("period")} title="Suit le sélecteur de dates en haut à droite">📅 Période</button>
               </>) : (<>
                 <button className={`crm-chip ${crmView === "today" ? "on" : ""}`} onClick={() => setCrmView("today")}>Aujourd'hui <b>{nToday}</b></button>
                 <button className={`crm-chip ${crmView === "week" ? "on" : ""}`} onClick={() => setCrmView("week")}>Cette semaine <b>{nWeek}</b></button>
                 <button className={`crm-chip ${crmView === "all" ? "on" : ""}`} onClick={() => setCrmView("all")}>Tout <b>{all.length}</b></button>
+                <button className={`crm-chip ${crmView === "period" ? "on" : ""}`} onClick={() => setCrmView("period")} title="Suit le sélecteur de dates en haut à droite">📅 Période</button>
               </>)}
             </div>
             <div className="crm-search"><Search size={14} /><input value={crmQ} onChange={(e) => setCrmQ(e.target.value)} placeholder="Rechercher (nom, email, closer…)" /></div>
@@ -2952,12 +2954,12 @@ export default function App() {
         const initials = (n) => String(n).split(/[\s@._-]+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase() || "?";
         const avaColor = (e) => ["#579BFC", "#A25DDC", "#00C875", "#FDAB3D", "#E2445C", "#66B2FF"][(String(e).charCodeAt(0) + String(e).length) % 6];
         const nmOf = (l) => (l.name && l.name !== l.email ? l.name : l.email);
-        const win = nsView === "all" ? 100000 : Number(nsView);
+        const win = (nsView === "all" || nsView === "period") ? 100000 : Number(nsView);
         const minNs = toISO(new Date(Date.now() - win * 864e5));
         const q = crmQ.trim().toLowerCase();
         const rows = (crm.leads || [])
           .filter((l) => l.stage === "noshow" && dOfL(l))
-          .filter((l) => nsView === "all" || dOfL(l) >= minNs)
+          .filter((l) => nsView === "period" ? (dOfL(l) >= periodRange.from && dOfL(l) <= periodRange.to) : (nsView === "all" || dOfL(l) >= minNs))
           .filter((l) => !q || [l.name, l.email, l.phone, l.closer, l.setter].some((v) => String(v || "").toLowerCase().includes(q)))
           .sort((a, b) => dOfL(b).localeCompare(dOfL(a)));
         return (<>
@@ -2965,8 +2967,8 @@ export default function App() {
             <div className="closers-title"><AlertTriangle size={16} /> No-shows à re-booker</div>
             <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
               <div className="crm-views">
-                {[["7", "7 j"], ["30", "30 j"], ["90", "90 j"], ["all", "Tout"]].map(([v, lbl]) => (
-                  <button key={v} className={`crm-chip ${nsView === v ? "on" : ""}`} onClick={() => setNsView(v)}>{lbl}</button>
+                {[["7", "7 j"], ["30", "30 j"], ["90", "90 j"], ["all", "Tout"], ["period", "📅 Période"]].map(([v, lbl]) => (
+                  <button key={v} className={`crm-chip ${nsView === v ? "on" : ""}`} onClick={() => setNsView(v)} title={v === "period" ? "Suit le sélecteur de dates en haut à droite" : undefined}>{lbl}</button>
                 ))}
               </div>
               <div className="crm-search"><Search size={14} /><input value={crmQ} onChange={(e) => setCrmQ(e.target.value)} placeholder="Rechercher (nom, email, closer…)" /></div>
