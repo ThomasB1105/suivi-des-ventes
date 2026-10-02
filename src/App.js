@@ -5,8 +5,17 @@ import {
 } from "recharts";
 import {
   AlertTriangle, Check, Plus, X, Calendar, TrendingUp, Trash2, Landmark,
-  RotateCcw, Users, UserCheck, Phone, Mail, Leaf, Megaphone, Grid3x3, Search, Pencil, Wallet, Eye, EyeOff, Download, ClipboardList,
+  RotateCcw, Users, UserCheck, Phone, Mail, Leaf, Megaphone, Grid3x3, Search, Pencil, Wallet, Eye, EyeOff, Download, ClipboardList, Video,
 } from "lucide-react";
+
+/* ---- Liens de paiement Whop (checkout publics) — onglet « Liens de paiement » ---- */
+const PAY_OFFERS = [
+  { total: 3490, plans: ["plan_zjdkFX5gJeljP", "plan_X5kxRvNZfzdPk", "plan_ZAn4X4pkEJaFC", "plan_2nZV5Woo6HAoW", "plan_yTyBR1tLjBLtF", "plan_c44RKus1SimJJ"] },
+  { total: 2790, plans: ["plan_lFfXyXEbSzvB8", "plan_LHgHb0aUXYg4K", "plan_TqwbMe78zRaj9", "plan_uR6oo5SnGSyA6"] },
+  { total: 2390, plans: ["plan_p7goTRMSYAoCm", "plan_6lH45EvK3yV9F", "plan_gQPSBber2xJr0", "plan_C1Fbktg1ph3YS"] },
+];
+const PAY_DEPOSIT = { amount: 200, plan: "plan_ozrkhCDBfq4JY", promo: "ecom200" };
+const whopUrl = (plan) => `https://whop.com/checkout/${plan}`;
 
 /* ------------------------------ helpers ------------------------------ */
 
@@ -704,6 +713,9 @@ export default function App() {
   const [sapView, setSapView] = useState("30"); // Saphia : fenêtre en jours ("7"|"30"|"90"|"all")
   const [sapCloser, setSapCloser] = useState("all"); // Saphia : filtre par closer
   const [nsView, setNsView] = useState("7"); // onglet No-shows : fenêtre en jours
+  const [rplRes, setRplRes] = useState("all"); // Replays : "all" | "won" | "deposit" | "lost" | "pending"
+  const [rplCloser, setRplCloser] = useState("all"); // Replays : filtre closer (admin)
+  const [rplOnly, setRplOnly] = useState(false); // Replays : uniquement les calls avec enregistrement
   const [repWeek, setRepWeek] = useState(0); // Reporting : 0 = semaine dernière, 1 = -2 semaines…
   const [repQScope, setRepQScope] = useState("all"); // "all" | "week"
   const [adsScope, setAdsScope] = useState("week"); // Reporting Ads : suit la période sélectionnée par défaut
@@ -732,7 +744,7 @@ export default function App() {
   // base en continu ; l'interface se resynchronise toute seule (toutes les
   // 45 s quand l'onglet est visible, et au retour sur la fenêtre).
   useEffect(() => {
-    if (!(tab === "crm" || tab === "calendrier" || tab === "espace" || tab === "vsl" || tab === "followups" || tab === "acomptes" || tab === "saphia" || tab === "reporting" || tab === "ads" || tab === "noshows")) return;
+    if (!(tab === "crm" || tab === "calendrier" || tab === "espace" || tab === "vsl" || tab === "followups" || tab === "acomptes" || tab === "replays" || tab === "saphia" || tab === "reporting" || tab === "ads" || tab === "noshows")) return;
     loadCrm(); if (isAdmin) loadTeam();
     const iv = setInterval(() => { if (document.visibilityState === "visible") loadCrm(true); }, 45000);
     const onFocus = () => { if (document.visibilityState !== "hidden") loadCrm(true); };
@@ -1078,7 +1090,7 @@ export default function App() {
   const overduesF = sortOverdue((impAll ? allOverdue : overdues).filter((i) => matchQ(i.sale)));
   const periodListF = periodList.filter((i) => matchQ(i.sale));
 
-  const SECTION = { clients: "Tableau de bord", cohortes: "Cohortes", mois: "Par mois", collecte: "À collecter", impayes: "Impayés", couts: "Coûts", closers: "Closers", crm: "CRM", calendrier: "Calendrier", equipe: "Équipe", espace: "Ma journée", vsl: "Leads VSL", acomptes: "Acomptes", followups: "Follow-ups", saphia: "Saphia follow up", reporting: "Reporting hebdo", ads: "Reporting Ads", noshows: "No-shows" };
+  const SECTION = { clients: "Tableau de bord", cohortes: "Cohortes", mois: "Par mois", collecte: "À collecter", impayes: "Impayés", couts: "Coûts", closers: "Closers", crm: "CRM", calendrier: "Calendrier", equipe: "Équipe", espace: "Ma journée", vsl: "Leads VSL", acomptes: "Acomptes", followups: "Follow-ups", saphia: "Saphia follow up", reporting: "Reporting hebdo", ads: "Reporting Ads", noshows: "No-shows", replays: "Replays des calls", paiement: "Liens de paiement" };
   const go = (t) => { setTab(t); setNavOpen(false); };
   const navCls = (t) => `nav-item ${tab === t ? "active" : ""}`;
   // Bulles rouges du menu (membres) : setter = leads VSL encore « Nouveau »
@@ -1432,6 +1444,21 @@ export default function App() {
         .crm-views{display:flex;gap:7px;flex-wrap:wrap;}
         .crm-chip{display:inline-flex;align-items:center;gap:7px;padding:9px 15px;border-radius:10px;border:1px solid var(--line);background:var(--panel);color:var(--text);font-size:13px;cursor:pointer;font-family:'Inter';transition:border-color .12s;}
         .vsl-views{align-items:center;}
+        .rpl-play{display:inline-flex;align-items:center;gap:7px;padding:9px 15px;border-radius:10px;border:none;background:linear-gradient(135deg,#6C5CE7,#8E7CF8);color:#fff;font-weight:700;font-size:12.5px;text-decoration:none;box-shadow:0 4px 12px rgba(108,92,231,.28);white-space:nowrap;font-family:'Inter';}
+        .rpl-play:hover{filter:brightness(1.06);}
+        .pay-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:16px;margin-top:16px;}
+        .pay-card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:18px 20px;box-shadow:0 6px 18px rgba(16,24,40,.04);}
+        .pay-head{display:flex;align-items:baseline;gap:10px;margin-bottom:12px;}
+        .pay-total{font-family:'Montserrat';font-weight:800;font-size:22px;letter-spacing:-.02em;}
+        .pay-row{display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid rgba(15,23,42,.05);}
+        .pay-row:first-of-type{border-top:none;}
+        .pay-x{flex:none;width:38px;height:38px;border-radius:10px;background:var(--panel2);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;}
+        .pay-lab{min-width:0;flex:1;}
+        .pay-lab b{display:block;font-size:13.5px;}
+        .pay-lab span{display:block;font-size:11.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+        .pay-dep{background:linear-gradient(120deg,#FFFAEB,#FFF4D6);border:1px solid #FEDF89;border-radius:16px;padding:18px 20px;display:flex;align-items:center;gap:18px;flex-wrap:wrap;margin-top:4px;}
+        .pay-promo{display:inline-flex;align-items:center;gap:8px;background:#fff;border:1.5px dashed #F79009;border-radius:10px;padding:8px 12px;font-family:ui-monospace,Menlo,monospace;font-weight:800;font-size:15px;letter-spacing:.06em;color:#B54708;}
+        .rpl-res{display:inline-flex;align-items:center;border:1.5px solid;border-radius:999px;padding:6px 13px;font-size:12px;font-weight:800;white-space:nowrap;flex:none;}
         .vsl-chip{padding:11px 18px;font-weight:600;font-size:13.5px;border-width:1.5px;}
         .vsl-chip.on{background:#fff;}
         .vsl-dot{width:9px;height:9px;border-radius:50%;flex:none;}
@@ -1609,6 +1636,8 @@ export default function App() {
             <button className={navCls("followups")} onClick={() => go("followups")}><RotateCcw size={16} /> Follow-ups</button>
             <button className={navCls("saphia")} onClick={() => go("saphia")}><Phone size={16} /> Saphia follow up</button>
             <button className={navCls("noshows")} onClick={() => go("noshows")}><AlertTriangle size={16} /> No-shows</button>
+            <button className={navCls("replays")} onClick={() => go("replays")}><Video size={16} /> Replays</button>
+            <button className={navCls("paiement")} onClick={() => go("paiement")}><Wallet size={16} /> Liens de paiement</button>
           </>) : (<>
             <div className="nav-label">Mon espace</div>
             <button className={navCls("espace")} onClick={() => go("espace")}><UserCheck size={16} /> Ma journée</button>
@@ -1616,6 +1645,8 @@ export default function App() {
             {me.role === "setter" && <button className={navCls("noshows")} onClick={() => go("noshows")}><AlertTriangle size={16} /> No-shows</button>}
             {me.role !== "setter" && <button className={navCls("followups")} onClick={() => go("followups")}><RotateCcw size={16} /> Follow-ups{fupTodo ? <span className="nav-badge" title="Follow-ups à faire">{fupTodo}</span> : null}</button>}
             {me.role !== "setter" && <button className={navCls("acomptes")} onClick={() => go("acomptes")}><Landmark size={16} /> Acomptes</button>}
+            {me.role !== "setter" && <button className={navCls("replays")} onClick={() => go("replays")}><Video size={16} /> Replays</button>}
+            {me.role !== "setter" && <button className={navCls("paiement")} onClick={() => go("paiement")}><Wallet size={16} /> Liens de paiement</button>}
             {isSaphiaUser && <button className={navCls("saphia")} onClick={() => go("saphia")}><Phone size={16} /> Follow up</button>}
             <button className={navCls("calendrier")} onClick={() => go("calendrier")}><Calendar size={16} /> Calendrier</button>
           </>)}
@@ -1985,6 +2016,150 @@ export default function App() {
           <div className="esp-sec">📅 Relances planifiées <span className="mnd-gcount">{later.length}</span></div>
           {later.length === 0 && <div className="card" style={{ padding: 0, overflow: "hidden", marginBottom: 26 }}><div className="empty" style={{ padding: 20 }}>Aucune relance planifiée. Choisis une date de relance sur un call (« Quand relancer ? ») pour la voir ici.</div></div>}
           {block(laterBy, laterKeys)}
+        </>);
+      })()}
+
+      {/* LIENS DE PAIEMENT — checkout Whop par offre / mensualités (closers + admin) */}
+      {tab === "paiement" && (isAdmin || me.role !== "setter") && (() => {
+        const copy = (txt, msg) => { try { navigator.clipboard.writeText(txt); flash(msg || "Copié 📋"); } catch (e) { window.prompt("Copie :", txt); } };
+        const eur = (n) => `${Math.round(n).toLocaleString("fr-FR")} €`;
+        return (<>
+          <div className="closers-head">
+            <div className="closers-title"><Wallet size={16} /> Liens de paiement Whop</div>
+            <span className="mut" style={{ fontSize: 12.5 }}>Clique « Copier » et colle le lien au prospect pendant / après le call.</span>
+          </div>
+          <div className="pay-dep">
+            <div style={{ minWidth: 0, flex: "1 1 260px" }}>
+              <div style={{ fontWeight: 800, fontSize: 15 }}>💳 Acompte {eur(PAY_DEPOSIT.amount)}</div>
+              <div className="mut" style={{ fontSize: 12.5, marginTop: 4 }}>Pour bloquer la place. Ensuite, le prospect règle son plan avec le code promo ci-contre : les {eur(PAY_DEPOSIT.amount)} sont déduits.</div>
+              <div className="mut" style={{ fontSize: 11.5, marginTop: 6, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{whopUrl(PAY_DEPOSIT.plan)}</div>
+            </div>
+            <button className="rpl-play" onClick={() => copy(whopUrl(PAY_DEPOSIT.plan), "Lien d'acompte copié 📋")}>📋 Copier le lien d'acompte</button>
+            <a className="esp-open" href={whopUrl(PAY_DEPOSIT.plan)} target="_blank" rel="noreferrer" style={{ textDecoration: "none" }}>Ouvrir</a>
+            <div style={{ flex: "1 1 220px", display: "flex", alignItems: "center", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>
+              <span className="mut" style={{ fontSize: 12.5 }}>Code promo après acompte</span>
+              <span className="pay-promo">{PAY_DEPOSIT.promo}</span>
+              <button className="esp-open" onClick={() => copy(PAY_DEPOSIT.promo, "Code promo copié 📋")}>Copier le code</button>
+            </div>
+          </div>
+          <div className="pay-grid">
+            {PAY_OFFERS.map((o) => (
+              <div className="pay-card" key={o.total}>
+                <div className="pay-head"><span className="pay-total">{eur(o.total)}</span><span className="mut" style={{ fontSize: 12.5 }}>Ecom Ascension · {o.plans.length} plan{o.plans.length > 1 ? "s" : ""} de paiement</span></div>
+                {o.plans.map((p, i) => { const n = i + 1; const url = whopUrl(p); return (
+                  <div className="pay-row" key={p}>
+                    <span className="pay-x">{n}x</span>
+                    <div className="pay-lab">
+                      <b>{n === 1 ? `Comptant · ${eur(o.total)}` : `${n} × ${eur(o.total / n)}`}</b>
+                      <span title={url}>{url}</span>
+                    </div>
+                    <button className="esp-open" style={{ borderColor: "#C7BFFF", color: "#5925DC" }} onClick={() => copy(url, `Lien ${eur(o.total)} · ${n}x copié 📋`)}>📋 Copier</button>
+                    <a className="esp-open" href={url} target="_blank" rel="noreferrer" style={{ textDecoration: "none" }}>Ouvrir</a>
+                  </div>
+                ); })}
+              </div>
+            ))}
+          </div>
+        </>);
+      })()}
+
+      {/* REPLAYS — tous les calls passés avec enregistrement Fathom + résultat */}
+      {tab === "replays" && (isAdmin || me.role !== "setter") && (() => {
+        const tsL = (l) => toParis((l.lastCall && l.lastCall.date) || l.bookedAt || "");
+        const dOfL = (l) => tsL(l).slice(0, 10);
+        const tOfL = (l) => { const m = tsL(l).match(/T(\d{2}:\d{2})/); return m ? m[1] : ""; };
+        const t0 = toISO(new Date());
+        // Résultat : Acompte (100/200 € payés) > Closé (vente / résultat closé) > Non closé > En attente
+        const resOf = (l) => {
+          if (l.amount === 100 || l.amount === 200) return "deposit";
+          if (l.stage === "won" || l.callResult === "won" || (l.amount || 0) > 0) return "won";
+          if (l.stage === "lost" || l.callResult === "lost") return "lost";
+          return "pending";
+        };
+        const RES = {
+          won: ["Closé ✅", { color: "#067647", borderColor: "#ABEFC6", background: "#ECFDF3" }],
+          deposit: ["Acompte 💳", { color: "#B54708", borderColor: "#FEDF89", background: "#FFFAEB" }],
+          lost: ["Non closé", { color: "#B42318", borderColor: "#FECDCA", background: "#FEF3F2" }],
+          pending: ["Sans résultat", { color: "#475467", borderColor: "#E3E6EA", background: "#F9FAFB" }],
+        };
+        // Calls réellement passés (présent / closé / perdu / résultat saisi / replay collé), sur la période.
+        const done = (crm.leads || []).filter((l) => l.hasCall !== false && dOfL(l) && dOfL(l) <= t0
+          && (["show", "won", "lost"].includes(l.stage) || l.callResult || l.fathom || l.showUp === "present")
+          && !["noshow", "cancelled"].includes(l.showUp || "") && l.stage !== "noshow");
+        const inPeriod = (l) => dOfL(l) >= periodRange.from && dOfL(l) <= periodRange.to;
+        const base = done.filter(inPeriod);
+        const closers = [...new Set(done.map((l) => l.closer).filter(Boolean))].sort(); // liste stable, toutes périodes
+        const q = crmQ.trim().toLowerCase();
+        const rows = base
+          .filter((l) => rplCloser === "all" || String(l.closer || "").toLowerCase() === rplCloser.toLowerCase())
+          .filter((l) => rplRes === "all" || resOf(l) === rplRes)
+          .filter((l) => !rplOnly || l.fathom)
+          .filter((l) => !q || [l.name, l.email, l.phone, l.closer, l.setter].some((v) => String(v || "").toLowerCase().includes(q)))
+          .sort((a, b) => tsL(b).localeCompare(tsL(a)));
+        const byCloser = rplCloser === "all" ? base : base.filter((l) => String(l.closer || "").toLowerCase() === rplCloser.toLowerCase());
+        const cnt = (k) => byCloser.filter((l) => resOf(l) === k).length;
+        const withReplay = byCloser.filter((l) => l.fathom).length;
+        const nmOf = (l) => (l.name && l.name !== l.email ? l.name : l.email);
+        const initials = (n) => String(n).split(/[\s@._-]+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase() || "?";
+        const avaColor = (e) => ["#579BFC", "#A25DDC", "#00C875", "#FDAB3D", "#E2445C", "#66B2FF"][(String(e).charCodeAt(0) + String(e).length) % 6];
+        const fmtDay = (d) => { try { return parseLocal(d).toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" }); } catch (e) { return d; } };
+        const byDay = {};
+        rows.forEach((l) => { const d = dOfL(l); (byDay[d] = byDay[d] || []).push(l); });
+        const days = Object.keys(byDay).sort().reverse();
+        const CHIPS = [["all", "Tout", byCloser.length], ["won", "Closé ✅", cnt("won")], ["deposit", "Acompte 💳", cnt("deposit")], ["lost", "Non closé", cnt("lost")], ["pending", "Sans résultat", cnt("pending")]];
+        return (<>
+          <div className="closers-head">
+            <div className="closers-title"><Video size={16} /> Replays des calls · {periodRange.label}</div>
+            <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+              {isAdmin && (
+                <select className="attr-sel" value={rplCloser} onChange={(e) => setRplCloser(e.target.value)} title="Filtrer par closer">
+                  <option value="all">Tous les closers</option>
+                  {closers.map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
+              )}
+              <div className="crm-search"><Search size={14} /><input value={crmQ} onChange={(e) => setCrmQ(e.target.value)} placeholder="Rechercher (nom, email, closer…)" /></div>
+              <button className={`refresh-btn ${crmLoading ? "is-loading" : ""}`} onClick={() => loadCrm()} disabled={crmLoading}><RotateCcw size={15} className={crmLoading ? "spin" : ""} /> Actualiser</button>
+            </div>
+          </div>
+          <div className="kpis" style={{ marginTop: 4 }}>
+            <div className="kcard"><div className="kcard-l">Calls passés</div><div className="kcard-v">{byCloser.length}</div><div className="kcard-f">{periodRange.label}{rplCloser !== "all" ? ` · ${rplCloser}` : ""}</div></div>
+            <div className="kcard"><div className="kcard-l">Closés</div><div className="kcard-v green">{cnt("won")}</div><div className="kcard-f">+ {cnt("deposit")} acompte{cnt("deposit") > 1 ? "s" : ""}</div></div>
+            <div className="kcard"><div className="kcard-l">Non closés</div><div className="kcard-v" style={{ color: "var(--red)" }}>{cnt("lost")}</div><div className="kcard-f">{cnt("pending")} sans résultat</div></div>
+            <div className="kcard"><div className="kcard-l">Avec replay</div><div className="kcard-v" style={{ color: "var(--cyan)" }}>{withReplay}</div><div className="kcard-f">{byCloser.length ? pct(withReplay / byCloser.length) : "—"} des calls ont leur Fathom</div></div>
+          </div>
+          <div className="crm-views vsl-views" style={{ marginTop: 18 }}>
+            {CHIPS.map(([k, lab, n]) => (
+              <button key={k} className={`crm-chip vsl-chip ${rplRes === k ? "on" : ""}`} onClick={() => setRplRes(k)} style={rplRes === k && RES[k] ? { borderColor: RES[k][1].color, boxShadow: `0 0 0 3px ${RES[k][1].color}22` } : {}}>
+                {k !== "all" ? <span className="vsl-dot" style={{ background: RES[k][1].color }} /> : null}{lab} <b>{n}</b>
+              </button>
+            ))}
+            <button className={`crm-chip vsl-chip ${rplOnly ? "on" : ""}`} onClick={() => setRplOnly((v) => !v)} style={{ marginLeft: "auto", ...(rplOnly ? { borderColor: "#6C5CE7", boxShadow: "0 0 0 3px rgba(108,92,231,.14)" } : {}) }} title="N'afficher que les calls qui ont un lien Fathom">🎥 Avec replay uniquement</button>
+          </div>
+          {rows.length === 0 && <div className="card" style={{ padding: 0, overflow: "hidden", marginTop: 12 }}><div className="empty" style={{ padding: 22 }}>Aucun call sur ces critères. Élargis la période en haut à droite ou change de filtre.</div></div>}
+          {days.map((d) => (
+            <div className="cal-day" key={d} style={{ margin: "12px 0 22px" }}>
+              <div className="cal-dhead">{fmtDay(d)}{d === t0 ? <span className="cal-today">Aujourd'hui</span> : null}<span className="mnd-gcount">{byDay[d].length}</span></div>
+              <div className="card" style={{ padding: 0, overflow: "hidden" }}>
+                {byDay[d].map((l) => { const r = resOf(l); return (
+                  <div className="cal-row" key={l.email}>
+                    <div className="cal-time">{tOfL(l) || "—"}</div>
+                    <span className="mnd-ava" style={{ background: avaColor(l.email), width: 36, height: 36, fontSize: 13, flex: "none" }}>{initials(nmOf(l))}</span>
+                    <div className="cal-main" style={{ cursor: "pointer" }} onClick={() => setLeadOpen(l.email)} title="Ouvrir la fiche">
+                      <div className="cal-name">{nmOf(l)}{l.closer ? <span className="mut" style={{ fontWeight: 500 }}> · {l.closer}</span> : null}</div>
+                      <div className="cal-sub">{(l.lastCall && l.lastCall.event) || l.bookedEvent || (l.lastCall ? "iClosed" : "Calendly")}{l.phone ? ` · ${l.phone}` : ""}{l.setter ? ` · setter ${l.setter}` : ""}</div>
+                    </div>
+                    {l.notes ? <span className="mut" style={{ fontSize: 12, maxWidth: 240, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }} title={l.notes}>📝 {l.notes}</span> : null}
+                    <span className="rpl-res" style={RES[r][1]}>{RES[r][0]}{(l.amount || 0) > 0 ? ` · ${euro(l.amount)}` : ""}</span>
+                    {l.fathom
+                      ? <a className="rpl-play" href={l.fathom} target="_blank" rel="noreferrer">▶ Voir le replay</a>
+                      : <input className="crm-input" style={{ width: 190 }} placeholder="🎥 Coller le lien Fathom…" defaultValue=""
+                          onBlur={(e) => { const v = e.target.value.trim(); if (v) updateLead(l.email, { fathom: v }); }} />}
+                    <button className="esp-open" onClick={() => setLeadOpen(l.email)}>Ouvrir la fiche</button>
+                  </div>
+                ); })}
+              </div>
+            </div>
+          ))}
         </>);
       })()}
 
