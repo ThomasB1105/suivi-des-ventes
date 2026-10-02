@@ -700,7 +700,7 @@ export default function App() {
     if (!rangeTouched.current) { rangeTouched.current = true; return; }
     setCalView("period"); setCrmView("period");
   }, [range]);
-  const [vslView, setVslView] = useState("recent"); // Leads VSL : "recent" (14 j) | "all"
+  const [vslView, setVslView] = useState("recent"); // Leads VSL : "recent" (à traiter, 14 j) | "nrp" | "all"
   const [sapView, setSapView] = useState("30"); // Saphia : fenêtre en jours ("7"|"30"|"90"|"all")
   const [sapCloser, setSapCloser] = useState("all"); // Saphia : filtre par closer
   const [nsView, setNsView] = useState("7"); // onglet No-shows : fenêtre en jours
@@ -1081,15 +1081,16 @@ export default function App() {
   const SECTION = { clients: "Tableau de bord", cohortes: "Cohortes", mois: "Par mois", collecte: "À collecter", impayes: "Impayés", couts: "Coûts", closers: "Closers", crm: "CRM", calendrier: "Calendrier", equipe: "Équipe", espace: "Ma journée", vsl: "Leads VSL", acomptes: "Acomptes", followups: "Follow-ups", saphia: "Saphia follow up", reporting: "Reporting hebdo", ads: "Reporting Ads", noshows: "No-shows" };
   const go = (t) => { setTab(t); setNavOpen(false); };
   const navCls = (t) => `nav-item ${tab === t ? "active" : ""}`;
-  // Bulles rouges du menu (membres) : setter = nouveaux leads VSL (14 j) à
-  // traiter ; closer = follow-ups à faire (sans date, ou date <= aujourd'hui).
+  // Bulles rouges du menu (membres) : setter = leads VSL encore « Nouveau »
+  // (jamais traités, 14 j) ; closer = follow-ups à faire (sans date, ou
+  // date <= aujourd'hui). Un lead passé NRP / dead / non qualifié sort.
   const navToday = toISO(new Date());
   const sameMe = (v) => String(v || "").trim().toLowerCase() === String(me.name || "").trim().toLowerCase();
   const vslTodo = (!isAdmin && me.role === "setter")
-    ? (crm.leads || []).filter((l) => l.hasCall === false && !["unqualified", "dead"].includes(l.stage) && (sameMe(l.setter) || !l.setter) && l.createdAt && (Date.now() - new Date(l.createdAt).getTime()) <= 14 * 864e5).length
+    ? (crm.leads || []).filter((l) => l.hasCall === false && (!l.stage || l.stage === "new") && (sameMe(l.setter) || !l.setter) && l.createdAt && (Date.now() - new Date(l.createdAt).getTime()) <= 14 * 864e5).length
     : 0;
   const fupTodo = (!isAdmin && me.role !== "setter")
-    ? (crm.leads || []).filter((l) => (sameMe(l.closer) || sameMe(l.setter)) && l.followUp === "yes" && !["won", "dead"].includes(l.stage) && (!l.followUpAt || l.followUpAt <= navToday)).length
+    ? (crm.leads || []).filter((l) => (sameMe(l.closer) || sameMe(l.setter)) && l.followUp === "yes" && l.stage !== "dead" && (!l.followUpAt || l.followUpAt <= navToday)).length
     : 0;
   const logout = () => { try { localStorage.removeItem("melo_token"); localStorage.removeItem("melo_role"); localStorage.removeItem("melo_name"); } catch (e) { /* ignore */ } window.location.reload(); };
 
@@ -1923,7 +1924,7 @@ export default function App() {
       {/* FOLLOW-UPS — relances groupées par date (à faire / planifiées) */}
       {tab === "followups" && (() => {
         const t0 = toISO(new Date());
-        const fus = (crm.leads || []).filter((l) => l.followUp === "yes" && !["won", "dead"].includes(l.stage));
+        const fus = (crm.leads || []).filter((l) => l.followUp === "yes" && l.stage !== "dead");
         const due = fus.filter((l) => !l.followUpAt || l.followUpAt <= t0).sort((a, b) => String(a.followUpAt || "0").localeCompare(String(b.followUpAt || "0")));
         const later = fus.filter((l) => l.followUpAt && l.followUpAt > t0).sort((a, b) => a.followUpAt.localeCompare(b.followUpAt));
         const fmtDay = (d) => { try { return parseLocal(d).toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" }); } catch (e) { return d; } };
@@ -1972,7 +1973,7 @@ export default function App() {
           <div className="kpis" style={{ marginTop: 4 }}>
             <div className="kcard"><div className="kcard-l">À relancer maintenant</div><div className="kcard-v" style={{ color: due.length ? "var(--red)" : "var(--green)" }}>{due.length}</div><div className="kcard-f">sans date, en retard ou aujourd'hui</div></div>
             <div className="kcard"><div className="kcard-l">Planifiés</div><div className="kcard-v">{later.length}</div><div className="kcard-f">prochain : {later[0] ? frD(later[0].followUpAt) : "—"}</div></div>
-            <div className="kcard"><div className="kcard-l">Total en follow-up</div><div className="kcard-v">{fus.length}</div><div className="kcard-f">hors closés / dead</div></div>
+            <div className="kcard"><div className="kcard-l">Total en follow-up</div><div className="kcard-v">{fus.length}</div><div className="kcard-f">closés avec acompte inclus · hors dead</div></div>
           </div>
           <div className="esp-sec">🔥 À relancer maintenant <span className="mnd-gcount">{due.length}</span></div>
           {due.length === 0 && <div className="card" style={{ padding: 0, overflow: "hidden" }}><div className="empty" style={{ padding: 20 }}>Aucune relance en attente 🎉</div></div>}
@@ -3087,8 +3088,12 @@ export default function App() {
         const optins = (crm.leads || []).filter((l) => l.hasCall === false);
         const vslSince = Date.now() - 14 * 864e5;
         const isRecent = (l) => l.createdAt && new Date(l.createdAt).getTime() >= vslSince;
-        const recentN = optins.filter(isRecent).length;
-        const scopedOpt = vslView === "recent" ? optins.filter(isRecent) : optins;
+        // « À traiter » = encore au statut Nouveau (jamais appelé) et arrivé
+        // depuis moins de 14 j. NRP = à rappeler. Tout = historique complet.
+        const isTodo = (l) => (!l.stage || l.stage === "new") && isRecent(l);
+        const todoN = optins.filter(isTodo).length;
+        const nrpN = optins.filter((l) => l.stage === "nrp").length;
+        const scopedOpt = vslView === "recent" ? optins.filter(isTodo) : (vslView === "nrp" ? optins.filter((l) => l.stage === "nrp") : optins);
         const q = crmQ.trim().toLowerCase();
         const rows = scopedOpt
           .filter((l) => !q || [l.name, l.email, l.phone, l.setter, l.campaign, l.source].some((v) => String(v || "").toLowerCase().includes(q)))
@@ -3105,7 +3110,8 @@ export default function App() {
             <div className="closers-title"><Leaf size={16} /> Leads VSL · entrants sans call</div>
             <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
               <div className="crm-views">
-                <button className={`crm-chip ${vslView === "recent" ? "on" : ""}`} onClick={() => setVslView("recent")}>Nouveaux (14 j) <b>{recentN}</b></button>
+                <button className={`crm-chip ${vslView === "recent" ? "on" : ""}`} onClick={() => setVslView("recent")} title="Leads encore « Nouveau » arrivés depuis 14 jours">🌱 À traiter <b>{todoN}</b></button>
+                <button className={`crm-chip ${vslView === "nrp" ? "on" : ""}`} onClick={() => setVslView("nrp")} title="Leads marqués NRP : à rappeler">📵 NRP <b>{nrpN}</b></button>
                 <button className={`crm-chip ${vslView === "all" ? "on" : ""}`} onClick={() => setVslView("all")}>Tout <b>{optins.length}</b></button>
               </div>
               {isAdmin && (team || []).some((u) => u.role === "setter") && (
@@ -3176,7 +3182,7 @@ export default function App() {
                     </tr>
                   );
                 })}
-                {rows.length === 0 && <tr><td colSpan={7}><div className="empty" style={{ padding: 22 }}>Aucun opt-in en attente 🎉 Les leads VSL (Make) arrivent ici tant qu'ils n'ont pas booké de call — dès qu'ils bookent, ils basculent dans le CRM.</div></td></tr>}
+                {rows.length === 0 && <tr><td colSpan={7}><div className="empty" style={{ padding: 22 }}>{vslView === "recent" ? "Tous les nouveaux leads sont traités 🎉 (les NRP et l'historique sont dans les autres puces)" : (vslView === "nrp" ? "Aucun lead NRP à rappeler." : "Aucun opt-in — les leads VSL (Make) arrivent ici tant qu'ils n'ont pas booké de call.")}</div></td></tr>}
               </tbody>
             </table>
             {rows.length > 0 && <div className="mnd-foot"><span><b>{rows.length}</b> lead{rows.length > 1 ? "s" : ""}{rows.length > 200 ? " · 200 affichés, affine la recherche" : ""}</span></div>}
@@ -3252,14 +3258,14 @@ export default function App() {
         // Follow-ups : c'est le CLOSER qui relance ses prospects — pas le setter.
         // Avec une date de relance, la tâche n'apparaît dans la todo QUE le
         // jour J (ou en retard) ; sans date, elle reste visible tout de suite.
-        const followUpsAll = isSetter ? [] : mine.filter((l) => l.followUp === "yes" && !["won", "dead"].includes(l.stage));
+        const followUpsAll = isSetter ? [] : mine.filter((l) => l.followUp === "yes" && l.stage !== "dead");
         const fupAge = (l) => l.followUpAt ? Math.round((parseLocal(today) - parseLocal(l.followUpAt)) / 864e5) : 0; // jours depuis la date de relance
         const followUps = followUpsAll.filter((l) => !l.followUpAt || (l.followUpAt <= today && fupAge(l) <= 3)).sort((a, b) => String(a.followUpAt || dOfL(a)).localeCompare(String(b.followUpAt || dOfL(b))));
         // Nouveaux leads VSL (14 j) à traiter : la liste vit dans l'onglet
         // Leads VSL (bulle rouge) — ici juste le compteur + raccourci.
         const vslSince = Date.now() - 14 * 864e5;
         const vslN = isSetter
-          ? (crm.leads || []).filter((l) => l.hasCall === false && !["unqualified", "dead"].includes(l.stage) && (same(l.setter) || !l.setter)
+          ? (crm.leads || []).filter((l) => l.hasCall === false && (!l.stage || l.stage === "new") && (same(l.setter) || !l.setter)
               && l.createdAt && new Date(l.createdAt).getTime() >= vslSince).length
           : 0;
         // Process setting : dès qu'un lead a PRIS un call -> l'appeler + créer
