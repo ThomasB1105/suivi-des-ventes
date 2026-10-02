@@ -692,7 +692,14 @@ export default function App() {
   const [crmQ, setCrmQ] = useState("");
   const [crmView, setCrmView] = useState(() => { try { const r = localStorage.getItem("melo_role"); return r && r !== "admin" ? "today" : "all"; } catch (e) { return "all"; } }); // "today" | "week" | "all"
   const [leadOpen, setLeadOpen] = useState(null); // email de la fiche lead ouverte
-  const [calView, setCalView] = useState("upcoming"); // calendrier : "today" | "upcoming" | "past"
+  const [calView, setCalView] = useState("upcoming"); // calendrier : "today" | "upcoming" | "past" | "period"
+  // Changer les dates en haut à droite filtre AUSSITÔT le calendrier et le
+  // board (plus besoin de cliquer la puce « Période » en plus).
+  const rangeTouched = useRef(false);
+  useEffect(() => {
+    if (!rangeTouched.current) { rangeTouched.current = true; return; }
+    setCalView("period"); setCrmView("period");
+  }, [range]);
   const [vslView, setVslView] = useState("recent"); // Leads VSL : "recent" (14 j) | "all"
   const [sapView, setSapView] = useState("30"); // Saphia : fenêtre en jours ("7"|"30"|"90"|"all")
   const [sapCloser, setSapCloser] = useState("all"); // Saphia : filtre par closer
@@ -725,7 +732,7 @@ export default function App() {
   // base en continu ; l'interface se resynchronise toute seule (toutes les
   // 45 s quand l'onglet est visible, et au retour sur la fenêtre).
   useEffect(() => {
-    if (!(tab === "crm" || tab === "calendrier" || tab === "espace" || tab === "vsl" || tab === "followups" || tab === "saphia" || tab === "reporting" || tab === "ads" || tab === "noshows")) return;
+    if (!(tab === "crm" || tab === "calendrier" || tab === "espace" || tab === "vsl" || tab === "followups" || tab === "acomptes" || tab === "saphia" || tab === "reporting" || tab === "ads" || tab === "noshows")) return;
     loadCrm(); if (isAdmin) loadTeam();
     const iv = setInterval(() => { if (document.visibilityState === "visible") loadCrm(true); }, 45000);
     const onFocus = () => { if (document.visibilityState !== "hidden") loadCrm(true); };
@@ -1074,6 +1081,16 @@ export default function App() {
   const SECTION = { clients: "Tableau de bord", cohortes: "Cohortes", mois: "Par mois", collecte: "À collecter", impayes: "Impayés", couts: "Coûts", closers: "Closers", crm: "CRM", calendrier: "Calendrier", equipe: "Équipe", espace: "Ma journée", vsl: "Leads VSL", acomptes: "Acomptes", followups: "Follow-ups", saphia: "Saphia follow up", reporting: "Reporting hebdo", ads: "Reporting Ads", noshows: "No-shows" };
   const go = (t) => { setTab(t); setNavOpen(false); };
   const navCls = (t) => `nav-item ${tab === t ? "active" : ""}`;
+  // Bulles rouges du menu (membres) : setter = nouveaux leads VSL (14 j) à
+  // traiter ; closer = follow-ups à faire (sans date, ou date <= aujourd'hui).
+  const navToday = toISO(new Date());
+  const sameMe = (v) => String(v || "").trim().toLowerCase() === String(me.name || "").trim().toLowerCase();
+  const vslTodo = (!isAdmin && me.role === "setter")
+    ? (crm.leads || []).filter((l) => l.hasCall === false && !["unqualified", "dead"].includes(l.stage) && (sameMe(l.setter) || !l.setter) && l.createdAt && (Date.now() - new Date(l.createdAt).getTime()) <= 14 * 864e5).length
+    : 0;
+  const fupTodo = (!isAdmin && me.role !== "setter")
+    ? (crm.leads || []).filter((l) => (sameMe(l.closer) || sameMe(l.setter)) && l.followUp === "yes" && !["won", "dead"].includes(l.stage) && (!l.followUpAt || l.followUpAt <= navToday)).length
+    : 0;
   const logout = () => { try { localStorage.removeItem("melo_token"); localStorage.removeItem("melo_role"); localStorage.removeItem("melo_name"); } catch (e) { /* ignore */ } window.location.reload(); };
 
   // ---- Contrôle d'accès ----
@@ -1590,11 +1607,12 @@ export default function App() {
           </>) : (<>
             <div className="nav-label">Mon espace</div>
             <button className={navCls("espace")} onClick={() => go("espace")}><UserCheck size={16} /> Ma journée</button>
-            {me.role === "setter" && <button className={navCls("vsl")} onClick={() => go("vsl")}><Leaf size={16} /> Leads VSL</button>}
+            {me.role === "setter" && <button className={navCls("vsl")} onClick={() => go("vsl")}><Leaf size={16} /> Leads VSL{vslTodo ? <span className="nav-badge" title="Nouveaux leads à traiter">{vslTodo}</span> : null}</button>}
             {me.role === "setter" && <button className={navCls("noshows")} onClick={() => go("noshows")}><AlertTriangle size={16} /> No-shows</button>}
+            {me.role !== "setter" && <button className={navCls("followups")} onClick={() => go("followups")}><RotateCcw size={16} /> Follow-ups{fupTodo ? <span className="nav-badge" title="Follow-ups à faire">{fupTodo}</span> : null}</button>}
+            {me.role !== "setter" && <button className={navCls("acomptes")} onClick={() => go("acomptes")}><Landmark size={16} /> Acomptes</button>}
             {isSaphiaUser && <button className={navCls("saphia")} onClick={() => go("saphia")}><Phone size={16} /> Follow up</button>}
-            <button className={navCls("calendrier")} onClick={() => go("calendrier")}><Calendar size={16} /> Mon agenda</button>
-            <button className={navCls("crm")} onClick={() => go("crm")}><ClipboardList size={16} /> Mes calls</button>
+            <button className={navCls("calendrier")} onClick={() => go("calendrier")}><Calendar size={16} /> Calendrier</button>
           </>)}
         </nav>
         <div className="side-foot">
@@ -1831,7 +1849,47 @@ export default function App() {
       )}
 
       {/* ACOMPTES — clients qui n'ont payé QUE 100 € ou 200 € (à compléter) */}
-      {tab === "acomptes" && (() => {
+      {tab === "acomptes" && !isAdmin && (() => {
+        // Closer : ses élèves qui n'ont payé QUE l'acompte (100 / 200 €) ->
+        // paiement à finaliser. Calculé sur ses leads (cash matché par email/tél).
+        const deps = (crm.leads || [])
+          .filter((l) => l.amount === 100 || l.amount === 200)
+          .sort((a, b) => String(b.paidAt || "").localeCompare(String(a.paidAt || "")));
+        const frD = (d) => (d ? `${String(d).slice(8, 10)}/${String(d).slice(5, 7)}/${String(d).slice(0, 4)}` : "—");
+        const lastCallD = (l) => toParis((l.lastCall && l.lastCall.date) || l.bookedAt || "").slice(0, 10);
+        const nmOf = (l) => (l.name && l.name !== l.email ? l.name : l.email);
+        return (<>
+          <div className="kpis" style={{ marginTop: 4 }}>
+            <div className="kcard"><div className="kcard-l">Acomptes à finaliser</div><div className="kcard-v" style={{ color: "var(--amber)" }}>{deps.length}</div><div className="kcard-f">payé uniquement 100 € ou 200 €</div></div>
+            <div className="kcard"><div className="kcard-l">Encaissé en acomptes</div><div className="kcard-v">{euro(deps.reduce((a, l) => a + (l.amount || 0), 0))}</div><div className="kcard-f">à transformer en paiement complet</div></div>
+          </div>
+          <div className="esp-sec">💳 Acomptes — paiement à finaliser <span className="mnd-gcount">{deps.length}</span></div>
+          <div className="card" style={{ padding: 0, overflowX: "auto" }}>
+            <table className="tbl">
+              <thead><tr><th>Élève</th><th>Email</th><th>Téléphone</th><th className="num">Acompte payé</th><th>Payé le</th><th>Dernier call</th><th /></tr></thead>
+              <tbody>
+                {deps.map((l) => (
+                  <tr key={l.email}>
+                    <td className="lab"><button className="client-link" onClick={() => setLeadOpen(l.email)}>{nmOf(l)} <Pencil size={11} /></button></td>
+                    <td className="mut" style={{ fontSize: 12.5 }}>{l.email}</td>
+                    <td>{l.phone ? <a href={`tel:${String(l.phone).replace(/[^+0-9]/g, "")}`} style={{ color: "var(--cyan)", textDecoration: "none", fontWeight: 600 }}>{l.phone}</a> : <span className="mut">—</span>}</td>
+                    <td className="num" style={{ fontWeight: 800, color: "var(--amber)" }}>{euro(l.amount)}</td>
+                    <td className="mut" style={{ fontSize: 12.5 }}>{frD(l.paidAt)}</td>
+                    <td className="mut" style={{ fontSize: 12.5 }}>{frD(lastCallD(l))}</td>
+                    <td className="num" style={{ whiteSpace: "nowrap" }}>
+                      {l.phone ? <a className="ls-link ls-join" style={{ textDecoration: "none", marginRight: 8 }} href={`tel:${String(l.phone).replace(/[^+0-9]/g, "")}`}>📱 Appeler</a> : null}
+                      <button className="esp-open" onClick={() => setLeadOpen(l.email)}>Ouvrir la fiche</button>
+                    </td>
+                  </tr>
+                ))}
+                {deps.length === 0 && <tr><td colSpan={7}><div className="empty" style={{ padding: 18 }}>Aucun acompte en attente — tous tes élèves ont dépassé l'acompte 🎉</div></td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </>);
+      })()}
+
+      {tab === "acomptes" && isAdmin && (() => {
         const deposits = sales
           .map((sl) => ({ s: sl, paid: sl.schedule.filter((i) => i.paid).reduce((a, i) => a + i.amount, 0), lastPaid: sl.schedule.filter((i) => i.paid).map((i) => i.dueDate).sort().pop() }))
           .filter((x) => x.paid === 100 || x.paid === 200)
@@ -1862,40 +1920,66 @@ export default function App() {
         </>);
       })()}
 
-      {/* FOLLOW-UPS — tous les leads à relancer, avec ou sans date */}
+      {/* FOLLOW-UPS — relances groupées par date (à faire / planifiées) */}
       {tab === "followups" && (() => {
         const t0 = toISO(new Date());
-        const fus = (crm.leads || [])
-          .filter((l) => l.followUp === "yes" && !["won", "dead"].includes(l.stage))
-          .sort((a, b) => String(a.followUpAt || "9999").localeCompare(String(b.followUpAt || "9999")));
-        const dd = (d) => `${d.slice(8, 10)}/${d.slice(5, 7)}`;
-        const badge = (l) => {
-          if (!l.followUpAt) return <span className="esp-tag" style={{ color: "#475467", borderColor: "#E3E6EA", background: "#F9FAFB", marginLeft: 0 }}>Sans date</span>;
-          if (l.followUpAt < t0) return <span className="esp-tag" style={{ color: "#B42318", borderColor: "#FECDCA", background: "#FEF3F2", marginLeft: 0 }}>Dépassé · {dd(l.followUpAt)}</span>;
-          if (l.followUpAt === t0) return <span className="esp-tag" style={{ color: "#067647", borderColor: "#ABEFC6", background: "#ECFDF3", marginLeft: 0 }}>Aujourd'hui</span>;
-          return <span className="esp-tag" style={{ color: "#5925DC", borderColor: "#D9D6FE", background: "#F4F3FF", marginLeft: 0 }}>Le {dd(l.followUpAt)}</span>;
+        const fus = (crm.leads || []).filter((l) => l.followUp === "yes" && !["won", "dead"].includes(l.stage));
+        const due = fus.filter((l) => !l.followUpAt || l.followUpAt <= t0).sort((a, b) => String(a.followUpAt || "0").localeCompare(String(b.followUpAt || "0")));
+        const later = fus.filter((l) => l.followUpAt && l.followUpAt > t0).sort((a, b) => a.followUpAt.localeCompare(b.followUpAt));
+        const fmtDay = (d) => { try { return parseLocal(d).toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" }); } catch (e) { return d; } };
+        const frD = (d) => (d ? `${d.slice(8, 10)}/${d.slice(5, 7)}` : "—");
+        const lastCallD = (l) => toParis((l.lastCall && l.lastCall.date) || l.bookedAt || "").slice(0, 10);
+        const nmOf = (l) => (l.name && l.name !== l.email ? l.name : l.email);
+        const initials = (n) => String(n).split(/[\s@._-]+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase() || "?";
+        const avaColor = (e) => ["#579BFC", "#A25DDC", "#00C875", "#FDAB3D", "#E2445C", "#66B2FF"][(String(e).charCodeAt(0) + String(e).length) % 6];
+        const groupBy = (list) => { const m = {}; list.forEach((l) => { const d = l.followUpAt || "nodate"; (m[d] = m[d] || []).push(l); }); return m; };
+        const dueBy = groupBy(due), laterBy = groupBy(later);
+        const tagOf = (l) => {
+          if (!l.followUpAt) return ["Sans date", { color: "#475467", borderColor: "#E3E6EA", background: "#F9FAFB" }];
+          if (l.followUpAt < t0) { const age = Math.round((parseLocal(t0) - parseLocal(l.followUpAt)) / 864e5); return [`En retard · J+${age}`, { color: "#B42318", borderColor: "#FECDCA", background: "#FEF3F2" }]; }
+          if (l.followUpAt === t0) return ["Aujourd'hui", { color: "#067647", borderColor: "#ABEFC6", background: "#ECFDF3" }];
+          return [`Le ${frD(l.followUpAt)}`, { color: "#5925DC", borderColor: "#D9D6FE", background: "#F4F3FF" }];
         };
-        return (<>
-          <div className="section-h" style={{ marginTop: 28 }}><RotateCcw size={15} /> Follow-ups à relancer <span className="mnd-gcount">{fus.length}</span></div>
-          <div className="card" style={{ padding: 0, overflowX: "auto" }}>
-            <table className="tbl">
-              <thead><tr><th>Lead</th><th>Email</th><th>Téléphone</th><th>Closer</th><th>Relance prévue</th><th>Dernier call</th><th /></tr></thead>
-              <tbody>
-                {fus.map((l) => (
-                  <tr key={l.email}>
-                    <td className="lab"><button className="client-link" onClick={() => setLeadOpen(l.email)}>{l.name && l.name !== l.email ? l.name : l.email} <Pencil size={11} /></button></td>
-                    <td className="mut" style={{ fontSize: 12.5 }}>{l.email}</td>
-                    <td>{l.phone ? <a href={`tel:${String(l.phone).replace(/[^+0-9]/g, "")}`} style={{ color: "var(--cyan)", textDecoration: "none", fontWeight: 600 }}>{l.phone}</a> : <span className="mut">—</span>}</td>
-                    <td className="mut" style={{ fontSize: 12.5 }}>{l.closer || "—"}</td>
-                    <td>{badge(l)}</td>
-                    <td className="mut" style={{ fontSize: 12.5 }}>{(toParis((l.lastCall && l.lastCall.date) || l.bookedAt || "").slice(0, 10) || "—")}</td>
-                    <td className="num"><button className="esp-open" onClick={() => setLeadOpen(l.email)}>Ouvrir la fiche</button></td>
-                  </tr>
-                ))}
-                {fus.length === 0 && <tr><td colSpan={7}><div className="empty" style={{ padding: 18 }}>Aucun lead en follow-up.</div></td></tr>}
-              </tbody>
-            </table>
+        const headOf = (d) => d === "nodate" ? "Sans date de relance" : (d === t0 ? fmtDay(d) : (d < t0 ? `${fmtDay(d)} · en retard` : fmtDay(d)));
+        const row = (l) => { const [tag, tone] = tagOf(l); return (
+          <div className="cal-row" key={l.email}>
+            <span className="mnd-ava" style={{ background: avaColor(l.email), width: 36, height: 36, fontSize: 13, flex: "none" }}>{initials(nmOf(l))}</span>
+            <div className="cal-main" style={{ cursor: "pointer" }} onClick={() => setLeadOpen(l.email)} title="Ouvrir la fiche">
+              <div className="cal-name">{nmOf(l)}{isAdmin && l.closer ? <span className="mut" style={{ fontWeight: 500 }}> · {l.closer}</span> : null}</div>
+              <div className="cal-sub">{l.phone ? `${l.phone} · ` : ""}{l.email} · dernier call {frD(lastCallD(l))}</div>
+            </div>
+            {l.notes ? <span className="mut" style={{ fontSize: 12, maxWidth: 260, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }} title={l.notes}>📝 {l.notes}</span> : null}
+            <span className="esp-tag" style={{ ...tone, marginLeft: 0 }}>{tag}</span>
+            {fupDateSelect(l)}
+            {l.phone ? <a className="ls-link ls-join" style={{ flex: "none", textDecoration: "none" }} href={`tel:${String(l.phone).replace(/[^+0-9]/g, "")}`}>📱 Appeler</a> : null}
+            <button className="esp-open" style={{ borderColor: "#ABEFC6", color: "#067647" }} title="Relance faite — retire le lead des follow-ups" onClick={() => updateLead(l.email, { followUp: "no" })}>✓ Relancé</button>
+            <button className="esp-open" onClick={() => setLeadOpen(l.email)}>Ouvrir la fiche</button>
           </div>
+        ); };
+        const block = (by, keys) => keys.map((d) => (
+          <div className="cal-day" key={d} style={{ margin: "12px 0 22px" }}>
+            <div className="cal-dhead">
+              {headOf(d)}
+              {d === t0 ? <span className="cal-today">Aujourd'hui</span> : null}
+              <span className="mnd-gcount">{by[d].length}</span>
+            </div>
+            <div className="card" style={{ padding: 0, overflow: "hidden" }}>{by[d].map(row)}</div>
+          </div>
+        ));
+        const dueKeys = Object.keys(dueBy).sort((a, b) => (a === "nodate" ? -1 : b === "nodate" ? 1 : a.localeCompare(b)));
+        const laterKeys = Object.keys(laterBy).sort();
+        return (<>
+          <div className="kpis" style={{ marginTop: 4 }}>
+            <div className="kcard"><div className="kcard-l">À relancer maintenant</div><div className="kcard-v" style={{ color: due.length ? "var(--red)" : "var(--green)" }}>{due.length}</div><div className="kcard-f">sans date, en retard ou aujourd'hui</div></div>
+            <div className="kcard"><div className="kcard-l">Planifiés</div><div className="kcard-v">{later.length}</div><div className="kcard-f">prochain : {later[0] ? frD(later[0].followUpAt) : "—"}</div></div>
+            <div className="kcard"><div className="kcard-l">Total en follow-up</div><div className="kcard-v">{fus.length}</div><div className="kcard-f">hors closés / dead</div></div>
+          </div>
+          <div className="esp-sec">🔥 À relancer maintenant <span className="mnd-gcount">{due.length}</span></div>
+          {due.length === 0 && <div className="card" style={{ padding: 0, overflow: "hidden" }}><div className="empty" style={{ padding: 20 }}>Aucune relance en attente 🎉</div></div>}
+          {block(dueBy, dueKeys)}
+          <div className="esp-sec">📅 Relances planifiées <span className="mnd-gcount">{later.length}</span></div>
+          {later.length === 0 && <div className="card" style={{ padding: 0, overflow: "hidden", marginBottom: 26 }}><div className="empty" style={{ padding: 20 }}>Aucune relance planifiée. Choisis une date de relance sur un call (« Quand relancer ? ») pour la voir ici.</div></div>}
+          {block(laterBy, laterKeys)}
         </>);
       })()}
 
@@ -2709,6 +2793,7 @@ export default function App() {
       {/* CRM (board) & CALENDRIER (agenda) — calls Calendly + iClosed */}
       {(tab === "crm" || tab === "calendrier") && (() => {
         const crmMode = tab === "calendrier" ? "cal" : "board";
+        const setterOnly = !isAdmin && me.role === "setter"; // calendrier setter = préqualification uniquement
         const META = CRM_META;
         const ORDER = ["booked", "show", "won", "noshow", "lost", "setting", "unqualified"];
         const all = (crm.leads || []).filter((l) => l.hasCall !== false); // board = calls uniquement (les opt-ins vivent dans l'espace setter)
@@ -2741,7 +2826,7 @@ export default function App() {
         // KPI sur la période sélectionnée (Aujourd'hui / Cette semaine / Tout)
         const scoped = all.filter(activeFilter);
         const periodLbl = isCal
-          ? (calView === "today" ? "aujourd'hui" : (calView === "past" ? "appels passés" : "à venir"))
+          ? (calView === "today" ? "aujourd'hui" : (calView === "past" ? "appels passés" : (calView === "period" ? periodRange.label : "à venir")))
           : (crmView === "today" ? "aujourd'hui" : (crmView === "week" ? "cette semaine" : (crmView === "period" ? periodRange.label : "toutes périodes")));
         const nShow = scoped.filter((l) => ["show", "won", "lost"].includes(l.stage)).length;
         const nNoShow = scoped.filter((l) => l.stage === "noshow").length;
@@ -2760,7 +2845,7 @@ export default function App() {
         <div className="closers-head">
           <div className="closers-title">
             {tab === "calendrier" ? <Calendar size={16} /> : <ClipboardList size={16} />}{" "}
-            {tab === "calendrier" ? (isAdmin ? "Calendrier des calls" : `Ma journée · ${me.name}`) : (isAdmin ? `Calls · ${all.length}` : `Mes calls · ${me.name}`)}
+            {tab === "calendrier" ? (isAdmin ? "Calendrier des calls" : `Mon calendrier · ${me.name}`) : (isAdmin ? `Calls · ${all.length}` : `Mes calls · ${me.name}`)}
           </div>
           <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
             <div className="crm-views">
@@ -2768,12 +2853,12 @@ export default function App() {
                 <button className={`crm-chip ${calView === "today" ? "on" : ""}`} onClick={() => setCalView("today")}>Aujourd'hui <b>{nToday}</b></button>
                 <button className={`crm-chip ${calView === "upcoming" ? "on" : ""}`} onClick={() => setCalView("upcoming")}>À venir <b>{nUpcoming}</b></button>
                 <button className={`crm-chip ${calView === "past" ? "on" : ""}`} onClick={() => setCalView("past")}>Passés <b>{nPast}</b></button>
-                <button className={`crm-chip ${calView === "period" ? "on" : ""}`} onClick={() => setCalView("period")} title="Suit le sélecteur de dates en haut à droite">📅 Période</button>
+                <button className={`crm-chip ${calView === "period" ? "on" : ""}`} onClick={() => setCalView("period")} title="Suit le sélecteur de dates en haut à droite">📅 {calView === "period" ? periodRange.label : "Période"}</button>
               </>) : (<>
                 <button className={`crm-chip ${crmView === "today" ? "on" : ""}`} onClick={() => setCrmView("today")}>Aujourd'hui <b>{nToday}</b></button>
                 <button className={`crm-chip ${crmView === "week" ? "on" : ""}`} onClick={() => setCrmView("week")}>Cette semaine <b>{nWeek}</b></button>
                 <button className={`crm-chip ${crmView === "all" ? "on" : ""}`} onClick={() => setCrmView("all")}>Tout <b>{all.length}</b></button>
-                <button className={`crm-chip ${crmView === "period" ? "on" : ""}`} onClick={() => setCrmView("period")} title="Suit le sélecteur de dates en haut à droite">📅 Période</button>
+                <button className={`crm-chip ${crmView === "period" ? "on" : ""}`} onClick={() => setCrmView("period")} title="Suit le sélecteur de dates en haut à droite">📅 {crmView === "period" ? periodRange.label : "Période"}</button>
               </>)}
             </div>
             <div className="crm-search"><Search size={14} /><input value={crmQ} onChange={(e) => setCrmQ(e.target.value)} placeholder="Rechercher (nom, email, closer…)" /></div>
@@ -2906,7 +2991,7 @@ export default function App() {
           const days = Object.keys(byDay).sort();
           if (calView === "past") days.reverse();
           const fmtDay = (d) => { try { return parseLocal(d).toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" }); } catch (e) { return d; } };
-          if (!days.length) return <div className="empty" style={{ padding: 26 }}>{calView === "past" ? "Aucun call passé sur cette période." : "Aucun call à venir 🎉"}</div>;
+          if (!days.length) return <div className="empty" style={{ padding: 26 }}>{calView === "past" ? "Aucun call passé." : (calView === "period" ? `Aucun call sur la période ${periodRange.label}.` : (calView === "today" ? "Aucun call aujourd'hui 🎉" : "Aucun call à venir 🎉"))}</div>;
           return days.map((d) => (
             <div className="cal-day" key={d}>
               <div className="cal-dhead">
@@ -2930,12 +3015,15 @@ export default function App() {
                     {l.fathom ? <a className="ls-link ls-join" href={l.fathom} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>🎥 Fathom</a> : null}
                     <span className="mnd-src">{srcOf(l)}</span>
                     {setStatusSelect(l)}
-                    <div className="out-row">{outSelects(l)}</div>
-                    {l.followUp === "yes" ? <span title="À follow-up" style={{ fontSize: 15 }}>🔁</span> : null}
-                    <select className="mnd-status" value={l.stage} style={{ backgroundColor: (META[l.stage] || ["", "#666"])[1] }}
-                      onChange={(e) => updateLead(l.email, { stage: e.target.value })}>
-                      {Object.keys(META).map((s) => <option key={s} value={s}>{META[s][0]}</option>)}
-                    </select>
+                    {setterOnly && l.phone ? <a className="ls-link ls-join" style={{ flex: "none", textDecoration: "none" }} href={`tel:${String(l.phone).replace(/[^+0-9]/g, "")}`} onClick={(e) => e.stopPropagation()}>📱 Appeler</a> : null}
+                    {!setterOnly && <div className="out-row">{outSelects(l)}</div>}
+                    {!setterOnly && l.followUp === "yes" ? <span title="À follow-up" style={{ fontSize: 15 }}>🔁</span> : null}
+                    {!setterOnly && (
+                      <select className="mnd-status" value={l.stage} style={{ backgroundColor: (META[l.stage] || ["", "#666"])[1] }}
+                        onChange={(e) => updateLead(l.email, { stage: e.target.value })}>
+                        {Object.keys(META).map((s) => <option key={s} value={s}>{META[s][0]}</option>)}
+                      </select>
+                    )}
                   </div>
                 ))}
               </div>
@@ -3116,7 +3204,6 @@ export default function App() {
         const tOfL = (l) => { const m = tsL(l).match(/T(\d{2}:\d{2})/); return m ? m[1] : ""; };
         const frD = (d) => (d ? `${d.slice(8, 10)}/${d.slice(5, 7)}` : "—");
         const initials = (n) => String(n).split(/[\s@._-]+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase() || "?";
-        const avaColor = (e) => ["#579BFC", "#A25DDC", "#00C875", "#FDAB3D", "#E2445C", "#66B2FF"][(String(e).charCodeAt(0) + String(e).length) % 6];
         const nmOf = (l) => (l.name && l.name !== l.email ? l.name : l.email);
 
         // ---- Stats sur la PÉRIODE sélectionnée (défaut : mois en cours) ----
@@ -3150,7 +3237,12 @@ export default function App() {
           : [];
         const planList = isSetter ? upcoming : todayCalls;
         const processed = todayCalls.filter((l) => l.callResult || ["noshow", "cancelled"].includes(l.showUp || "")).length;
-        const dayPct = todayCalls.length ? Math.round((processed / todayCalls.length) * 100) : 0;
+        // Setter : objectif du jour = préqualifier TOUS les calls du jour
+        // (WA créé / non qualifié / cancel) — les calls déjà traités comptent.
+        const todaySet = isSetter ? mine.filter((l) => dOfL(l) === today) : [];
+        const goalN = isSetter ? todaySet.length : todayCalls.length;
+        const goalDone = isSetter ? todaySet.filter((l) => ["wa", "unqualified", "cancel"].includes(l.setStatus || "")).length : processed;
+        const dayPct = goalN ? Math.round((goalDone / goalN) * 100) : 0;
 
         // ---- Todo du jour (dérivée : une tâche disparaît quand c'est fait) ----
         const weekAgo = toISO(new Date(Date.now() - 7 * 864e5));
@@ -3163,34 +3255,26 @@ export default function App() {
         const followUpsAll = isSetter ? [] : mine.filter((l) => l.followUp === "yes" && !["won", "dead"].includes(l.stage));
         const fupAge = (l) => l.followUpAt ? Math.round((parseLocal(today) - parseLocal(l.followUpAt)) / 864e5) : 0; // jours depuis la date de relance
         const followUps = followUpsAll.filter((l) => !l.followUpAt || (l.followUpAt <= today && fupAge(l) <= 3)).sort((a, b) => String(a.followUpAt || dOfL(a)).localeCompare(String(b.followUpAt || dOfL(b))));
-        const followUpsLater = followUpsAll.filter((l) => l.followUpAt && l.followUpAt > today).sort((a, b) => String(a.followUpAt).localeCompare(String(b.followUpAt)));
-        const followUpsOld = followUpsAll.filter((l) => l.followUpAt && fupAge(l) > 3).sort((a, b) => String(b.followUpAt).localeCompare(String(a.followUpAt)));
-        // Re-booker les no-shows / annulés : c'est le job du SETTER, pas du closer.
-        const relance = isSetter ? mine.filter((l) => (l.stage === "noshow" || l.showUp === "cancelled") && l.followUp !== "yes" && !["won", "dead"].includes(l.stage)) : [];
-        // Leads ENTRANTS à traiter : les NOUVEAUX (14 derniers jours) — les
-        // siens + ceux pas encore attribués. L'historique complet reste dans
-        // l'onglet Leads VSL.
+        // Nouveaux leads VSL (14 j) à traiter : la liste vit dans l'onglet
+        // Leads VSL (bulle rouge) — ici juste le compteur + raccourci.
         const vslSince = Date.now() - 14 * 864e5;
-        const aQualifier = isSetter
+        const vslN = isSetter
           ? (crm.leads || []).filter((l) => l.hasCall === false && !["unqualified", "dead"].includes(l.stage) && (same(l.setter) || !l.setter)
-              && l.createdAt && new Date(l.createdAt).getTime() >= vslSince)
-            .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")))
-          : [];
+              && l.createdAt && new Date(l.createdAt).getTime() >= vslSince).length
+          : 0;
         // Process setting : dès qu'un lead a PRIS un call -> l'appeler + créer
         // le groupe WhatsApp (cochable en un clic, la tâche disparaît).
         // Statut setting « terminé » : groupe WA créé / non qualifié / cancel
         // -> le lead SORT du planning du jour et de la todo du setter.
         const SETTING_DONE = ["wa", "unqualified", "cancel"];
+        // Setter : la todo = UNIQUEMENT les appels de préqualification (les
+        // no-shows à re-booker vivent dans l'onglet No-shows, les leads VSL
+        // dans Leads VSL). Closer : résultat / Fathom / follow-ups du jour.
         const processLeads = isSetter ? mine.filter((l) => l.stage === "booked" && dOfL(l) >= today && !SETTING_DONE.includes(l.setStatus || "")) : [];
-        const ns7 = toISO(new Date(Date.now() - 7 * 864e5));
-        const noShowVeille = isSetter ? mine.filter((l) => l.stage === "noshow" && dOfL(l) >= ns7 && dOfL(l) <= today) : [];
-        const setRelance = isSetter ? mine.filter((l) => ["nrp", "cancel"].includes(l.setStatus || "") && !["won", "dead"].includes(l.stage)) : [];
         const todos = [
-          ...processLeads.map((l) => ({ ico: "💬", txt: l.setStatus === "nrp" ? "NRP : rappeler + créer le groupe WA" : "Appeler le lead + créer le groupe WhatsApp", l, patch: { setStatus: "wa" }, done: "✓ WA créé" })),
-          ...noShowVeille.map((l) => ({ ico: "🚨", txt: "No-show : rappeler pour re-booker", l })),
+          ...processLeads.map((l) => ({ ico: "💬", txt: l.setStatus === "nrp" ? "NRP : rappeler + créer le groupe WA" : "Appel de préqualification + créer le groupe WhatsApp", l, patch: { setStatus: "wa" }, done: "✓ WA créé" })),
           ...needResult.map((l) => ({ ico: "📝", txt: "Renseigner le résultat du call", l })),
           ...needFathom.map((l) => ({ ico: "🎥", txt: "Coller le lien Fathom", l })),
-          ...relance.filter((l) => !noShowVeille.includes(l)).map((l) => ({ ico: "🔄", txt: l.stage === "noshow" ? "No-show : re-booker un call" : "Annulé : re-booker un call", l })),
           ...followUps.map((l) => ({ ico: "🔁", txt: l.followUpAt ? (l.followUpAt < today ? `Follow-up (J+${fupAge(l)}) : relancer` : "Follow-up du jour : relancer") : "Follow-up : relancer", l })),
         ];
         const copyJoin = (l) => { try { navigator.clipboard.writeText(l.links.join); flash("Lien du call copié 📋"); } catch (e) { window.prompt("Copie le lien :", l.links.join); } };
@@ -3218,9 +3302,9 @@ export default function App() {
               <div className="esp-lvl-name">{lvl[1]}</div>
             </div>
             <div className="esp-day">
-              <div className="esp-day-top"><span>Objectif du jour</span><b>{processed}/{todayCalls.length} calls traités</b></div>
+              <div className="esp-day-top"><span>Objectif du jour</span><b>{goalDone}/{goalN} calls {isSetter ? "préqualifiés" : "traités"}</b></div>
               <div className="esp-track"><div className="esp-fill" style={{ width: `${dayPct}%` }} /></div>
-              <div className="esp-day-sub">{dayPct === 100 && todayCalls.length ? "🏆 Journée parfaite !" : (todos.length ? `${todos.length} tâche${todos.length > 1 ? "s" : ""} dans ta todo` : "Rien en attente 🎉")}</div>
+              <div className="esp-day-sub">{dayPct === 100 && goalN ? "🏆 Journée parfaite !" : (todos.length ? `${todos.length} ${isSetter ? "appel" : "tâche"}${todos.length > 1 ? "s" : ""} ${isSetter ? "de préqualification à passer" : "dans ta todo"}` : "Rien en attente 🎉")}</div>
             </div>
           </div>
 
@@ -3274,11 +3358,14 @@ export default function App() {
                           {{ wa: "WA créé ✅", nrp: "NRP 📵", cancel: "Cancel", unqualified: "Non qualifié" }[l.setStatus]}
                         </span>
                       ) : null)}
-                      <div className="out-row">{outSelects(l)}</div>
-                      <select className="mnd-status" value={l.stage} style={{ backgroundColor: (CRM_META[l.stage] || ["", "#666"])[1] }}
-                        onChange={(e) => updateLead(l.email, { stage: e.target.value })}>
-                        {Object.keys(CRM_META).map((s) => <option key={s} value={s}>{CRM_META[s][0]}</option>)}
-                      </select>
+                      {isSetter && l.phone ? <a className="ls-link ls-join" style={{ flex: "none", textDecoration: "none" }} href={`tel:${String(l.phone).replace(/[^+0-9]/g, "")}`}>📱 Appeler</a> : null}
+                      {!isSetter && <div className="out-row">{outSelects(l)}</div>}
+                      {!isSetter && (
+                        <select className="mnd-status" value={l.stage} style={{ backgroundColor: (CRM_META[l.stage] || ["", "#666"])[1] }}
+                          onChange={(e) => updateLead(l.email, { stage: e.target.value })}>
+                          {Object.keys(CRM_META).map((s) => <option key={s} value={s}>{CRM_META[s][0]}</option>)}
+                        </select>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -3286,57 +3373,16 @@ export default function App() {
             ));
           })()}
 
-          {isSetter && (() => {
-            // Nouveaux leads VSL (14 j) — même DA que l'agenda : un bloc par
-            // jour d'arrivée, du plus récent au plus ancien.
-            const byDay = {};
-            aQualifier.forEach((l) => { const d = toParis(l.createdAt).slice(0, 10) || "—"; (byDay[d] = byDay[d] || []).push(l); });
-            const days = Object.keys(byDay).sort().reverse();
-            const fmtDay = (d) => { try { return parseLocal(d).toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" }); } catch (e) { return d; } };
-            const tArr = (l) => { const t = toParis(l.createdAt); return t ? t.slice(11, 16) : "—"; };
-            return (<>
-              <div className="esp-sec">🌱 Nouveaux leads VSL à qualifier <span className="mnd-gcount">{aQualifier.length}</span></div>
-              {aQualifier.length === 0 && (
-                <div className="card" style={{ padding: 0, overflow: "hidden" }}><div className="empty" style={{ padding: 20 }}>Aucun nouveau lead entrant 🎉 (l'historique complet est dans l'onglet Leads VSL)</div></div>
-              )}
-              {days.map((d) => (
-                <div className="cal-day" key={d} style={{ margin: "12px 0 22px" }}>
-                  <div className="cal-dhead">
-                    {fmtDay(d)}
-                    {d === today ? <span className="cal-today">Aujourd'hui</span> : null}
-                    <span className="mnd-gcount">{byDay[d].length}</span>
-                  </div>
-                  <div className="card" style={{ padding: 0, overflow: "hidden" }}>
-                    {byDay[d].map((l) => (
-                      <div className="cal-row" key={l.email}>
-                        <div className="cal-time">{tArr(l)}</div>
-                        <span className="mnd-ava" style={{ background: avaColor(l.email), width: 36, height: 36, fontSize: 13, flex: "none" }}>{initials(nmOf(l))}</span>
-                        <div className="cal-main" style={{ cursor: "pointer" }} onClick={() => setLeadOpen(l.email)} title="Ouvrir la fiche">
-                          <div className="cal-name">{nmOf(l)}</div>
-                          <div className="cal-sub">{l.email}{l.phone ? ` · ${l.phone}` : ""}</div>
-                        </div>
-                        <span className="mnd-src">{l.source || "VSL"}</span>
-                        <select className="mnd-status" value={["new", "setting", "unqualified", "dead", "nrp"].includes(l.stage) ? l.stage : "new"} style={{ backgroundColor: (CRM_META[l.stage] || CRM_META.new)[1] }}
-                          onChange={(e) => updateLead(l.email, { stage: e.target.value })}>
-                          <option value="new">🌱 Nouveau</option>
-                          <option value="setting">📞 En qualification</option>
-                          <option value="nrp">📵 NRP — ne répond pas</option>
-                          <option value="unqualified">🚫 Non qualifié</option>
-                          <option value="dead">💀 Dead — ne plus appeler</option>
-                        </select>
-                        {l.phone ? <a className="ls-link ls-join" style={{ flex: "none", textDecoration: "none" }} href={`tel:${String(l.phone).replace(/[^+0-9]/g, "")}`}>📱 Appeler</a> : null}
-                        <button className="esp-open" onClick={() => setLeadOpen(l.email)}>Ouvrir la fiche</button>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </>);
-          })()}
+          {isSetter && vslN > 0 && (
+            <div className="esp-preview" style={{ marginTop: 22, marginBottom: 0, background: "#F4F3FF", borderColor: "#D9D6FE", color: "#5925DC" }}>
+              🌱 <b>{vslN} nouveau{vslN > 1 ? "x" : ""} lead{vslN > 1 ? "s" : ""} VSL</b> à traiter
+              <button className="esp-open" style={{ marginLeft: "auto", flex: "none" }} onClick={() => go("vsl")}>Ouvrir Leads VSL →</button>
+            </div>
+          )}
 
-          <div className="esp-sec">📝 Ma todo du jour <span className="mnd-gcount">{todos.length}</span></div>
+          <div className="esp-sec">{isSetter ? "📝 Mes appels de préqualification" : "📝 Ma todo du jour"} <span className="mnd-gcount">{todos.length}</span></div>
           <div className="card" style={{ padding: 0, overflow: "hidden" }}>
-            {todos.length === 0 && <div className="empty" style={{ padding: 20 }}>Tout est à jour 🏆 Reviens après tes calls.</div>}
+            {todos.length === 0 && <div className="empty" style={{ padding: 20 }}>{isSetter ? "Tous les calls à venir sont préqualifiés 🏆" : "Tout est à jour 🏆 Reviens après tes calls."}</div>}
             {todos.slice(0, 30).map((t) => (
               <div className="esp-todo" key={t.l.email + t.txt}>
                 <span className="esp-todo-ico">{t.ico}</span>
@@ -3352,28 +3398,12 @@ export default function App() {
             {todos.length > 30 && <div className="mnd-foot"><span>+{todos.length - 30} autres tâches</span></div>}
           </div>
 
-          <div className="esp-sec">🔁 À relancer & follow-ups <span className="mnd-gcount">{followUps.length + followUpsLater.length + followUpsOld.length + relance.length + setRelance.length}</span></div>
-          <div className="card" style={{ padding: 0, overflow: "hidden", marginBottom: 26 }}>
-            {(followUps.length + followUpsLater.length + followUpsOld.length + relance.length + setRelance.length) === 0 && <div className="empty" style={{ padding: 20 }}>Personne à relancer 🎉</div>}
-            {[
-              ...followUps.map((l) => ({ l, tag: "Follow-up 🔁", tone: TONES.yes })),
-              ...followUpsLater.map((l) => ({ l, tag: `🔁 Relance le ${frD(l.followUpAt)}`, tone: TONES.yes })),
-              ...followUpsOld.map((l) => ({ l, tag: `Follow-up dépassé (${frD(l.followUpAt)})`, tone: TONES.lost })),
-              ...relance.map((l) => ({ l, tag: l.stage === "noshow" ? "No-show" : "Annulé", tone: l.stage === "noshow" ? TONES.noshow : TONES.cancelled })),
-              ...setRelance.filter((l) => !relance.includes(l)).map((l) => ({ l, tag: l.setStatus === "nrp" ? "NRP 📵" : "Cancel", tone: SET_TONES[l.setStatus] })),
-            ].map(({ l, tag, tone }) => (
-              <div className="esp-todo" key={"rel" + l.email + tag}>
-                <span className="mnd-ava" style={{ background: avaColor(l.email), width: 32, height: 32, fontSize: 12 }}>{initials(nmOf(l))}</span>
-                <div style={{ minWidth: 0 }}>
-                  <div className="esp-todo-txt">{nmOf(l)}</div>
-                  <div className="esp-todo-lead">dernier call : {frD(dOfL(l))}{l.phone ? ` · ${l.phone}` : ""}</div>
-                </div>
-                <span className="esp-tag" style={tone}>{tag}</span>
-                {l.phone ? <a className="ls-link ls-join" style={{ flex: "none", textDecoration: "none" }} href={`tel:${String(l.phone).replace(/[^+0-9]/g, "")}`}>📱 Appeler</a> : null}
-                <button className="esp-open" onClick={() => setLeadOpen(l.email)}>Ouvrir la fiche</button>
-              </div>
-            ))}
-          </div>
+          {!isSetter && (
+            <div className="esp-preview" style={{ marginTop: 22, marginBottom: 26, background: "#F9FAFB", borderColor: "#E3E6EA", color: "#475467" }}>
+              🔁 Tous tes follow-ups, classés par date, sont dans l'onglet <b>Follow-ups</b>.
+              <button className="esp-open" style={{ marginLeft: "auto", flex: "none" }} onClick={() => go("followups")}>Ouvrir →</button>
+            </div>
+          )}
         </>);
       })()}
 
