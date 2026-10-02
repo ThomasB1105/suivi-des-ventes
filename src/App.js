@@ -716,12 +716,26 @@ export default function App() {
   const [rplRes, setRplRes] = useState("all"); // Replays : "all" | "won" | "deposit" | "lost" | "pending"
   const [rplCloser, setRplCloser] = useState("all"); // Replays : filtre closer (admin)
   const [rplOnly, setRplOnly] = useState(false); // Replays : uniquement les calls avec enregistrement
+  const [copiedKey, setCopiedKey] = useState(null); // Liens de paiement : bouton qui vient d'être copié (feedback 2 s)
+  const copiedTimer = useRef(null);
+  const copyWithFeedback = (key, txt) => {
+    const done = () => { setCopiedKey(key); clearTimeout(copiedTimer.current); copiedTimer.current = setTimeout(() => setCopiedKey(null), 2000); };
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(txt).then(done, () => { window.prompt("Copie :", txt); });
+      else { window.prompt("Copie :", txt); }
+    } catch (e) { window.prompt("Copie :", txt); }
+  };
   const [repWeek, setRepWeek] = useState(0); // Reporting : 0 = semaine dernière, 1 = -2 semaines…
   const [repQScope, setRepQScope] = useState("all"); // "all" | "week"
   const [adsScope, setAdsScope] = useState("week"); // Reporting Ads : suit la période sélectionnée par défaut
   const loadCrm = async (silent) => {
     if (!silent) setCrmLoading(true);
-    try { const r = await authFetch("/api/crm"); const d = await r.json(); if (d && d.leads) setCrm(d); } catch (e) { /* ignore */ }
+    try {
+      const r = await authFetch("/api/crm"); const d = await r.json();
+      // Les replays des autres closers (shared) ne doivent pas se mélanger à
+      // SES leads (todo, follow-ups, acomptes, calendrier…).
+      if (d && d.leads) setCrm({ ...d, leads: d.leads.filter((l) => !l.shared), shared: d.leads.filter((l) => l.shared) });
+    } catch (e) { /* ignore */ }
     if (!silent) setCrmLoading(false);
   };
   const [calSync, setCalSync] = useState(false);
@@ -1457,6 +1471,11 @@ export default function App() {
         .pay-lab b{display:block;font-size:13.5px;}
         .pay-lab span{display:block;font-size:11.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
         .pay-dep{background:linear-gradient(120deg,#FFFAEB,#FFF4D6);border:1px solid #FEDF89;border-radius:16px;padding:18px 20px;display:flex;align-items:center;gap:18px;flex-wrap:wrap;margin-top:4px;}
+        .pay-copy{position:relative;transition:background .15s, border-color .15s, color .15s, transform .1s;}
+        .pay-copy:active{transform:scale(.96);}
+        .pay-copy.copied{background:#ECFDF3!important;border-color:#ABEFC6!important;color:#067647!important;box-shadow:0 0 0 3px rgba(18,183,106,.18)!important;animation:paypop .35s ease;}
+        .rpl-play.pay-copy.copied{background:linear-gradient(135deg,#12B76A,#32D583)!important;color:#fff!important;}
+        @keyframes paypop{0%{transform:scale(.94);}50%{transform:scale(1.05);}100%{transform:scale(1);}}
         .pay-promo{display:inline-flex;align-items:center;gap:8px;background:#fff;border:1.5px dashed #F79009;border-radius:10px;padding:8px 12px;font-family:ui-monospace,Menlo,monospace;font-weight:800;font-size:15px;letter-spacing:.06em;color:#B54708;}
         .rpl-res{display:inline-flex;align-items:center;border:1.5px solid;border-radius:999px;padding:6px 13px;font-size:12px;font-weight:800;white-space:nowrap;flex:none;}
         .vsl-chip{padding:11px 18px;font-weight:600;font-size:13.5px;border-width:1.5px;}
@@ -2021,8 +2040,12 @@ export default function App() {
 
       {/* LIENS DE PAIEMENT — checkout Whop par offre / mensualités (closers + admin) */}
       {tab === "paiement" && (isAdmin || me.role !== "setter") && (() => {
-        const copy = (txt, msg) => { try { navigator.clipboard.writeText(txt); flash(msg || "Copié 📋"); } catch (e) { window.prompt("Copie :", txt); } };
         const eur = (n) => `${Math.round(n).toLocaleString("fr-FR")} €`;
+        const CopyBtn = ({ k, txt, label, doneLabel, className, style }) => (
+          <button className={`${className || "esp-open"} pay-copy ${copiedKey === k ? "copied" : ""}`} style={style} onClick={() => copyWithFeedback(k, txt)} aria-live="polite">
+            {copiedKey === k ? (doneLabel || "✓ Lien copié") : label}
+          </button>
+        );
         return (<>
           <div className="closers-head">
             <div className="closers-title"><Wallet size={16} /> Liens de paiement Whop</div>
@@ -2034,12 +2057,12 @@ export default function App() {
               <div className="mut" style={{ fontSize: 12.5, marginTop: 4 }}>Pour bloquer la place. Ensuite, le prospect règle son plan avec le code promo ci-contre : les {eur(PAY_DEPOSIT.amount)} sont déduits.</div>
               <div className="mut" style={{ fontSize: 11.5, marginTop: 6, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{whopUrl(PAY_DEPOSIT.plan)}</div>
             </div>
-            <button className="rpl-play" onClick={() => copy(whopUrl(PAY_DEPOSIT.plan), "Lien d'acompte copié 📋")}>📋 Copier le lien d'acompte</button>
+            <CopyBtn k="deposit" className="rpl-play" txt={whopUrl(PAY_DEPOSIT.plan)} label="📋 Copier le lien d'acompte" doneLabel="✓ Lien d'acompte copié !" />
             <a className="esp-open" href={whopUrl(PAY_DEPOSIT.plan)} target="_blank" rel="noreferrer" style={{ textDecoration: "none" }}>Ouvrir</a>
             <div style={{ flex: "1 1 220px", display: "flex", alignItems: "center", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>
               <span className="mut" style={{ fontSize: 12.5 }}>Code promo après acompte</span>
               <span className="pay-promo">{PAY_DEPOSIT.promo}</span>
-              <button className="esp-open" onClick={() => copy(PAY_DEPOSIT.promo, "Code promo copié 📋")}>Copier le code</button>
+              <CopyBtn k="promo" txt={PAY_DEPOSIT.promo} label="Copier le code" doneLabel="✓ Code copié !" />
             </div>
           </div>
           <div className="pay-grid">
@@ -2053,7 +2076,7 @@ export default function App() {
                       <b>{n === 1 ? `Comptant · ${eur(o.total)}` : `${n} × ${eur(o.total / n)}`}</b>
                       <span title={url}>{url}</span>
                     </div>
-                    <button className="esp-open" style={{ borderColor: "#C7BFFF", color: "#5925DC" }} onClick={() => copy(url, `Lien ${eur(o.total)} · ${n}x copié 📋`)}>📋 Copier</button>
+                    <CopyBtn k={p} txt={url} label="📋 Copier" doneLabel="✓ Copié !" style={{ borderColor: "#C7BFFF", color: "#5925DC", minWidth: 96 }} />
                     <a className="esp-open" href={url} target="_blank" rel="noreferrer" style={{ textDecoration: "none" }}>Ouvrir</a>
                   </div>
                 ); })}
@@ -2083,7 +2106,8 @@ export default function App() {
           pending: ["Sans résultat", { color: "#475467", borderColor: "#E3E6EA", background: "#F9FAFB" }],
         };
         // Calls réellement passés (présent / closé / perdu / résultat saisi / replay collé), sur la période.
-        const done = (crm.leads || []).filter((l) => l.hasCall !== false && dOfL(l) && dOfL(l) <= t0
+        // Closer : ses calls + les replays des autres closers (lecture seule).
+        const done = [...(crm.leads || []), ...(isAdmin ? [] : (crm.shared || []))].filter((l) => l.hasCall !== false && dOfL(l) && dOfL(l) <= t0
           && (["show", "won", "lost"].includes(l.stage) || l.callResult || l.fathom || l.showUp === "present")
           && !["noshow", "cancelled"].includes(l.showUp || "") && l.stage !== "noshow");
         const inPeriod = (l) => dOfL(l) >= periodRange.from && dOfL(l) <= periodRange.to;
@@ -2111,7 +2135,7 @@ export default function App() {
           <div className="closers-head">
             <div className="closers-title"><Video size={16} /> Replays des calls · {periodRange.label}</div>
             <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-              {isAdmin && (
+              {closers.length > 1 && (
                 <select className="attr-sel" value={rplCloser} onChange={(e) => setRplCloser(e.target.value)} title="Filtrer par closer">
                   <option value="all">Tous les closers</option>
                   {closers.map((c) => <option key={c} value={c}>{c}</option>)}
@@ -2122,7 +2146,7 @@ export default function App() {
             </div>
           </div>
           <div className="kpis" style={{ marginTop: 4 }}>
-            <div className="kcard"><div className="kcard-l">Calls passés</div><div className="kcard-v">{byCloser.length}</div><div className="kcard-f">{periodRange.label}{rplCloser !== "all" ? ` · ${rplCloser}` : ""}</div></div>
+            <div className="kcard"><div className="kcard-l">Calls passés</div><div className="kcard-v">{byCloser.length}</div><div className="kcard-f">{periodRange.label}{rplCloser !== "all" ? ` · ${rplCloser}` : ""}{!isAdmin && (crm.shared || []).length ? " · replays des autres closers inclus" : ""}</div></div>
             <div className="kcard"><div className="kcard-l">Closés</div><div className="kcard-v green">{cnt("won")}</div><div className="kcard-f">+ {cnt("deposit")} acompte{cnt("deposit") > 1 ? "s" : ""}</div></div>
             <div className="kcard"><div className="kcard-l">Non closés</div><div className="kcard-v" style={{ color: "var(--red)" }}>{cnt("lost")}</div><div className="kcard-f">{cnt("pending")} sans résultat</div></div>
             <div className="kcard"><div className="kcard-l">Avec replay</div><div className="kcard-v" style={{ color: "var(--cyan)" }}>{withReplay}</div><div className="kcard-f">{byCloser.length ? pct(withReplay / byCloser.length) : "—"} des calls ont leur Fathom</div></div>
@@ -2144,8 +2168,8 @@ export default function App() {
                   <div className="cal-row" key={l.email}>
                     <div className="cal-time">{tOfL(l) || "—"}</div>
                     <span className="mnd-ava" style={{ background: avaColor(l.email), width: 36, height: 36, fontSize: 13, flex: "none" }}>{initials(nmOf(l))}</span>
-                    <div className="cal-main" style={{ cursor: "pointer" }} onClick={() => setLeadOpen(l.email)} title="Ouvrir la fiche">
-                      <div className="cal-name">{nmOf(l)}{l.closer ? <span className="mut" style={{ fontWeight: 500 }}> · {l.closer}</span> : null}</div>
+                    <div className="cal-main" style={{ cursor: l.shared ? "default" : "pointer" }} onClick={() => { if (!l.shared) setLeadOpen(l.email); }} title={l.shared ? "Replay d'un autre closer (lecture seule)" : "Ouvrir la fiche"}>
+                      <div className="cal-name">{nmOf(l)}{l.closer ? <span className="mut" style={{ fontWeight: 500 }}> · {l.closer}</span> : null}{l.shared ? <span className="esp-tag" style={{ marginLeft: 8, padding: "2px 9px", fontSize: 10.5, color: "#5925DC", borderColor: "#D9D6FE", background: "#F4F3FF" }}>replay partagé</span> : null}</div>
                       <div className="cal-sub">{(l.lastCall && l.lastCall.event) || l.bookedEvent || (l.lastCall ? "iClosed" : "Calendly")}{l.phone ? ` · ${l.phone}` : ""}{l.setter ? ` · setter ${l.setter}` : ""}</div>
                     </div>
                     {l.notes ? <span className="mut" style={{ fontSize: 12, maxWidth: 240, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }} title={l.notes}>📝 {l.notes}</span> : null}
@@ -2154,7 +2178,7 @@ export default function App() {
                       ? <a className="rpl-play" href={l.fathom} target="_blank" rel="noreferrer">▶ Voir le replay</a>
                       : <input className="crm-input" style={{ width: 190 }} placeholder="🎥 Coller le lien Fathom…" defaultValue=""
                           onBlur={(e) => { const v = e.target.value.trim(); if (v) updateLead(l.email, { fathom: v }); }} />}
-                    <button className="esp-open" onClick={() => setLeadOpen(l.email)}>Ouvrir la fiche</button>
+                    {!l.shared && <button className="esp-open" onClick={() => setLeadOpen(l.email)}>Ouvrir la fiche</button>}
                   </div>
                 ); })}
               </div>

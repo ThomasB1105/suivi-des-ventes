@@ -155,7 +155,15 @@ module.exports = async (req, res) => {
 
     // ---- Lecture du board ----
     let leads = await buildLeads(cmd);
-    if (!isAdmin) leads = leads.filter(canSee);
+    if (!isAdmin) {
+      // Closer : en plus de ses leads, les calls des AUTRES closers qui ont un
+      // replay Fathom (onglet Replays, lecture seule, sans téléphone).
+      const isCloserAcct = me.role !== "setter" && !isRecup;
+      const SHARED_KEYS = ["email", "name", "closer", "setter", "stage", "callResult", "showUp", "amount", "fathom", "notes", "bookedAt", "bookedEvent", "lastCall", "hasCall"];
+      leads = leads
+        .filter((l) => canSee(l) || (isCloserAcct && l.fathom && l.hasCall !== false))
+        .map((l) => canSee(l) ? l : { ...Object.fromEntries(SHARED_KEYS.filter((k) => l[k] !== undefined).map((k) => [k, l[k]])), shared: true });
+    }
 
     res.setHeader("Cache-Control", "no-store");
     res.status(200).json({ leads, me: { role: me.role, name: me.name } });
