@@ -3092,15 +3092,20 @@ export default function App() {
         // depuis moins de 14 j. NRP = à rappeler. Tout = historique complet.
         const isTodo = (l) => (!l.stage || l.stage === "new") && isRecent(l);
         const todoN = optins.filter(isTodo).length;
-        const nrpN = optins.filter((l) => l.stage === "nrp").length;
-        const scopedOpt = vslView === "recent" ? optins.filter(isTodo) : (vslView === "nrp" ? optins.filter((l) => l.stage === "nrp") : optins);
+        // « À traiter » ignore le sélecteur de dates (on doit TOUT traiter) ;
+        // NRP, Tout et les compteurs suivent la période choisie en haut à droite.
+        const arrivedD = (l) => toParis(l.createdAt || "").slice(0, 10);
+        const inPeriod = (l) => { const d = arrivedD(l); return d >= periodRange.from && d <= periodRange.to; };
+        const periodOpt = optins.filter(inPeriod);
+        const nrpN = periodOpt.filter((l) => l.stage === "nrp").length;
+        const scopedOpt = vslView === "recent" ? optins.filter(isTodo) : (vslView === "nrp" ? periodOpt.filter((l) => l.stage === "nrp") : periodOpt);
         const q = crmQ.trim().toLowerCase();
         const rows = scopedOpt
           .filter((l) => !q || [l.name, l.email, l.phone, l.setter, l.campaign, l.source].some((v) => String(v || "").toLowerCase().includes(q)))
           .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
         const week = Date.now() - 7 * 864e5;
         const weekN = optins.filter((l) => l.createdAt && new Date(l.createdAt).getTime() >= week).length;
-        const nq = optins.filter((l) => ["unqualified", "dead"].includes(l.stage)).length;
+        const nq = periodOpt.filter((l) => ["unqualified", "dead"].includes(l.stage)).length;
         const initials = (n) => String(n).split(/[\s@._-]+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase() || "?";
         const avaColor = (e) => ["#579BFC", "#A25DDC", "#00C875", "#FDAB3D", "#E2445C", "#66B2FF"][(String(e).charCodeAt(0) + String(e).length) % 6];
         const frDT = (v) => { const t = toParis(v); return t ? `${t.slice(8, 10)}/${t.slice(5, 7)} · ${t.slice(11, 16)}` : "—"; };
@@ -3111,8 +3116,8 @@ export default function App() {
             <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
               <div className="crm-views">
                 <button className={`crm-chip ${vslView === "recent" ? "on" : ""}`} onClick={() => setVslView("recent")} title="Leads encore « Nouveau » arrivés depuis 14 jours">🌱 À traiter <b>{todoN}</b></button>
-                <button className={`crm-chip ${vslView === "nrp" ? "on" : ""}`} onClick={() => setVslView("nrp")} title="Leads marqués NRP : à rappeler">📵 NRP <b>{nrpN}</b></button>
-                <button className={`crm-chip ${vslView === "all" ? "on" : ""}`} onClick={() => setVslView("all")}>Tout <b>{optins.length}</b></button>
+                <button className={`crm-chip ${vslView === "nrp" ? "on" : ""}`} onClick={() => setVslView("nrp")} title="Leads marqués NRP sur la période sélectionnée">📵 NRP <b>{nrpN}</b></button>
+                <button className={`crm-chip ${vslView === "all" ? "on" : ""}`} onClick={() => setVslView("all")} title="Tous les opt-ins arrivés sur la période sélectionnée">📅 {periodRange.label} <b>{periodOpt.length}</b></button>
               </div>
               {isAdmin && (team || []).some((u) => u.role === "setter") && (
                 <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
@@ -3138,10 +3143,10 @@ export default function App() {
             </div>
           </div>
           <div className="kpis" style={{ marginTop: 4 }}>
-            <div className="kcard"><div className="kcard-l">Opt-ins reçus</div><div className="kcard-v">{optins.length}</div><div className="kcard-f">toutes périodes</div></div>
+            <div className="kcard"><div className="kcard-l">Opt-ins reçus</div><div className="kcard-v">{periodOpt.length}</div><div className="kcard-f">{periodRange.label} · {optins.length} au total</div></div>
             <div className="kcard"><div className="kcard-l">7 derniers jours</div><div className="kcard-v" style={{ color: "var(--cyan)" }}>{weekN}</div><div className="kcard-f">nouveaux entrants</div></div>
-            <div className="kcard"><div className="kcard-l">À qualifier</div><div className="kcard-v green">{optins.length - nq}</div><div className="kcard-f">objectif : booker un call</div></div>
-            <div className="kcard"><div className="kcard-l">Non qualifiés / Dead</div><div className="kcard-v" style={{ color: "var(--muted)" }}>{nq}</div><div className="kcard-f">écartés</div></div>
+            <div className="kcard"><div className="kcard-l">À qualifier</div><div className="kcard-v green">{periodOpt.length - nq}</div><div className="kcard-f">{periodRange.label} · objectif : booker un call</div></div>
+            <div className="kcard"><div className="kcard-l">Non qualifiés / Dead</div><div className="kcard-v" style={{ color: "var(--muted)" }}>{nq}</div><div className="kcard-f">écartés · {periodRange.label}</div></div>
           </div>
           <div className="card mnd-card" style={{ marginTop: 18, borderLeft: "6px solid #2BD9A0" }}>
             <table className="mnd-tbl" style={{ minWidth: 1150 }}>
