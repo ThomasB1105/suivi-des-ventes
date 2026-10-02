@@ -1152,7 +1152,7 @@ export default function App() {
         .dr-trigger:hover{border-color:var(--cyan);}
         .dr-trigger b{font-weight:700;}
         .dr-scrim{position:fixed;inset:0;z-index:40;}
-        .dr-pop{position:absolute;top:calc(100% + 8px);left:0;z-index:41;display:flex;background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:0 18px 50px rgba(16,24,40,.14);overflow:hidden;}
+        .dr-pop{position:absolute;top:calc(100% + 8px);left:auto;right:0;z-index:41;display:flex;background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:0 18px 50px rgba(16,24,40,.14);overflow:hidden;}
         .dr-presets{display:flex;flex-direction:column;padding:8px;gap:2px;border-right:1px solid rgba(15,23,42,.08);min-width:160px;}
         .dr-presets button{text-align:left;background:transparent;border:none;color:#475467;border-radius:7px;padding:8px 12px;font:inherit;font-size:13px;cursor:pointer;}
         .dr-presets button:hover{background:rgba(15,23,42,.06);color:#fff;}
@@ -1431,6 +1431,10 @@ export default function App() {
         .crm-chips{display:flex;gap:6px;flex-wrap:wrap;}
         .crm-views{display:flex;gap:7px;flex-wrap:wrap;}
         .crm-chip{display:inline-flex;align-items:center;gap:7px;padding:9px 15px;border-radius:10px;border:1px solid var(--line);background:var(--panel);color:var(--text);font-size:13px;cursor:pointer;font-family:'Inter';transition:border-color .12s;}
+        .vsl-views{align-items:center;}
+        .vsl-chip{padding:11px 18px;font-weight:600;font-size:13.5px;border-width:1.5px;}
+        .vsl-chip.on{background:#fff;}
+        .vsl-dot{width:9px;height:9px;border-radius:50%;flex:none;}
         .crm-chip:hover{border-color:rgba(124,92,255,.5);}
         .crm-chip b{font-weight:800;}
         .crm-chip.on{border-color:var(--cyan);background:rgba(124,92,255,.14);}
@@ -3097,8 +3101,19 @@ export default function App() {
         const arrivedD = (l) => toParis(l.createdAt || "").slice(0, 10);
         const inPeriod = (l) => { const d = arrivedD(l); return d >= periodRange.from && d <= periodRange.to; };
         const periodOpt = optins.filter(inPeriod);
-        const nrpN = periodOpt.filter((l) => l.stage === "nrp").length;
-        const scopedOpt = vslView === "recent" ? optins.filter(isTodo) : (vslView === "nrp" ? periodOpt.filter((l) => l.stage === "nrp") : periodOpt);
+        const isDead = (l) => ["dead", "unqualified"].includes(l.stage);
+        const VSL_VIEWS = [
+          { k: "recent", lab: "🌱 Nouveaux", hint: "Encore jamais appelés, arrivés depuis 14 jours (hors filtre de dates)", n: todoN, color: CRM_META.new[1] },
+          { k: "setting", lab: "📞 En cours de qualification", hint: "Appelés, en cours de qualification · période sélectionnée", n: periodOpt.filter((l) => l.stage === "setting").length, color: CRM_META.setting[1] },
+          { k: "nrp", lab: "📵 NRP", hint: "Ne répondent pas, à rappeler · période sélectionnée", n: periodOpt.filter((l) => l.stage === "nrp").length, color: CRM_META.nrp[1] },
+          { k: "dead", lab: "💀 Dead", hint: "Dead ou non qualifiés · période sélectionnée", n: periodOpt.filter(isDead).length, color: CRM_META.dead[1] },
+          { k: "all", lab: "Tout", hint: "Tous les opt-ins arrivés sur la période sélectionnée", n: periodOpt.length, color: "#98A2B3" },
+        ];
+        const scopedOpt = vslView === "recent" ? optins.filter(isTodo)
+          : vslView === "setting" ? periodOpt.filter((l) => l.stage === "setting")
+          : vslView === "nrp" ? periodOpt.filter((l) => l.stage === "nrp")
+          : vslView === "dead" ? periodOpt.filter(isDead)
+          : periodOpt;
         const q = crmQ.trim().toLowerCase();
         const rows = scopedOpt
           .filter((l) => !q || [l.name, l.email, l.phone, l.setter, l.campaign, l.source].some((v) => String(v || "").toLowerCase().includes(q)))
@@ -3114,11 +3129,6 @@ export default function App() {
           <div className="closers-head">
             <div className="closers-title"><Leaf size={16} /> Leads VSL · entrants sans call</div>
             <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-              <div className="crm-views">
-                <button className={`crm-chip ${vslView === "recent" ? "on" : ""}`} onClick={() => setVslView("recent")} title="Leads encore « Nouveau » arrivés depuis 14 jours">🌱 À traiter <b>{todoN}</b></button>
-                <button className={`crm-chip ${vslView === "nrp" ? "on" : ""}`} onClick={() => setVslView("nrp")} title="Leads marqués NRP sur la période sélectionnée">📵 NRP <b>{nrpN}</b></button>
-                <button className={`crm-chip ${vslView === "all" ? "on" : ""}`} onClick={() => setVslView("all")} title="Tous les opt-ins arrivés sur la période sélectionnée">📅 {periodRange.label} <b>{periodOpt.length}</b></button>
-              </div>
               {isAdmin && (team || []).some((u) => u.role === "setter") && (
                 <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                   <select className="attr-sel" id="bulk-vsl-setter" defaultValue={(team || []).filter((u) => u.role === "setter")[0]?.name || ""}>
@@ -3148,7 +3158,15 @@ export default function App() {
             <div className="kcard"><div className="kcard-l">À qualifier</div><div className="kcard-v green">{periodOpt.length - nq}</div><div className="kcard-f">{periodRange.label} · objectif : booker un call</div></div>
             <div className="kcard"><div className="kcard-l">Non qualifiés / Dead</div><div className="kcard-v" style={{ color: "var(--muted)" }}>{nq}</div><div className="kcard-f">écartés · {periodRange.label}</div></div>
           </div>
-          <div className="card mnd-card" style={{ marginTop: 18, borderLeft: "6px solid #2BD9A0" }}>
+          <div className="crm-views vsl-views" style={{ marginTop: 18 }}>
+            {VSL_VIEWS.map((v) => (
+              <button key={v.k} className={`crm-chip vsl-chip ${vslView === v.k ? "on" : ""}`} onClick={() => setVslView(v.k)} title={v.hint} style={vslView === v.k ? { borderColor: v.color, boxShadow: `0 0 0 3px ${v.color}22` } : {}}>
+                <span className="vsl-dot" style={{ background: v.color }} />{v.lab} <b>{v.n}</b>
+              </button>
+            ))}
+            <span className="mut" style={{ fontSize: 12, marginLeft: "auto" }}>{vslView === "recent" ? "Les nouveaux s'affichent tous, quelle que soit la période" : `Période : ${periodRange.label}`}</span>
+          </div>
+          <div className="card mnd-card" style={{ marginTop: 12, borderLeft: `6px solid ${(VSL_VIEWS.find((v) => v.k === vslView) || VSL_VIEWS[0]).color}` }}>
             <table className="mnd-tbl" style={{ minWidth: 1150 }}>
               <thead><tr><th>Lead</th><th>Arrivé</th><th>Source</th><th>Campagne</th><th>Setter</th><th>Statut</th><th>Notes</th></tr></thead>
               <tbody>
@@ -3187,7 +3205,7 @@ export default function App() {
                     </tr>
                   );
                 })}
-                {rows.length === 0 && <tr><td colSpan={7}><div className="empty" style={{ padding: 22 }}>{vslView === "recent" ? "Tous les nouveaux leads sont traités 🎉 (les NRP et l'historique sont dans les autres puces)" : (vslView === "nrp" ? "Aucun lead NRP à rappeler." : "Aucun opt-in — les leads VSL (Make) arrivent ici tant qu'ils n'ont pas booké de call.")}</div></td></tr>}
+                {rows.length === 0 && <tr><td colSpan={7}><div className="empty" style={{ padding: 22 }}>{vslView === "recent" ? "Tous les nouveaux leads sont traités 🎉" : (vslView === "setting" ? "Aucun lead en cours de qualification sur la période." : (vslView === "nrp" ? "Aucun lead NRP sur la période." : (vslView === "dead" ? "Aucun lead dead / non qualifié sur la période." : "Aucun opt-in sur la période — les leads VSL (Make) arrivent ici tant qu'ils n'ont pas booké de call.")))}</div></td></tr>}
               </tbody>
             </table>
             {rows.length > 0 && <div className="mnd-foot"><span><b>{rows.length}</b> lead{rows.length > 1 ? "s" : ""}{rows.length > 200 ? " · 200 affichés, affine la recherche" : ""}</span></div>}
