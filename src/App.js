@@ -2039,7 +2039,7 @@ export default function App() {
         </>);
       })()}
 
-      {/* SETTING DM — RDV « Appel de candidature » sans opt-in VSL -> setter DM (Aurélie) */}
+      {/* SETTING DM — RDV « Appel Stratégique » -> setter DM (Aurélie) */}
       {tab === "dm" && isAdmin && (() => {
         const tsL = (l) => toParis((l.lastCall && l.lastCall.date) || l.bookedAt || "");
         const dOfL = (l) => tsL(l).slice(0, 10);
@@ -2080,7 +2080,7 @@ export default function App() {
             </div>
           </div>
           <div className="esp-preview" style={{ background: "#F4F3FF", borderColor: "#D9D6FE", color: "#5925DC" }}>
-            <span style={{ minWidth: 0, lineHeight: 1.5 }}>💬 Règle : tout RDV pris sur l'event Calendly <b>« Appel de candidature - Ecom Ascension »</b> par un lead <b>sans opt-in VSL</b> est du setting DM → attribué à <b>Aurélie</b> (sauf attribution manuelle). Les leads VSL qui bookent le même event restent VSL.</span>
+            <span style={{ minWidth: 0, lineHeight: 1.5 }}>💬 Règle : tout RDV pris sur l'event Calendly <b>« Appel Stratégique - Ecom Ascension »</b> est du setting DM → attribué à <b>Aurélie</b> (sauf attribution manuelle), avec le cash encaissé sur ces leads.</span>
           </div>
           <div className="kpis" style={{ marginTop: 14 }}>
             <div className="kcard"><div className="kcard-l">RDV bookés</div><div className="kcard-v">{booked.length}</div><div className="kcard-f">{periodRange.label} · {dmAll.length} au total</div></div>
@@ -2102,7 +2102,7 @@ export default function App() {
             </div>
           )}
           <div className="esp-sec">📅 RDV setting DM <span className="mnd-gcount">{rows.length}</span></div>
-          {rows.length === 0 && <div className="card" style={{ padding: 0, overflow: "hidden" }}><div className="empty" style={{ padding: 22 }}>Aucun RDV setting DM sur {periodRange.label}. Les RDV apparaissent dès qu'un lead book l'event « Appel de candidature » (webhook Calendly) — ou après « Connecter Calendly » pour l'historique.</div></div>}
+          {rows.length === 0 && <div className="card" style={{ padding: 0, overflow: "hidden" }}><div className="empty" style={{ padding: 22 }}>Aucun RDV setting DM sur {periodRange.label}. Les RDV apparaissent dès qu'un lead book l'event « Appel Stratégique » (webhook Calendly) — ou après « Connecter Calendly » pour l'historique.</div></div>}
           {Object.keys(byDay).sort().reverse().map((d) => (
             <div className="cal-day" key={d} style={{ margin: "12px 0 22px" }}>
               <div className="cal-dhead">{fmtDay(d)}{d === t0 ? <span className="cal-today">Aujourd'hui</span> : null}<span className="mnd-gcount">{byDay[d].length}</span></div>
