@@ -12,6 +12,7 @@
 const { cmd, isConfigured } = require("../lib/kv");
 const { checkAuth } = require("../lib/auth");
 const { pickNextAssignee, buildRoleMap } = require("../lib/crmData");
+const { applyDm } = require("../lib/dm");
 
 const BASE = "https://api.calendly.com";
 
@@ -180,6 +181,7 @@ module.exports = async (req, res) => {
           if (hostRole === "setter") { if (!lead.setter || lead.setterAuto) { lead.setter = String(host); lead.setterAuto = true; } }
           else { if (!lead.closer || lead.closerAuto) { lead.closer = String(host); lead.closerAuto = true; } }
         }
+        applyDm(lead); // setting DM -> setter DM (avant le round-robin)
         if (!lead.setter) { const sName = await pickNextAssignee(cmd, "setter"); if (sName) { lead.setter = sName; lead.setterAuto = true; } }
         lead.updatedAt = new Date().toISOString();
         await cmd(["HSET", "crm:leads", email, JSON.stringify(lead)]);

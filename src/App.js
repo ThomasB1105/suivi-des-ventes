@@ -758,7 +758,7 @@ export default function App() {
   // base en continu ; l'interface se resynchronise toute seule (toutes les
   // 45 s quand l'onglet est visible, et au retour sur la fenêtre).
   useEffect(() => {
-    if (!(tab === "crm" || tab === "calendrier" || tab === "espace" || tab === "vsl" || tab === "followups" || tab === "acomptes" || tab === "replays" || tab === "saphia" || tab === "reporting" || tab === "ads" || tab === "noshows")) return;
+    if (!(tab === "crm" || tab === "calendrier" || tab === "espace" || tab === "vsl" || tab === "followups" || tab === "acomptes" || tab === "replays" || tab === "saphia" || tab === "reporting" || tab === "ads" || tab === "dm" || tab === "noshows")) return;
     loadCrm(); if (isAdmin) loadTeam();
     const iv = setInterval(() => { if (document.visibilityState === "visible") loadCrm(true); }, 45000);
     const onFocus = () => { if (document.visibilityState !== "hidden") loadCrm(true); };
@@ -1104,7 +1104,7 @@ export default function App() {
   const overduesF = sortOverdue((impAll ? allOverdue : overdues).filter((i) => matchQ(i.sale)));
   const periodListF = periodList.filter((i) => matchQ(i.sale));
 
-  const SECTION = { clients: "Tableau de bord", cohortes: "Cohortes", mois: "Par mois", collecte: "À collecter", impayes: "Impayés", couts: "Coûts", closers: "Closers", crm: "CRM", calendrier: "Calendrier", equipe: "Équipe", espace: "Ma journée", vsl: "Leads VSL", acomptes: "Acomptes", followups: "Follow-ups", saphia: "Saphia follow up", reporting: "Reporting hebdo", ads: "Reporting Ads", noshows: "No-shows", replays: "Replays des calls", paiement: "Liens de paiement" };
+  const SECTION = { clients: "Tableau de bord", cohortes: "Cohortes", mois: "Par mois", collecte: "À collecter", impayes: "Impayés", couts: "Coûts", closers: "Closers", crm: "CRM", calendrier: "Calendrier", equipe: "Équipe", espace: "Ma journée", vsl: "Leads VSL", acomptes: "Acomptes", followups: "Follow-ups", saphia: "Saphia follow up", reporting: "Reporting hebdo", ads: "Reporting Ads", dm: "Setting DM", noshows: "No-shows", replays: "Replays des calls", paiement: "Liens de paiement" };
   const go = (t) => { setTab(t); setNavOpen(false); };
   const navCls = (t) => `nav-item ${tab === t ? "active" : ""}`;
   // Bulles rouges du menu (membres) : setter = leads VSL encore « Nouveau »
@@ -1645,6 +1645,7 @@ export default function App() {
             <button className={navCls("closers")} onClick={() => go("closers")}><UserCheck size={16} /> Closers</button>
             <button className={navCls("reporting")} onClick={() => go("reporting")}><TrendingUp size={16} /> Reporting</button>
             <button className={navCls("ads")} onClick={() => go("ads")}><Megaphone size={16} /> Ads</button>
+            <button className={navCls("dm")} onClick={() => go("dm")}><Mail size={16} /> Setting DM</button>
             <div className="nav-label">CRM</div>
             <button className={navCls("crm")} onClick={() => go("crm")}><ClipboardList size={16} /> CRM</button>
             <button className={navCls("vsl")} onClick={() => go("vsl")}><Leaf size={16} /> Leads VSL</button>
@@ -2035,6 +2036,94 @@ export default function App() {
           <div className="esp-sec">📅 Relances planifiées <span className="mnd-gcount">{later.length}</span></div>
           {later.length === 0 && <div className="card" style={{ padding: 0, overflow: "hidden", marginBottom: 26 }}><div className="empty" style={{ padding: 20 }}>Aucune relance planifiée. Choisis une date de relance sur un call (« Quand relancer ? ») pour la voir ici.</div></div>}
           {block(laterBy, laterKeys)}
+        </>);
+      })()}
+
+      {/* SETTING DM — RDV « Appel de candidature » sans opt-in VSL -> setter DM (Aurélie) */}
+      {tab === "dm" && isAdmin && (() => {
+        const tsL = (l) => toParis((l.lastCall && l.lastCall.date) || l.bookedAt || "");
+        const dOfL = (l) => tsL(l).slice(0, 10);
+        const tOfL = (l) => { const m = tsL(l).match(/T(\d{2}:\d{2})/); return m ? m[1] : ""; };
+        const t0 = toISO(new Date());
+        const dmAll = (crm.leads || []).filter((l) => l.dm);
+        const inP = (d) => d >= periodRange.from && d <= periodRange.to;
+        const booked = dmAll.filter((l) => inP(dOfL(l)));
+        const past = booked.filter((l) => dOfL(l) <= t0);
+        const showed = past.filter((l) => ["show", "won", "lost"].includes(l.stage)).length;
+        const noshow = past.filter((l) => l.stage === "noshow").length;
+        const cancelled = past.filter((l) => l.showUp === "cancelled" || l.stage === "setting").length;
+        const won = booked.filter((l) => l.stage === "won").length;
+        const mFrom = periodRange.from.slice(0, 7), mTo = periodRange.to.slice(0, 7);
+        // Cash ENCAISSÉ sur la période, sur TOUS les leads DM (peu importe la date du call)
+        const cash = dmAll.reduce((a, l) => a + Object.entries(l.paidMonths || {}).filter(([ym]) => ym >= mFrom && ym <= mTo).reduce((b, [, v]) => b + v, 0), 0);
+        const contracted = booked.reduce((a, l) => a + (l.amount || 0), 0);
+        const setters = [...new Set(dmAll.map((l) => l.setter).filter(Boolean))];
+        const closers = [...new Set(booked.map((l) => l.closer).filter(Boolean))].sort();
+        const byCloser = closers.map((c) => {
+          const ls = booked.filter((l) => l.closer === c);
+          const sh = ls.filter((l) => ["show", "won", "lost"].includes(l.stage)).length;
+          return { c, n: ls.length, sh, won: ls.filter((l) => l.stage === "won").length, cash: ls.reduce((a, l) => a + (l.amount || 0), 0) };
+        });
+        const nmOf = (l) => (l.name && l.name !== l.email ? l.name : l.email);
+        const initials = (n) => String(n).split(/[\s@._-]+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase() || "?";
+        const avaColor = (e) => ["#579BFC", "#A25DDC", "#00C875", "#FDAB3D", "#E2445C", "#66B2FF"][(String(e).charCodeAt(0) + String(e).length) % 6];
+        const fmtDay = (d) => { try { return parseLocal(d).toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" }); } catch (e) { return d; } };
+        const q = crmQ.trim().toLowerCase();
+        const rows = booked.filter((l) => !q || [l.name, l.email, l.phone, l.closer].some((v) => String(v || "").toLowerCase().includes(q))).sort((a, b) => tsL(b).localeCompare(tsL(a)));
+        const byDay = {}; rows.forEach((l) => { const d = dOfL(l); (byDay[d] = byDay[d] || []).push(l); });
+        return (<>
+          <div className="closers-head">
+            <div className="closers-title"><Mail size={16} /> Setting DM · {setters.join(", ") || "Aurélie"} · {periodRange.label}</div>
+            <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+              <div className="crm-search"><Search size={14} /><input value={crmQ} onChange={(e) => setCrmQ(e.target.value)} placeholder="Rechercher (nom, email, closer…)" /></div>
+              <button className={`refresh-btn ${crmLoading ? "is-loading" : ""}`} onClick={() => loadCrm()} disabled={crmLoading}><RotateCcw size={15} className={crmLoading ? "spin" : ""} /> Actualiser</button>
+            </div>
+          </div>
+          <div className="esp-preview" style={{ background: "#F4F3FF", borderColor: "#D9D6FE", color: "#5925DC" }}>
+            <span style={{ minWidth: 0, lineHeight: 1.5 }}>💬 Règle : tout RDV pris sur l'event Calendly <b>« Appel de candidature - Ecom Ascension »</b> par un lead <b>sans opt-in VSL</b> est du setting DM → attribué à <b>Aurélie</b> (sauf attribution manuelle). Les leads VSL qui bookent le même event restent VSL.</span>
+          </div>
+          <div className="kpis" style={{ marginTop: 14 }}>
+            <div className="kcard"><div className="kcard-l">RDV bookés</div><div className="kcard-v">{booked.length}</div><div className="kcard-f">{periodRange.label} · {dmAll.length} au total</div></div>
+            <div className="kcard"><div className="kcard-l">Show-up</div><div className="kcard-v">{showed + noshow ? pct(showed / (showed + noshow)) : "—"}</div><div className="kcard-f">{showed} présents · {noshow} no-show · {cancelled} annulés</div></div>
+            <div className="kcard"><div className="kcard-l">Closing</div><div className="kcard-v green">{showed ? pct(won / showed) : "—"}</div><div className="kcard-f">{won} closé{won > 1 ? "s" : ""} / {showed} présents</div></div>
+            <div className="kcard"><div className="kcard-l">Cash collecté</div><div className="kcard-v green">{euro(cash)}</div><div className="kcard-f">encaissé · {periodRange.label}</div></div>
+            <div className="kcard"><div className="kcard-l">Cash contracté</div><div className="kcard-v" style={{ color: "var(--cyan)" }}>{euro(contracted)}</div><div className="kcard-f">sur les RDV de la période</div></div>
+          </div>
+          {byCloser.length > 0 && (
+            <div className="card" style={{ padding: 0, overflowX: "auto", marginTop: 18 }}>
+              <table className="tbl">
+                <thead><tr><th>Closer</th><th className="num">RDV</th><th className="num">Présents</th><th className="num">Closés</th><th className="num">Closing</th><th className="num">Cash contracté</th></tr></thead>
+                <tbody>
+                  {byCloser.map((r) => (
+                    <tr key={r.c}><td className="lab">{r.c}</td><td className="num">{r.n}</td><td className="num">{r.sh}</td><td className="num" style={{ color: "var(--green)", fontWeight: 700 }}>{r.won}</td><td className="num">{r.sh ? pct(r.won / r.sh) : "—"}</td><td className="num" style={{ fontWeight: 700 }}>{euro(r.cash)}</td></tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          <div className="esp-sec">📅 RDV setting DM <span className="mnd-gcount">{rows.length}</span></div>
+          {rows.length === 0 && <div className="card" style={{ padding: 0, overflow: "hidden" }}><div className="empty" style={{ padding: 22 }}>Aucun RDV setting DM sur {periodRange.label}. Les RDV apparaissent dès qu'un lead book l'event « Appel de candidature » (webhook Calendly) — ou après « Connecter Calendly » pour l'historique.</div></div>}
+          {Object.keys(byDay).sort().reverse().map((d) => (
+            <div className="cal-day" key={d} style={{ margin: "12px 0 22px" }}>
+              <div className="cal-dhead">{fmtDay(d)}{d === t0 ? <span className="cal-today">Aujourd'hui</span> : null}<span className="mnd-gcount">{byDay[d].length}</span></div>
+              <div className="card" style={{ padding: 0, overflow: "hidden" }}>
+                {byDay[d].map((l) => (
+                  <div className="cal-row" key={l.email}>
+                    <div className="cal-time">{tOfL(l) || "—"}</div>
+                    <span className="mnd-ava" style={{ background: avaColor(l.email), width: 36, height: 36, fontSize: 13, flex: "none" }}>{initials(nmOf(l))}</span>
+                    <div className="cal-main" style={{ cursor: "pointer" }} onClick={() => setLeadOpen(l.email)} title="Ouvrir la fiche">
+                      <div className="cal-name">{nmOf(l)}{l.closer ? <span className="mut" style={{ fontWeight: 500 }}> · closer {l.closer}</span> : null}</div>
+                      <div className="cal-sub">{l.email}{l.phone ? ` · ${l.phone}` : ""} · setter {l.setter || "—"}</div>
+                    </div>
+                    {l.notes ? <span className="mut" style={{ fontSize: 12, maxWidth: 240, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }} title={l.notes}>📝 {l.notes}</span> : null}
+                    {(l.amount || 0) > 0 ? <span className="rpl-res" style={{ color: "#067647", borderColor: "#ABEFC6", background: "#ECFDF3" }}>{euro(l.amount)} encaissés</span> : null}
+                    <span className="mnd-status" style={{ backgroundColor: (CRM_META[l.stage] || ["", "#666"])[1], padding: "9px 14px", minWidth: 0, backgroundImage: "none" }}>{(CRM_META[l.stage] || [l.stage])[0]}</span>
+                    <button className="esp-open" onClick={() => setLeadOpen(l.email)}>Ouvrir la fiche</button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
         </>);
       })()}
 

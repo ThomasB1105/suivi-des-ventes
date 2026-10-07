@@ -11,6 +11,7 @@
 
 const { cmd, isConfigured } = require("../lib/kv");
 const { pickNextAssignee, buildRoleMap } = require("../lib/crmData");
+const { applyDm } = require("../lib/dm");
 
 const pick = (o, ...ks) => { for (const k of ks) if (o && o[k] != null && o[k] !== "") return o[k]; return undefined; };
 function deepEmail(obj, depth = 0) {
@@ -165,12 +166,14 @@ module.exports = async (req, res) => {
           if (!lead.setter || lead.setterAuto) { lead.setter = String(host); lead.setterAuto = true; pushHistory(lead, "assign", `Call pris par ${host}`); }
         } else if (!lead.closer || lead.closerAuto) { lead.closer = String(host); lead.closerAuto = true; pushHistory(lead, "assign", `Call pris par ${host}`); }
       }
+      // Setting DM : event « Appel de candidature » sans opt-in VSL -> setter DM.
+      if (!canceled && applyDm(lead) && !(lead.history || []).some((h) => h.type === "assign" && /DM/.test(h.label))) pushHistory(lead, "assign", `Setting DM → ${lead.setter}`);
       if (!lead.setter) {
         const s = await pickNextAssignee(cmd, "setter");
         if (s) { lead.setter = s; lead.setterAuto = true; pushHistory(lead, "assign", `Attribué à ${s} (auto)`); }
       }
       await saveLead(lead);
-      res.status(200).json({ ok: true, calendly: true, email, stage: lead.stage });
+      res.status(200).json({ ok: true, calendly: true, email, stage: lead.stage, dm: !!lead.dm });
       return;
     }
 

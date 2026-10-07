@@ -178,6 +178,7 @@ module.exports = async (req, res) => {
     // le setter/closer du lead CRM (même email) écrase l'enrichissement iClosed.
     try {
       const { loadAliases } = require("../lib/crmData");
+      const { isDmLead, DM } = require("../lib/dm");
       const aliases = await loadAliases(cmd);
       const resolve = (n) => { const k = String(n || "").trim().toLowerCase(); const a = k && aliases[k]; return (a && a.to) || n; };
       const lf = (await cmd(["HGETALL", "crm:leads"])) || [];
@@ -186,15 +187,17 @@ module.exports = async (req, res) => {
       sales.forEach((s) => {
         const em = String(s.email || "").toLowerCase();
         const l = lm[em];
+        const dm = !!(l && isDmLead(l));
         if (l) {
           if (l.closer) s.closer = resolve(l.closer);
-          if (l.setter) s.setter = resolve(l.setter);
+          if (dm && (!l.setter || l.setterAuto)) s.setter = DM.setter; else if (l.setter) s.setter = resolve(l.setter);
           if (l.phone && !s.phone) s.phone = String(l.phone); // téléphone du CRM (liste des acomptes)
         }
         // Canal AUTO : VSL -> Ads (paid) · iClosed -> YouTube (organique) ·
         // email inconnu du CRM -> non attribué (à choisir dans le dashboard).
         const src = String((l && l.source) || "").toLowerCase();
-        if (/vsl/.test(src)) { s.channel = "paid"; if (!s.source || s.source === "À attribuer") s.source = "VSL · Ads"; }
+        if (dm) { s.channel = "organic"; s.dm = true; if (!s.source || s.source === "À attribuer") s.source = "Setting DM"; }
+        else if (/vsl/.test(src)) { s.channel = "paid"; if (!s.source || s.source === "À attribuer") s.source = "VSL · Ads"; }
         else if (icSet.has(em) || /iclosed/.test(src)) { s.channel = "organic"; if (!s.source || s.source === "À attribuer") s.source = "YouTube"; }
         else s.channel = "none";
       });
