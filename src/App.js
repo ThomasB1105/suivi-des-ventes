@@ -16,6 +16,10 @@ const PAY_OFFERS = [
 ];
 const PAY_DEPOSIT = { amount: 200, plan: "plan_ozrkhCDBfq4JY", promo: "ecom200" };
 const whopUrl = (plan) => `https://whop.com/checkout/${plan}`;
+// Rôles équipe : closer | setter (VSL, round-robin) | setter_dm (setting DM, hors round-robin)
+const isSetterRole = (r) => r === "setter" || r === "setter_dm";
+const ROLE_LABEL = { closer: "Closer", setter: "Setter", setter_dm: "Setter DM" };
+const roleLabel = (r) => ROLE_LABEL[r] || "Closer";
 
 /* ------------------------------ helpers ------------------------------ */
 
@@ -872,8 +876,8 @@ export default function App() {
   const [meStats, setMeStats] = useState(null);
   const [aliases, setAliases] = useState([]);
   // Menus déroulants d'attribution (noms des comptes équipe + noms déjà vus).
-  const dashClosers = [...new Set([...(team || []).filter((u) => u.role !== "setter").map((u) => u.name), ...sales.map((s) => s.closer).filter((n) => n && n !== "—")])];
-  const dashSetters = [...new Set([...(team || []).filter((u) => u.role === "setter").map((u) => u.name), ...sales.map((s) => s.setter).filter((n) => n && n !== "—")])];
+  const dashClosers = [...new Set([...(team || []).filter((u) => !isSetterRole(u.role)).map((u) => u.name), ...sales.map((s) => s.closer).filter((n) => n && n !== "—")])];
+  const dashSetters = [...new Set([...(team || []).filter((u) => isSetterRole(u.role)).map((u) => u.name), ...sales.map((s) => s.setter).filter((n) => n && n !== "—")])];
   const assignSelect = (value, options, onChange, ph) => (
     <select className="attr-sel" value={value || ""} onClick={(e) => e.stopPropagation()} onChange={(e) => onChange(e.target.value)} title={ph}>
       <option value="">{ph}</option>
@@ -893,7 +897,7 @@ export default function App() {
     try {
       const r = await authFetch("/api/aliases", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ raw: a.name, to: cur.to, role: cur.role }) });
       if (!r.ok) throw new Error(`Erreur ${r.status}`);
-      flash(`« ${a.name} » : ${cur.to || "nom identique"}${cur.role ? ` · ${cur.role === "setter" ? "Setter" : "Closer"}` : ""}.`);
+      flash(`« ${a.name} » : ${cur.to || "nom identique"}${cur.role ? ` · ${roleLabel(cur.role)}` : ""}.`);
       loadCrm();
     } catch (e) { flash(`Matching : ${e.message}`); }
   };
@@ -1115,7 +1119,7 @@ export default function App() {
   const vslTodo = (!isAdmin && me.role === "setter")
     ? (crm.leads || []).filter((l) => l.hasCall === false && (!l.stage || l.stage === "new") && (sameMe(l.setter) || !l.setter) && l.createdAt && (Date.now() - new Date(l.createdAt).getTime()) <= 14 * 864e5).length
     : 0;
-  const fupTodo = (!isAdmin && me.role !== "setter")
+  const fupTodo = (!isAdmin && !isSetterRole(me.role))
     ? (crm.leads || []).filter((l) => (sameMe(l.closer) || sameMe(l.setter)) && l.followUp === "yes" && l.stage !== "dead" && (!l.followUpAt || l.followUpAt <= navToday)).length
     : 0;
   const logout = () => { try { localStorage.removeItem("melo_token"); localStorage.removeItem("melo_role"); localStorage.removeItem("melo_name"); } catch (e) { /* ignore */ } window.location.reload(); };
@@ -1662,17 +1666,17 @@ export default function App() {
             <div className="nav-label">Mon espace</div>
             <button className={navCls("espace")} onClick={() => go("espace")}><UserCheck size={16} /> Ma journée</button>
             {me.role === "setter" && <button className={navCls("vsl")} onClick={() => go("vsl")}><Leaf size={16} /> Leads VSL{vslTodo ? <span className="nav-badge" title="Nouveaux leads à traiter">{vslTodo}</span> : null}</button>}
-            {me.role === "setter" && <button className={navCls("noshows")} onClick={() => go("noshows")}><AlertTriangle size={16} /> No-shows</button>}
-            {me.role !== "setter" && <button className={navCls("followups")} onClick={() => go("followups")}><RotateCcw size={16} /> Follow-ups{fupTodo ? <span className="nav-badge" title="Follow-ups à faire">{fupTodo}</span> : null}</button>}
-            {me.role !== "setter" && <button className={navCls("acomptes")} onClick={() => go("acomptes")}><Landmark size={16} /> Acomptes</button>}
-            {me.role !== "setter" && <button className={navCls("replays")} onClick={() => go("replays")}><Video size={16} /> Replays</button>}
-            {me.role !== "setter" && <button className={navCls("paiement")} onClick={() => go("paiement")}><Wallet size={16} /> Liens de paiement</button>}
+            {isSetterRole(me.role) && <button className={navCls("noshows")} onClick={() => go("noshows")}><AlertTriangle size={16} /> No-shows</button>}
+            {!isSetterRole(me.role) && <button className={navCls("followups")} onClick={() => go("followups")}><RotateCcw size={16} /> Follow-ups{fupTodo ? <span className="nav-badge" title="Follow-ups à faire">{fupTodo}</span> : null}</button>}
+            {!isSetterRole(me.role) && <button className={navCls("acomptes")} onClick={() => go("acomptes")}><Landmark size={16} /> Acomptes</button>}
+            {!isSetterRole(me.role) && <button className={navCls("replays")} onClick={() => go("replays")}><Video size={16} /> Replays</button>}
+            {!isSetterRole(me.role) && <button className={navCls("paiement")} onClick={() => go("paiement")}><Wallet size={16} /> Liens de paiement</button>}
             {isSaphiaUser && <button className={navCls("saphia")} onClick={() => go("saphia")}><Phone size={16} /> Follow up</button>}
             <button className={navCls("calendrier")} onClick={() => go("calendrier")}><Calendar size={16} /> Calendrier</button>
           </>)}
         </nav>
         <div className="side-foot">
-          <div className="side-user"><div className="side-ava">{String(me.name || "A")[0].toUpperCase()}</div><div className="side-user-info"><div className="side-user-name">{isAdmin ? "ANG Industries" : me.name}</div><div className="mut">{isAdmin ? "Admin" : (me.role === "setter" ? "Setter" : "Closer")}</div></div></div>
+          <div className="side-user"><div className="side-ava">{String(me.name || "A")[0].toUpperCase()}</div><div className="side-user-info"><div className="side-user-name">{isAdmin ? "ANG Industries" : me.name}</div><div className="mut">{isAdmin ? "Admin" : roleLabel(me.role)}</div></div></div>
           <button className="side-logout" onClick={logout}><X size={14} /> Déconnexion</button>
         </div>
       </aside>
@@ -2128,7 +2132,7 @@ export default function App() {
       })()}
 
       {/* LIENS DE PAIEMENT — checkout Whop par offre / mensualités (closers + admin) */}
-      {tab === "paiement" && (isAdmin || me.role !== "setter") && (() => {
+      {tab === "paiement" && (isAdmin || !isSetterRole(me.role)) && (() => {
         const eur = (n) => `${Math.round(n).toLocaleString("fr-FR")} €`;
         const CopyBtn = ({ k, txt, label, doneLabel, className, style }) => (
           <button className={`${className || "esp-open"} pay-copy ${copiedKey === k ? "copied" : ""}`} style={style} onClick={() => copyWithFeedback(k, txt)} aria-live="polite">
@@ -2176,7 +2180,7 @@ export default function App() {
       })()}
 
       {/* REPLAYS — tous les calls passés avec enregistrement Fathom + résultat */}
-      {tab === "replays" && (isAdmin || me.role !== "setter") && (() => {
+      {tab === "replays" && (isAdmin || !isSetterRole(me.role)) && (() => {
         const tsL = (l) => toParis((l.lastCall && l.lastCall.date) || l.bookedAt || "");
         const dOfL = (l) => tsL(l).slice(0, 10);
         const tOfL = (l) => { const m = tsL(l).match(/T(\d{2}:\d{2})/); return m ? m[1] : ""; };
@@ -3086,7 +3090,7 @@ export default function App() {
       {/* CRM (board) & CALENDRIER (agenda) — calls Calendly + iClosed */}
       {(tab === "crm" || tab === "calendrier") && (() => {
         const crmMode = tab === "calendrier" ? "cal" : "board";
-        const setterOnly = !isAdmin && me.role === "setter"; // calendrier setter = préqualification uniquement
+        const setterOnly = !isAdmin && isSetterRole(me.role); // calendrier setter = préqualification uniquement
         const META = CRM_META;
         const ORDER = ["booked", "show", "won", "noshow", "lost", "setting", "unqualified"];
         const all = (crm.leads || []).filter((l) => l.hasCall !== false); // board = calls uniquement (les opt-ins vivent dans l'espace setter)
@@ -3125,8 +3129,8 @@ export default function App() {
         const nNoShow = scoped.filter((l) => l.stage === "noshow").length;
         const nWon = scoped.filter((l) => l.stage === "won").length;
         const revenue = scoped.reduce((a, l) => a + (l.amount || 0), 0);
-        const closerNames = [...new Set([...(callStats.closers || []).map((c) => c.closer), ...(team || []).filter((u) => u.role !== "setter").map((u) => u.name), ...all.map((l) => l.closer).filter(Boolean)])];
-        const setterNames = [...new Set([...(team || []).filter((u) => u.role === "setter").map((u) => u.name), ...all.map((l) => l.setter).filter(Boolean)])];
+        const closerNames = [...new Set([...(callStats.closers || []).map((c) => c.closer), ...(team || []).filter((u) => !isSetterRole(u.role)).map((u) => u.name), ...all.map((l) => l.closer).filter(Boolean)])];
+        const setterNames = [...new Set([...(team || []).filter((u) => isSetterRole(u.role)).map((u) => u.name), ...all.map((l) => l.setter).filter(Boolean)])];
         const srcOf = (l) => (l.lastCall ? "iClosed" : (l.bookedAt ? "Calendly" : "—"));
         const avaColor = (e) => ["#579BFC", "#A25DDC", "#00C875", "#FDAB3D", "#E2445C", "#66B2FF"][(String(e).charCodeAt(0) + String(e).length) % 6];
         const initials = (n) => String(n).split(/[\s@._-]+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase() || "?";
@@ -3155,10 +3159,10 @@ export default function App() {
               </>)}
             </div>
             <div className="crm-search"><Search size={14} /><input value={crmQ} onChange={(e) => setCrmQ(e.target.value)} placeholder="Rechercher (nom, email, closer…)" /></div>
-            {isAdmin && isCal && (team || []).some((u) => u.role === "setter") && (
+            {isAdmin && isCal && (team || []).some((u) => isSetterRole(u.role)) && (
               <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                <select className="attr-sel" id="bulk-setter" defaultValue={(team || []).filter((u) => u.role === "setter")[0]?.name || ""} title="Setter à qui attribuer les calls d'aujourd'hui et à venir">
-                  {(team || []).filter((u) => u.role === "setter").map((u) => <option key={u.username} value={u.name}>{u.name}</option>)}
+                <select className="attr-sel" id="bulk-setter" defaultValue={(team || []).filter((u) => isSetterRole(u.role))[0]?.name || ""} title="Setter à qui attribuer les calls d'aujourd'hui et à venir">
+                  {(team || []).filter((u) => isSetterRole(u.role)).map((u) => <option key={u.username} value={u.name}>{u.name}{u.role === "setter_dm" ? " (DM)" : ""}</option>)}
                 </select>
                 <button className="refresh-btn" title="Attribue tous les calls d'aujourd'hui + à venir à ce setter"
                   onClick={async () => {
@@ -3329,7 +3333,7 @@ export default function App() {
       })()}
 
       {/* NO-SHOWS — liste complète, filtrable par date (setter + admin) */}
-      {tab === "noshows" && (isAdmin || me.role === "setter") && (() => {
+      {tab === "noshows" && (isAdmin || isSetterRole(me.role)) && (() => {
         const dOfL = (l) => toParis((l.lastCall && l.lastCall.date) || l.bookedAt || "").slice(0, 10);
         const frD = (d) => (d ? `${d.slice(8, 10)}/${d.slice(5, 7)}` : "—");
         const initials = (n) => String(n).split(/[\s@._-]+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase() || "?";
@@ -3503,7 +3507,7 @@ export default function App() {
 
       {/* MA JOURNÉE — espace gamifié closer/setter (+ aperçu admin via Équipe) */}
       {tab === "espace" && (() => {
-        const persona = isAdmin ? viewAs : { name: me.name, role: me.role === "setter" ? "setter" : "closer", rate: (meStats && meStats.rate) || 0 };
+        const persona = isAdmin ? viewAs : { name: me.name, role: isSetterRole(me.role) ? "setter" : "closer", rate: (meStats && meStats.rate) || 0 };
         if (!persona) return (
           <div className="empty" style={{ padding: 30 }}>
             Choisis un membre dans <b>Équipe</b> (bouton <Eye size={13} style={{ verticalAlign: -2 }} /> « Voir son espace ») pour afficher sa vue.
@@ -3739,7 +3743,7 @@ export default function App() {
             <input className="tf" placeholder="Identifiant (ex. diego)" value={tForm.username} onChange={(e) => setTForm({ ...tForm, username: e.target.value })} />
             <input className="tf" placeholder="Nom affiché (= colonne Closer du CRM)" value={tForm.name} onChange={(e) => setTForm({ ...tForm, name: e.target.value })} />
             <select className="tf" value={tForm.role} onChange={(e) => setTForm({ ...tForm, role: e.target.value })}>
-              <option value="closer">Closer</option><option value="setter">Setter</option>
+              <option value="closer">Closer</option><option value="setter">Setter (VSL · round-robin)</option><option value="setter_dm">Setter DM (hors round-robin)</option>
             </select>
             <input className="tf" placeholder="Mot de passe" value={tForm.password} onChange={(e) => setTForm({ ...tForm, password: e.target.value })} />
             <input className="tf" type="number" placeholder="% commission" value={tForm.rate} onChange={(e) => setTForm({ ...tForm, rate: e.target.value })} style={{ width: 120 }} />
@@ -3761,11 +3765,11 @@ export default function App() {
               {(team || []).map((u) => (
                 <tr key={u.username}>
                   <td className="lab"><div>{u.name}</div><div className="mut" style={{ fontSize: 11 }}>@{u.username}</div></td>
-                  <td><span className="mnd-src">{u.role === "setter" ? "Setter" : "Closer"}</span></td>
+                  <td><span className="mnd-src">{roleLabel(u.role)}</span></td>
                   <td>
                     <label style={{ display: "inline-flex", alignItems: "center", gap: 7, cursor: "pointer", fontSize: 12.5 }} title="Reçoit les nouveaux leads en rotation automatique">
-                      <input type="checkbox" defaultChecked={u.autoAssign !== false} onChange={(e) => saveUser({ username: u.username, autoAssign: e.target.checked })} />
-                      <span className="mut">{u.autoAssign !== false ? "activée" : "off"}</span>
+                      <input type="checkbox" disabled={u.role === "setter_dm"} title={u.role === "setter_dm" ? "Setter DM : jamais dans le round-robin" : ""} defaultChecked={u.role !== "setter_dm" && u.autoAssign !== false} onChange={(e) => saveUser({ username: u.username, autoAssign: e.target.checked })} />
+                      <span className="mut">{u.role === "setter_dm" ? "hors round-robin" : (u.autoAssign !== false ? "activée" : "off")}</span>
                     </label>
                   </td>
                   <td className="num">
@@ -3778,7 +3782,7 @@ export default function App() {
                   <td className="num green">{euro(u.stats.revenue)}</td>
                   <td className="num" style={{ fontWeight: 800, color: "var(--cyan)" }}>{euro(u.stats.commission)}</td>
                   <td className="num"><div className="row-actions">
-                    <button className="mini" title={`Voir l'espace de ${u.name}`} onClick={() => { setViewAs({ name: u.name, role: u.role === "setter" ? "setter" : "closer", rate: u.rate || 0 }); go("espace"); }}><Eye size={14} /></button>
+                    <button className="mini" title={`Voir l'espace de ${u.name}`} onClick={() => { setViewAs({ name: u.name, role: isSetterRole(u.role) ? "setter" : "closer", rate: u.rate || 0 }); go("espace"); }}><Eye size={14} /></button>
                     <button className="mini" title="Changer le mot de passe" onClick={() => { const p = window.prompt(`Nouveau mot de passe pour ${u.name} :`); if (p) saveUser({ username: u.username, password: p }); }}><Pencil size={14} /></button>
                     <button className="mini" title="Supprimer le compte" onClick={() => delUser(u.username)}><Trash2 size={14} /></button>
                   </div></td>
@@ -3822,7 +3826,7 @@ export default function App() {
                       onClick={() => {
                         const nm = a.to || a.name;
                         const acc = (team || []).find((u) => String(u.name).toLowerCase() === String(nm).toLowerCase());
-                        setViewAs({ name: nm, role: ((acc && acc.role) || a.role || "closer") === "setter" ? "setter" : "closer", rate: (acc && acc.rate) || 0 });
+                        setViewAs({ name: nm, role: isSetterRole((acc && acc.role) || a.role || "closer") ? "setter" : "closer", rate: (acc && acc.rate) || 0 });
                         go("espace");
                       }}><Eye size={13} /> Voir</button>
                   </td>

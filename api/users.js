@@ -30,7 +30,9 @@ module.exports = async (req, res) => {
       if (!u) u = { createdAt: new Date().toISOString() };
       if (body.name !== undefined) u.name = String(body.name || username);
       if (!u.name) u.name = String(body.username).trim();
-      if (body.role !== undefined) u.role = body.role === "setter" ? "setter" : "closer";
+      // Rôles : closer | setter (round-robin des leads entrants) | setter_dm
+      // (setting DM, HORS round-robin : il ne reçoit que ses RDV « Appel Stratégique »).
+      if (body.role !== undefined) u.role = ["setter", "setter_dm"].includes(body.role) ? body.role : "closer";
       if (!u.role) u.role = "closer";
       if (body.rate !== undefined) u.rate = Math.max(0, Math.min(100, Number(body.rate) || 0));
       if (body.autoAssign !== undefined) u.autoAssign = !!body.autoAssign;

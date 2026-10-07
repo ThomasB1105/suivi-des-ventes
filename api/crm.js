@@ -24,6 +24,7 @@ module.exports = async (req, res) => {
   // (un rôle mal configuré dans le matching ne doit pas vider son espace).
   // Un SETTER voit aussi les leads entrants pas encore attribués : les
   // entrants à traiter ne doivent jamais rester invisibles.
+  // (Le setter DM ne voit pas les opt-ins VSL non attribués : ce n'est pas son flux.)
   const isMine = (l) => isPerson(l.closer, me.name) || isPerson(l.setter, me.name)
     || (me.role === "setter" && !l.setter && l.hasCall === false);
   // Le compte « Saphia » (récup) voit tous les calls pris non closés.
@@ -158,7 +159,7 @@ module.exports = async (req, res) => {
     if (!isAdmin) {
       // Closer : en plus de ses leads, les calls des AUTRES closers qui ont un
       // replay Fathom (onglet Replays, lecture seule, sans téléphone).
-      const isCloserAcct = me.role !== "setter" && !isRecup;
+      const isCloserAcct = !["setter", "setter_dm"].includes(me.role) && !isRecup;
       const SHARED_KEYS = ["email", "name", "closer", "setter", "stage", "callResult", "showUp", "amount", "fathom", "notes", "bookedAt", "bookedEvent", "lastCall", "hasCall"];
       leads = leads
         .filter((l) => canSee(l) || (isCloserAcct && l.fathom && l.hasCall !== false))
