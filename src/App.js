@@ -772,7 +772,7 @@ export default function App() {
   }, [tab]); // eslint-disable-line
   // Mise à jour optimiste + sauvegarde serveur (stage/setter/closer/notes).
   const updateLead = async (email, patch) => {
-    setCrm((p) => ({ ...p, leads: p.leads.map((l) => (l.email === email ? { ...l, ...patch, manualStage: patch.stage !== undefined ? true : l.manualStage } : l)) }));
+    setCrm((p) => ({ ...p, leads: p.leads.map((l) => (l.email === email ? { ...l, ...patch, ...(patch.dmSetter !== undefined ? { dm: !!patch.dmSetter || undefined } : {}), manualStage: patch.stage !== undefined ? true : l.manualStage } : l)) }));
     try {
       const r = await authFetch("/api/crm", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, ...patch }) });
       if (!r.ok) throw new Error(`Erreur ${r.status}`);
@@ -2080,6 +2080,10 @@ export default function App() {
         const q = crmQ.trim().toLowerCase();
         const rows = booked.filter((l) => !q || [l.name, l.email, l.phone, l.closer].some((v) => String(v || "").toLowerCase().includes(q))).sort((a, b) => tsL(b).localeCompare(tsL(a)));
         const byDay = {}; rows.forEach((l) => { const d = dOfL(l); (byDay[d] = byDay[d] || []).push(l); });
+        // Diagnostic : RDV Calendly de la période NON reconnus comme DM (event
+        // différent, RDV pris avant le renommage de l'event…) -> à basculer en un clic.
+        const dmName = ((team || []).find((u) => u.role === "setter_dm") || {}).name || "Aurélie";
+        const others = (crm.leads || []).filter((l) => !l.dm && l.bookedAt && inP(toParis(l.bookedAt).slice(0, 10))).sort((a, b) => String(b.bookedAt).localeCompare(String(a.bookedAt)));
         return (<>
           <div className="closers-head">
             <div className="closers-title"><Mail size={16} /> Setting DM · {setters.join(", ") || "Aurélie"} · {periodRange.label}</div>
@@ -2133,6 +2137,23 @@ export default function App() {
               </div>
             </div>
           ))}
+          <div className="esp-sec" style={{ marginTop: 34 }}>🔎 Autres RDV Calendly de la période (non reconnus DM) <span className="mnd-gcount">{others.length}</span></div>
+          <div className="mut" style={{ fontSize: 12.5, margin: "-6px 2px 12px" }}>Vérifie ici le nom d'event reçu de Calendly. Un RDV pris avant le renommage (« Appel de candidature ») ou sur un autre event peut être basculé en setting DM d'un clic.</div>
+          <div className="card" style={{ padding: 0, overflow: "hidden", marginBottom: 26 }}>
+            {others.length === 0 && <div className="empty" style={{ padding: 18 }}>Aucun autre RDV Calendly sur la période.</div>}
+            {others.slice(0, 60).map((l) => (
+              <div className="cal-row" key={"o" + l.email}>
+                <div className="cal-time">{toParis(l.bookedAt).slice(5, 16).replace("T", " · ").replace(/^(\d{2})-(\d{2})/, "$2/$1")}</div>
+                <div className="cal-main" style={{ cursor: "pointer" }} onClick={() => setLeadOpen(l.email)} title="Ouvrir la fiche">
+                  <div className="cal-name">{nmOf(l)}{l.closer ? <span className="mut" style={{ fontWeight: 500 }}> · closer {l.closer}</span> : null}</div>
+                  <div className="cal-sub">{l.email} · event « {l.bookedEvent || "—"} » · source {l.source || "—"} · setter call {l.setter || "—"}</div>
+                </div>
+                <button className="esp-open" style={{ borderColor: "#C7BFFF", color: "#5925DC" }} onClick={() => updateLead(l.email, { dmSetter: dmName })}>→ Setting DM ({dmName})</button>
+                <button className="esp-open" onClick={() => setLeadOpen(l.email)}>Ouvrir la fiche</button>
+              </div>
+            ))}
+            {others.length > 60 && <div className="mnd-foot"><span>+{others.length - 60} autres — réduis la période</span></div>}
+          </div>
         </>);
       })()}
 
