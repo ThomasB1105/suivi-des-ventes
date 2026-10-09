@@ -844,7 +844,7 @@ export default function App() {
     try {
       const r = await authFetch("/api/crm", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: em, ...patch }) });
       if (!r.ok) throw new Error(`Erreur ${r.status}`);
-      const who = patch.closer !== undefined ? (patch.closer || "—") : (patch.setter || "—");
+      const who = patch.closer !== undefined ? (patch.closer || "—") : (patch.dmSetter !== undefined ? (patch.dmSetter || "—") : (patch.setter || "—"));
       flash(`Attribué à ${who} ✅ — visible dans son espace.`);
       try { const sr = await authFetch("/api/sales"); const sd = await sr.json(); if (sd && sd.sales) applyDbSales(normalize(sd.sales)); } catch (e2) { /* rafraîchi au prochain sync */ }
     } catch (e) { flash(`Attribution : ${e.message}`); }
@@ -878,6 +878,8 @@ export default function App() {
   // Menus déroulants d'attribution (noms des comptes équipe + noms déjà vus).
   const dashClosers = [...new Set([...(team || []).filter((u) => !isSetterRole(u.role)).map((u) => u.name), ...sales.map((s) => s.closer).filter((n) => n && n !== "—")])];
   const dashSetters = [...new Set([...(team || []).filter((u) => isSetterRole(u.role)).map((u) => u.name), ...sales.map((s) => s.setter).filter((n) => n && n !== "—")])];
+  // Setter DM (origine du lead) : comptes « Setter DM » + noms déjà utilisés.
+  const dashSettersDm = [...new Set([...(team || []).filter((u) => u.role === "setter_dm").map((u) => u.name), ...sales.map((s) => s.dmSetter).filter((n) => n && n !== "—"), ...(crm.leads || []).map((l) => l.dmSetter).filter(Boolean)])];
   const assignSelect = (value, options, onChange, ph) => (
     <select className="attr-sel" value={value || ""} onClick={(e) => e.stopPropagation()} onChange={(e) => onChange(e.target.value)} title={ph}>
       <option value="">{ph}</option>
@@ -1503,7 +1505,7 @@ export default function App() {
         .mnd-card::-webkit-scrollbar-track{background:transparent;}
         .mnd-card::-webkit-scrollbar-thumb{background:#D0D5DD;border-radius:999px;border:2px solid #fff;}
         .mnd-card::-webkit-scrollbar-thumb:hover{background:#B6BEC9;}
-        .mnd-tbl{width:100%;border-collapse:separate;border-spacing:0;min-width:1720px;}
+        .mnd-tbl{width:100%;border-collapse:separate;border-spacing:0;min-width:1880px;}
         .mnd-tbl th:first-child, .mnd-tbl td:first-child{position:sticky;left:0;z-index:2;background:#fff;box-shadow:inset -1px 0 0 rgba(15,23,42,.07);}
         .mnd-tbl tr:hover td:first-child{background:#F6F7F9;}
         .mnd-tbl th{font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:700;text-align:left;padding:13px 14px 9px;border-bottom:1px solid rgba(15,23,42,.06);}
@@ -1855,8 +1857,11 @@ export default function App() {
                     <span className="tag attr-tag" title="Closer — relié au CRM et à son espace"><UserCheck size={12} />
                       {assignSelect(s.closer !== "—" ? s.closer : "", dashClosers, (v) => setSaleAttrib(s, { closer: v }), "Closer…")}
                     </span>
-                    <span className="tag attr-tag" title="Setter — relié au CRM et à son espace"><Users size={12} />
-                      {assignSelect(s.setter !== "—" ? s.setter : "", dashSetters, (v) => setSaleAttrib(s, { setter: v }), "Setter…")}
+                    <span className="tag attr-tag" title="Setter call (préqualification) — relié au CRM et à son espace"><Users size={12} />
+                      {assignSelect(s.setter !== "—" ? s.setter : "", dashSetters, (v) => setSaleAttrib(s, { setter: v }), "Setter call…")}
+                    </span>
+                    <span className="tag attr-tag" title="Setter DM (origine du lead, Instagram) — compte dans le reporting Setting DM"><Mail size={12} />
+                      {assignSelect(s.dmSetter && s.dmSetter !== "—" ? s.dmSetter : "", dashSettersDm, (v) => setSaleAttrib(s, { dmSetter: v }), "Setter DM…")}
                     </span>
                     {s.email && <span><Mail size={12} /> {s.email}</span>}
                     {s.phone && <span><Phone size={12} /> {s.phone}</span>}
@@ -2061,7 +2066,7 @@ export default function App() {
         // Cash ENCAISSÉ sur la période, sur TOUS les leads DM (peu importe la date du call)
         const cash = dmAll.reduce((a, l) => a + Object.entries(l.paidMonths || {}).filter(([ym]) => ym >= mFrom && ym <= mTo).reduce((b, [, v]) => b + v, 0), 0);
         const contracted = booked.reduce((a, l) => a + (l.amount || 0), 0);
-        const setters = [...new Set(dmAll.map((l) => l.setter).filter(Boolean))];
+        const setters = [...new Set(dmAll.map((l) => l.dmSetter).filter(Boolean))];
         const closers = [...new Set(booked.map((l) => l.closer).filter(Boolean))].sort();
         const byCloser = closers.map((c) => {
           const ls = booked.filter((l) => l.closer === c);
@@ -2084,7 +2089,7 @@ export default function App() {
             </div>
           </div>
           <div className="esp-preview" style={{ background: "#F4F3FF", borderColor: "#D9D6FE", color: "#5925DC" }}>
-            <span style={{ minWidth: 0, lineHeight: 1.5 }}>💬 Règle : tout RDV pris sur l'event Calendly <b>« Appel Stratégique - Ecom Ascension »</b> est du setting DM → attribué à <b>Aurélie</b> (sauf attribution manuelle), avec le cash encaissé sur ces leads.</span>
+            <span style={{ minWidth: 0, lineHeight: 1.5 }}>💬 Règle : tout RDV pris sur l'event Calendly <b>« Appel Stratégique - Ecom Ascension »</b> est du setting DM → <b>Setter DM = Aurélie</b> (modifiable à la main dans le CRM / tableau de bord), le <b>setter call</b> est attribué en round-robin pour la préqualification. Le cash encaissé sur ces leads compte ici.</span>
           </div>
           <div className="kpis" style={{ marginTop: 14 }}>
             <div className="kcard"><div className="kcard-l">RDV bookés</div><div className="kcard-v">{booked.length}</div><div className="kcard-f">{periodRange.label} · {dmAll.length} au total</div></div>
@@ -2117,7 +2122,7 @@ export default function App() {
                     <span className="mnd-ava" style={{ background: avaColor(l.email), width: 36, height: 36, fontSize: 13, flex: "none" }}>{initials(nmOf(l))}</span>
                     <div className="cal-main" style={{ cursor: "pointer" }} onClick={() => setLeadOpen(l.email)} title="Ouvrir la fiche">
                       <div className="cal-name">{nmOf(l)}{l.closer ? <span className="mut" style={{ fontWeight: 500 }}> · closer {l.closer}</span> : null}</div>
-                      <div className="cal-sub">{l.email}{l.phone ? ` · ${l.phone}` : ""} · setter {l.setter || "—"}</div>
+                      <div className="cal-sub">{l.email}{l.phone ? ` · ${l.phone}` : ""} · setter DM {l.dmSetter || "—"} · setter call {l.setter || "—"}</div>
                     </div>
                     {l.notes ? <span className="mut" style={{ fontSize: 12, maxWidth: 240, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }} title={l.notes}>📝 {l.notes}</span> : null}
                     {(l.amount || 0) > 0 ? <span className="rpl-res" style={{ color: "#067647", borderColor: "#ABEFC6", background: "#ECFDF3" }}>{euro(l.amount)} encaissés</span> : null}
@@ -3226,7 +3231,7 @@ export default function App() {
             </div>
             <div className="card mnd-card" style={{ borderLeft: `6px solid ${META[g.s][1]}` }}>
               <table className="mnd-tbl">
-                <thead><tr><th>Lead</th><th>Call</th><th>Source</th><th>Setter</th><th>Setting</th><th>Closer</th><th>Statut</th><th>Résultat du call</th><th className="num">Encaissé</th><th>Notes</th></tr></thead>
+                <thead><tr><th>Lead</th><th>Call</th><th>Source</th><th>Setter call</th><th>Setter DM</th><th>Setting</th><th>Closer</th><th>Statut</th><th>Résultat du call</th><th className="num">Encaissé</th><th>Notes</th></tr></thead>
                 <tbody>
                   {g.items.slice(0, 100).map((l) => {
                     const nm = l.name && l.name !== l.email ? l.name : l.email;
@@ -3247,6 +3252,10 @@ export default function App() {
                       <td>
                         {isAdmin ? assignSelect(l.setter, [...new Set([...dashSetters, ...setterNames])], (v) => updateLead(l.email, { setter: v }), "Assigner…")
                           : <span className="mut" style={{ fontSize: 13 }}>{l.setter || "—"}</span>}
+                      </td>
+                      <td>
+                        {isAdmin ? assignSelect(l.dmSetter, dashSettersDm, (v) => updateLead(l.email, { dmSetter: v }), "— aucun")
+                          : <span className="mut" style={{ fontSize: 13 }}>{l.dmSetter || "—"}</span>}
                       </td>
                       <td>{setStatusSelect(l)}</td>
                       <td>
@@ -3517,7 +3526,7 @@ export default function App() {
         const same = (v) => String(v || "").trim().toLowerCase() === String(persona.name || "").trim().toLowerCase();
         // Ses leads, dans LES DEUX colonnes (closer OU setter) : un mauvais
         // rôle dans le matching ne vide plus l'espace.
-        const mineAll = (crm.leads || []).filter((l) => same(l.closer) || same(l.setter));
+        const mineAll = (crm.leads || []).filter((l) => same(l.closer) || same(l.setter) || same(l.dmSetter));
         const mine = mineAll.filter((l) => l.hasCall !== false);
         const today = toISO(new Date());
         const tsL = (l) => toParis((l.lastCall && l.lastCall.date) || l.bookedAt || "");
@@ -3909,7 +3918,8 @@ export default function App() {
               ) : null}
               <div className="ls-grid">
                 <div><span className="ls-l">Source</span><span>{L.source || "—"}</span></div>
-                <div><span className="ls-l">Setter</span><span>{L.setter || "—"}</span></div>
+                <div><span className="ls-l">Setter call</span><span>{L.setter || "—"}</span></div>
+                {L.dmSetter ? <div><span className="ls-l">Setter DM</span><span>{L.dmSetter}</span></div> : null}
                 <div><span className="ls-l">Closer</span><span>{L.closer || "—"}</span></div>
                 <div><span className="ls-l">Encaissé</span><span className="green" style={{ fontWeight: 700 }}>{L.amount ? euro(L.amount) : "—"}</span></div>
                 {L.bookedAt ? <div><span className="ls-l">RDV</span><span>{toParis(L.bookedAt).slice(0, 16).replace("T", " · ")}{L.bookedEvent ? ` · ${L.bookedEvent}` : ""}</span></div> : null}

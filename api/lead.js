@@ -167,7 +167,7 @@ module.exports = async (req, res) => {
         } else if (!lead.closer || lead.closerAuto) { lead.closer = String(host); lead.closerAuto = true; pushHistory(lead, "assign", `Call pris par ${host}`); }
       }
       // Setting DM : event « Appel Stratégique » -> setter DM.
-      if (!canceled && applyDm(lead) && !(lead.history || []).some((h) => h.type === "assign" && /DM/.test(h.label))) pushHistory(lead, "assign", `Setting DM → ${lead.setter}`);
+      if (!canceled && applyDm(lead) && !(lead.history || []).some((h) => h.type === "assign" && /DM/.test(h.label))) pushHistory(lead, "assign", `Setting DM → ${lead.dmSetter}`);
       if (!lead.setter) {
         const s = await pickNextAssignee(cmd, "setter");
         if (s) { lead.setter = s; lead.setterAuto = true; pushHistory(lead, "assign", `Attribué à ${s} (auto)`); }

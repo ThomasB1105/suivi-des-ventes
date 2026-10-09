@@ -187,10 +187,11 @@ module.exports = async (req, res) => {
       sales.forEach((s) => {
         const em = String(s.email || "").toLowerCase();
         const l = lm[em];
-        const dm = !!(l && isDmLead(l));
+        const dm = !!(l && (isDmLead(l) || l.dmSetter));
         if (l) {
           if (l.closer) s.closer = resolve(l.closer);
-          if (dm && (!l.setter || l.setterAuto)) s.setter = DM.setter; else if (l.setter) s.setter = resolve(l.setter);
+          if (l.setter) s.setter = resolve(l.setter);
+          if (dm) s.dmSetter = resolve(l.dmSetter) || DM.setter; // setter DM (origine), distinct du setter call
           if (l.phone && !s.phone) s.phone = String(l.phone); // téléphone du CRM (liste des acomptes)
         }
         // Canal AUTO : VSL -> Ads (paid) · iClosed -> YouTube (organique) ·

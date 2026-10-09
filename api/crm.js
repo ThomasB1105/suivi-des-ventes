@@ -25,7 +25,7 @@ module.exports = async (req, res) => {
   // Un SETTER voit aussi les leads entrants pas encore attribués : les
   // entrants à traiter ne doivent jamais rester invisibles.
   // (Le setter DM ne voit pas les opt-ins VSL non attribués : ce n'est pas son flux.)
-  const isMine = (l) => isPerson(l.closer, me.name) || isPerson(l.setter, me.name)
+  const isMine = (l) => isPerson(l.closer, me.name) || isPerson(l.setter, me.name) || isPerson(l.dmSetter, me.name)
     || (me.role === "setter" && !l.setter && l.hasCall === false);
   // Le compte « Saphia » (récup) voit tous les calls pris non closés.
   const normName = String(me.name || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
@@ -90,7 +90,7 @@ module.exports = async (req, res) => {
         const row = rows.find((l) => l.email === email);
         if (!row || !canSee(row)) { res.status(403).json({ error: "Lead non assigné à ton compte." }); return; }
         // et ne peut pas se réassigner les leads des autres
-        delete body.closer; delete body.setter;
+        delete body.closer; delete body.setter; delete body.dmSetter;
       }
 
       let lead = null;
@@ -98,6 +98,7 @@ module.exports = async (req, res) => {
       if (!lead) lead = { email, createdAt: new Date().toISOString(), history: [] };
       if (body.stage !== undefined && STAGES.includes(body.stage)) { lead.stage = body.stage; lead.manualStage = true; }
       if (body.setter !== undefined) { lead.setter = String(body.setter || "") || undefined; lead.setterAuto = false; }
+      if (body.dmSetter !== undefined) { lead.dmSetter = String(body.dmSetter || "") || undefined; lead.dmSetterAuto = false; }
       if (body.closer !== undefined) { lead.closer = String(body.closer || "") || undefined; lead.closerAuto = false; }
       if (body.notes !== undefined) lead.notes = String(body.notes || "") || undefined;
       // Process setting : lead appelé + groupe WhatsApp créé.
@@ -160,7 +161,7 @@ module.exports = async (req, res) => {
       // Closer : en plus de ses leads, les calls des AUTRES closers qui ont un
       // replay Fathom (onglet Replays, lecture seule, sans téléphone).
       const isCloserAcct = !["setter", "setter_dm"].includes(me.role) && !isRecup;
-      const SHARED_KEYS = ["email", "name", "closer", "setter", "stage", "callResult", "showUp", "amount", "fathom", "notes", "bookedAt", "bookedEvent", "lastCall", "hasCall"];
+      const SHARED_KEYS = ["email", "name", "closer", "setter", "dmSetter", "stage", "callResult", "showUp", "amount", "fathom", "notes", "bookedAt", "bookedEvent", "lastCall", "hasCall"];
       leads = leads
         .filter((l) => canSee(l) || (isCloserAcct && l.fathom && l.hasCall !== false))
         .map((l) => canSee(l) ? l : { ...Object.fromEntries(SHARED_KEYS.filter((k) => l[k] !== undefined).map((k) => [k, l[k]])), shared: true });
