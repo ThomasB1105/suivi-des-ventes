@@ -8,7 +8,7 @@
 
 const { cmd, isConfigured } = require("../lib/kv");
 const { identify } = require("../lib/auth");
-const { buildLeads, STAGES, isPerson } = require("../lib/crmData");
+const { buildLeads, STAGES, isPerson, invalidateLeads } = require("../lib/crmData");
 
 module.exports = async (req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -74,7 +74,7 @@ module.exports = async (req, res) => {
           lead[role + "Auto"] = false; // choix admin : la synchro ne l'écrase pas
           lead.updatedAt = new Date().toISOString();
           lead.history = [...(lead.history || []), { at: lead.updatedAt, type: "assign", label: `Attribué à ${nm} (attribution en masse)` }].slice(-12);
-          await cmd(["HSET", "crm:leads", t.email, JSON.stringify(lead)]);
+          await cmd(["HSET", "crm:leads", t.email, JSON.stringify(lead)]); invalidateLeads();
           updated += 1;
         }
         res.status(200).json({ ok: true, updated, matched: targets.length, name: nm, role });
@@ -150,7 +150,7 @@ module.exports = async (req, res) => {
       if (body.autoStage === true) lead.manualStage = false;
       lead.updatedAt = new Date().toISOString();
       lead.history = [...(lead.history || []), { at: lead.updatedAt, type: "edit", label: `Mise à jour (${me.name})` }].slice(-12);
-      await cmd(["HSET", "crm:leads", email, JSON.stringify(lead)]);
+      await cmd(["HSET", "crm:leads", email, JSON.stringify(lead)]); invalidateLeads();
       res.status(200).json({ ok: true, lead });
       return;
     }

@@ -760,11 +760,12 @@ export default function App() {
   };
   // Temps réel : les webhooks (Calendly / iClosed / paiements) alimentent la
   // base en continu ; l'interface se resynchronise toute seule (toutes les
-  // 45 s quand l'onglet est visible, et au retour sur la fenêtre).
+  // 2 min quand l'onglet est visible, et au retour sur la fenêtre) — rythme
+  // choisi pour ménager le quota de commandes de la base Upstash.
   useEffect(() => {
     if (!(tab === "crm" || tab === "calendrier" || tab === "espace" || tab === "vsl" || tab === "followups" || tab === "acomptes" || tab === "replays" || tab === "saphia" || tab === "reporting" || tab === "ads" || tab === "dm" || tab === "noshows")) return;
     loadCrm(); if (isAdmin) loadTeam();
-    const iv = setInterval(() => { if (document.visibilityState === "visible") loadCrm(true); }, 45000);
+    const iv = setInterval(() => { if (document.visibilityState === "visible") loadCrm(true); }, 120000);
     const onFocus = () => { if (document.visibilityState !== "hidden") loadCrm(true); };
     window.addEventListener("focus", onFocus);
     document.addEventListener("visibilitychange", onFocus);
