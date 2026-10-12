@@ -105,6 +105,13 @@ const normalize = (list) =>
 const STORAGE_KEY = "melo_sales_v5";
 
 // Statuts CRM (libellé + couleur, style Monday) — partagés board/calendrier/fiche.
+// Un call PASSÉ sans résultat renseigné compte comme HONORÉ (présent) : seuls
+// « no-show » et « annulé » explicites l'en sortent. Les calls à venir ne
+// comptent ni en présent ni en no-show.
+const callDayOf = (l) => toParis((l.lastCall && l.lastCall.date) || l.bookedAt || "").slice(0, 10);
+const heldCall = (l, today) => ["show", "won", "lost"].includes(l.stage)
+  || (l.stage === "booked" && callDayOf(l) < today && !["noshow", "cancelled"].includes(l.showUp || ""));
+
 const CRM_META = {
   booked: ["Call booké", "#579BFC"], show: ["Call fait · en cours", "#FDAB3D"], won: ["Closé", "#00C875"],
   noshow: ["No-show", "#E2445C"], lost: ["Perdu", "#808080"], setting: ["À replanifier", "#A25DDC"],
@@ -2060,7 +2067,7 @@ export default function App() {
         const inP = (d) => d >= periodRange.from && d <= periodRange.to;
         const booked = dmAll.filter((l) => inP(dOfL(l)));
         const past = booked.filter((l) => dOfL(l) <= t0);
-        const showed = past.filter((l) => ["show", "won", "lost"].includes(l.stage)).length;
+        const showed = past.filter((l) => heldCall(l, t0)).length; // non renseigné = honoré
         const noshow = past.filter((l) => l.stage === "noshow").length;
         const cancelled = past.filter((l) => l.showUp === "cancelled" || l.stage === "setting").length;
         const won = booked.filter((l) => l.stage === "won").length;
@@ -2072,7 +2079,7 @@ export default function App() {
         const closers = [...new Set(booked.map((l) => l.closer).filter(Boolean))].sort();
         const byCloser = closers.map((c) => {
           const ls = booked.filter((l) => l.closer === c);
-          const sh = ls.filter((l) => ["show", "won", "lost"].includes(l.stage)).length;
+          const sh = ls.filter((l) => heldCall(l, t0)).length;
           return { c, n: ls.length, sh, won: ls.filter((l) => l.stage === "won").length, cash: ls.reduce((a, l) => a + (l.amount || 0), 0) };
         });
         const nmOf = (l) => (l.name && l.name !== l.email ? l.name : l.email);
@@ -2229,7 +2236,7 @@ export default function App() {
         // Calls réellement passés (présent / closé / perdu / résultat saisi / replay collé), sur la période.
         // Closer : ses calls + les replays des autres closers (lecture seule).
         const done = [...(crm.leads || []), ...(isAdmin ? [] : (crm.shared || []))].filter((l) => l.hasCall !== false && dOfL(l) && dOfL(l) <= t0
-          && (["show", "won", "lost"].includes(l.stage) || l.callResult || l.fathom || l.showUp === "present")
+          && (heldCall(l, t0) || l.callResult || l.fathom || l.showUp === "present")
           && !["noshow", "cancelled"].includes(l.showUp || "") && l.stage !== "noshow");
         const inPeriod = (l) => dOfL(l) >= periodRange.from && dOfL(l) <= periodRange.to;
         const base = done.filter(inPeriod);
@@ -2487,8 +2494,10 @@ export default function App() {
         const leads = crm.leads || [];
 
         // ---- Calls de la semaine ----
+        const today0w = toISO(new Date());
         const calls = leads.filter((l) => l.hasCall !== false && inWeek(dOfL(l)));
-        const present = calls.filter((l) => ["show", "won", "lost"].includes(l.stage));
+        const upcomingN = calls.filter((l) => dOfL(l) > today0w).length;
+        const present = calls.filter((l) => heldCall(l, today0w)); // non renseigné = honoré
         const noshowN = calls.filter((l) => l.stage === "noshow").length;
         const closed = calls.filter((l) => l.stage === "won");
         const showRate = present.length + noshowN ? present.length / (present.length + noshowN) : 0;
@@ -2515,7 +2524,7 @@ export default function App() {
         const perCloser = names.map((n) => {
           const same = (v) => String(v || "").trim().toLowerCase() === n.trim().toLowerCase();
           const c = calls.filter((l) => same(l.closer));
-          const p = c.filter((l) => ["show", "won", "lost"].includes(l.stage));
+          const p = c.filter((l) => heldCall(l, today0w));
           const ns = c.filter((l) => l.stage === "noshow").length;
           const w = c.filter((l) => l.stage === "won").length;
           const sSales = weekSales.filter((sl) => same(saleCloser(sl)));
@@ -2537,7 +2546,7 @@ export default function App() {
           </div>
 
           <div className="kpis" style={{ marginTop: 4 }}>
-            <div className="kcard"><div className="kcard-l">Calls</div><div className="kcard-v">{calls.length}</div><div className="kcard-f">{present.length} honorés · {noshowN} no-show</div></div>
+            <div className="kcard"><div className="kcard-l">Calls</div><div className="kcard-v">{calls.length}</div><div className="kcard-f">{present.length} honorés · {noshowN} no-show{upcomingN ? ` · ${upcomingN} à venir` : ""}</div></div>
             <div className="kcard"><div className="kcard-l">Show-up</div><div className="kcard-v">{pct(showRate)}</div><div className="kcard-f">présents / (présents + no-show)</div></div>
             <div className="kcard"><div className="kcard-l">Closés</div><div className="kcard-v green">{closed.length}</div><div className="kcard-f">taux de closing {pct(closingRate)}</div></div>
             <div className="kcard"><div className="kcard-l">Ventes signées</div><div className="kcard-v">{weekSales.length}</div><div className="kcard-f">{euro(contracted)} contractés</div></div>
@@ -3160,7 +3169,7 @@ export default function App() {
         const periodLbl = isCal
           ? (calView === "today" ? "aujourd'hui" : (calView === "past" ? "appels passés" : (calView === "period" ? periodRange.label : "à venir")))
           : (crmView === "today" ? "aujourd'hui" : (crmView === "week" ? "cette semaine" : (crmView === "period" ? periodRange.label : "toutes périodes")));
-        const nShow = scoped.filter((l) => ["show", "won", "lost"].includes(l.stage)).length;
+        const nShow = scoped.filter((l) => heldCall(l, todayISO)).length; // non renseigné = honoré
         const nNoShow = scoped.filter((l) => l.stage === "noshow").length;
         const nWon = scoped.filter((l) => l.stage === "won").length;
         const revenue = scoped.reduce((a, l) => a + (l.amount || 0), 0);
@@ -3569,7 +3578,7 @@ export default function App() {
         // ---- Stats sur la PÉRIODE sélectionnée (défaut : mois en cours) ----
         const inP = (d) => d >= periodRange.from && d <= periodRange.to;
         const monthLeads = mine.filter((l) => inP(dOfL(l)));
-        const showed = monthLeads.filter((l) => ["show", "won", "lost"].includes(l.stage)).length;
+        const showed = monthLeads.filter((l) => heldCall(l, today)).length; // non renseigné = honoré
         const noshowN = monthLeads.filter((l) => l.stage === "noshow").length;
         const wonLeads = monthLeads.filter((l) => l.stage === "won");
         // Revenu du mois = CASH ENCAISSÉ ce mois-ci sur ses leads (peu importe
