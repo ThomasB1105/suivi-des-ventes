@@ -711,7 +711,7 @@ export default function App() {
   const rangeTouched = useRef(false);
   useEffect(() => {
     if (!rangeTouched.current) { rangeTouched.current = true; return; }
-    setCalView("period"); setCrmView("period");
+    setCalView("period"); setCrmView("period"); setRepScope("period");
   }, [range]);
   const [vslView, setVslView] = useState("recent"); // Leads VSL : "recent" (à traiter, 14 j) | "nrp" | "all"
   const [sapView, setSapView] = useState("30"); // Saphia : fenêtre en jours ("7"|"30"|"90"|"all")
@@ -731,6 +731,7 @@ export default function App() {
   };
   const [repWeek, setRepWeek] = useState(0); // Reporting : 0 = semaine dernière, 1 = -2 semaines…
   const [repQScope, setRepQScope] = useState("all"); // "all" | "week"
+  const [repScope, setRepScope] = useState("week"); // Reporting : "week" (navigation ‹ ›) | "period" (sélecteur de dates)
   const [adsScope, setAdsScope] = useState("week"); // Reporting Ads : suit la période sélectionnée par défaut
   const loadCrm = async (silent) => {
     if (!silent) setCrmLoading(true);
@@ -2472,8 +2473,13 @@ export default function App() {
       {tab === "reporting" && (() => {
         const now = new Date();
         const dow = (now.getDay() + 6) % 7; // lundi = 0
-        const start = addDays(now, -dow - 7 * (1 + repWeek)); // 0 = semaine DERNIÈRE (lundi -> dimanche)
-        const end = addDays(start, 6);
+        // Période du reporting : la semaine naviguée (‹ ›) ou, dès qu'on touche
+        // au sélecteur de dates en haut à droite, la plage choisie.
+        const wkStart = addDays(now, -dow - 7 * (1 + repWeek)); // 0 = semaine DERNIÈRE (lundi -> dimanche)
+        const wkEnd = addDays(wkStart, 6);
+        const byPeriod = repScope === "period";
+        const start = byPeriod ? parseLocal(periodRange.from) : wkStart;
+        const end = byPeriod ? parseLocal(periodRange.to) : wkEnd;
         const from = toISO(start), to = toISO(end);
         const inWeek = (d) => d >= from && d <= to;
         const fmt = (d) => d.toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
@@ -2520,10 +2526,12 @@ export default function App() {
 
         return (<>
           <div className="closers-head">
-            <div className="closers-title"><TrendingUp size={16} /> Reporting · semaine du {fmt(start)} au {fmt(end)}{repWeek === 0 ? " (semaine dernière)" : ""}</div>
-            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              <button className="esp-open" onClick={() => setRepWeek(repWeek + 1)}>‹ Semaine précédente</button>
-              <button className="esp-open" disabled={repWeek === 0} style={repWeek === 0 ? { opacity: .45, cursor: "default" } : undefined} onClick={() => setRepWeek(Math.max(0, repWeek - 1))}>Semaine suivante ›</button>
+            <div className="closers-title"><TrendingUp size={16} /> Reporting · {byPeriod ? periodRange.label : `semaine du ${fmt(start)} au ${fmt(end)}${repWeek === 0 ? " (semaine dernière)" : ""}`}</div>
+            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+              <button className={`crm-chip ${byPeriod ? "on" : ""}`} onClick={() => setRepScope("period")} title="Suit le sélecteur de dates en haut à droite">📅 {byPeriod ? periodRange.label : "Période"}</button>
+              <button className={`crm-chip ${!byPeriod ? "on" : ""}`} onClick={() => { setRepScope("week"); setRepWeek(0); }} title="Semaine dernière, lundi → dimanche">Semaine dernière</button>
+              <button className="esp-open" onClick={() => { setRepScope("week"); setRepWeek(byPeriod ? 0 : repWeek + 1); }}>‹ Semaine précédente</button>
+              <button className="esp-open" disabled={!byPeriod && repWeek === 0} style={!byPeriod && repWeek === 0 ? { opacity: .45, cursor: "default" } : undefined} onClick={() => { setRepScope("week"); setRepWeek(byPeriod ? 0 : Math.max(0, repWeek - 1)); }}>Semaine suivante ›</button>
               <button className={`refresh-btn ${crmLoading ? "is-loading" : ""}`} onClick={() => loadCrm()} disabled={crmLoading}><RotateCcw size={15} className={crmLoading ? "spin" : ""} /> Actualiser</button>
             </div>
           </div>
@@ -2533,9 +2541,9 @@ export default function App() {
             <div className="kcard"><div className="kcard-l">Show-up</div><div className="kcard-v">{pct(showRate)}</div><div className="kcard-f">présents / (présents + no-show)</div></div>
             <div className="kcard"><div className="kcard-l">Closés</div><div className="kcard-v green">{closed.length}</div><div className="kcard-f">taux de closing {pct(closingRate)}</div></div>
             <div className="kcard"><div className="kcard-l">Ventes signées</div><div className="kcard-v">{weekSales.length}</div><div className="kcard-f">{euro(contracted)} contractés</div></div>
-            <div className="kcard"><div className="kcard-l">Cash collecté</div><div className="kcard-v green">{euro(cashWeek)}</div><div className="kcard-f">encaissé sur la semaine</div></div>
-            <div className="kcard"><div className="kcard-l">% collecté / contracté</div><div className="kcard-v" style={{ color: "var(--cyan)" }}>{contracted ? pct(pctCollected) : "—"}</div><div className="kcard-f">{euro(collectedOnContracted)} déjà encaissés sur les ventes de la semaine</div></div>
-            <div className="kcard"><div className="kcard-l">Leads traités</div><div className="kcard-v">{treated.length}<span className="mut" style={{ fontSize: 15, fontWeight: 600 }}> / {received.length}</span></div><div className="kcard-f">entrants reçus sur la semaine</div></div>
+            <div className="kcard"><div className="kcard-l">Cash collecté</div><div className="kcard-v green">{euro(cashWeek)}</div><div className="kcard-f">encaissé sur {byPeriod ? "la période" : "la semaine"}</div></div>
+            <div className="kcard"><div className="kcard-l">% collecté / contracté</div><div className="kcard-v" style={{ color: "var(--cyan)" }}>{contracted ? pct(pctCollected) : "—"}</div><div className="kcard-f">{euro(collectedOnContracted)} déjà encaissés sur les ventes de {byPeriod ? "la période" : "la semaine"}</div></div>
+            <div className="kcard"><div className="kcard-l">Leads traités</div><div className="kcard-v">{treated.length}<span className="mut" style={{ fontSize: 15, fontWeight: 600 }}> / {received.length}</span></div><div className="kcard-f">entrants reçus sur {byPeriod ? "la période" : "la semaine"}</div></div>
           </div>
 
           <div className="section-h" style={{ marginTop: 26 }}><UserCheck size={15} /> Par closer</div>
@@ -2608,7 +2616,7 @@ export default function App() {
               <div className="section-h" style={{ marginTop: 26 }}><Grid3x3 size={15} /> Profils · par réponse au formulaire</div>
               <div className="crm-views" style={{ margin: "0 0 12px" }}>
                 <button className={`crm-chip ${repQScope === "all" ? "on" : ""}`} onClick={() => setRepQScope("all")}>Tout l'historique</button>
-                <button className={`crm-chip ${repQScope === "week" ? "on" : ""}`} onClick={() => setRepQScope("week")}>Semaine affichée</button>
+                <button className={`crm-chip ${repQScope === "week" ? "on" : ""}`} onClick={() => setRepQScope("week")}>{byPeriod ? "Période affichée" : "Semaine affichée"}</button>
               </div>
               <div className="card" style={{ padding: 0, overflowX: "auto" }}>
                 <table className="tbl">
