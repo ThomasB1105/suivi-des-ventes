@@ -3287,7 +3287,10 @@ export default function App() {
         const setterOnly = !isAdmin && isSetterRole(me.role); // calendrier setter = préqualification uniquement
         const META = CRM_META;
         const ORDER = ["booked", "show", "won", "noshow", "lost", "setting", "unqualified"];
-        const all = (crm.leads || []).filter((l) => l.hasCall !== false); // board = calls uniquement (les opt-ins vivent dans l'espace setter)
+        // board = calls uniquement (les opt-ins vivent dans l'espace setter) ;
+        // calendrier = calls DATÉS uniquement (une fiche créée par un seul
+        // paiement, sans RDV, n'a rien à faire dans un agenda).
+        const all = (crm.leads || []).filter((l) => l.hasCall !== false && (tab !== "calendrier" || l.lastCall || l.bookedAt));
         const q = crmQ.trim().toLowerCase();
         const todayISO = toISO(new Date());
         const wd = new Date(); const dow = (wd.getDay() + 6) % 7;
