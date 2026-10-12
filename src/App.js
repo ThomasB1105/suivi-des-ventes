@@ -1132,7 +1132,7 @@ export default function App() {
   const leadForSale = (sl) => {
     const em = String(sl.email || "").toLowerCase();
     const ph = normPh(sl.phone);
-    const ls = (crm.leads || []).filter((l) => l.hasCall !== false);
+    const ls = (crm.leads || []).filter((l) => l.hasCall !== false && (l.lastCall || l.bookedAt)); // fiche avec un VRAI call
     return ls.find((l) => (l.saleEmails || []).includes(em))
       || ls.find((l) => em && String(l.email).toLowerCase() === em)
       || (ph ? ls.find((l) => normPh(l.phone) === ph) : null)
@@ -2196,7 +2196,7 @@ export default function App() {
         const shown = matchView === "unmatched" ? unmatched : rows;
         const frD = (d) => (d ? `${String(d).slice(8, 10)}/${String(d).slice(5, 7)}/${String(d).slice(0, 4)}` : "—");
         const nmOf = (l) => (l.name && l.name !== l.email ? l.name : l.email);
-        const callLs = (crm.leads || []).filter((l) => l.hasCall !== false);
+        const callLs = (crm.leads || []).filter((l) => l.hasCall !== false && (l.lastCall || l.bookedAt));
         const callDay = (l) => toParis((l.lastCall && l.lastCall.date) || l.bookedAt || "").slice(0, 10);
         const suggest = (sl) => {
           const t = String(mlQ[sl.id] || "").trim().toLowerCase();
@@ -2254,6 +2254,12 @@ export default function App() {
                   <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                     <span className="cal-name">{sl.client}</span>
                     <span className="rpl-res" style={lead ? { color: "#067647", borderColor: "#ABEFC6", background: "#ECFDF3" } : { color: "#B42318", borderColor: "#FECDCA", background: "#FEF3F2" }}>{lead ? "Reliée ✅" : "Non reliée ⚠️"}</span>
+                    <select className={`chan-sel src-${sl.channel === "paid" ? "paid" : (sl.channel === "none" ? "none" : "organic")}`} value={sl.channel || "none"} onChange={(e) => setChannel(sl.id, e.target.value)} title="Source du lead — auto : VSL = Ads, iClosed = YouTube, Setting DM = organique ; modifiable à la main">
+                      <option value="organic">🌱 Organique</option>
+                      <option value="paid">📣 Ads (VSL)</option>
+                      <option value="none">❔ Non attribué</option>
+                    </select>
+                    {lead && lead.source && lead.source !== "—" ? <span className="mnd-src" title="Source de la fiche CRM">{lead.dm ? "Setting DM" : lead.source}</span> : null}
                   </div>
                   <div className="cal-sub" style={{ marginTop: 4 }}>{sl.email || "—"} · vente du {frD(sl.closeDate)} · <b>{euro(paidOf(sl))}</b> encaissés / {euro(sl.total)}{sl.offer ? ` · ${sl.offer}` : ""}</div>
                   <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
