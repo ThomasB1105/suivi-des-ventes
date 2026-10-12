@@ -3299,7 +3299,15 @@ export default function App() {
         // Calendrier : Aujourd'hui / À venir (aujourd'hui inclus, puis les jours
         // suivants) / Passés (anciens appels, plus récents en premier)
         const isCal = tab === "calendrier";
-        const inViewCal = (l) => calView === "today" ? dOf(l) === todayISO : (calView === "past" ? dOf(l) < todayISO : (calView === "period" ? (dOf(l) >= periodRange.from && dOf(l) <= periodRange.to) : dOf(l) >= todayISO));
+        const inViewCal = (l) => calView === "today" ? dOf(l) === todayISO : (calView === "past" ? dOf(l) < todayISO : (calView === "period" ? (dOf(l) >= periodRange.from && dOf(l) <= periodRange.to) : (calView === "noowner" ? !l.closer : dOf(l) >= todayISO)));
+        // Diagnostic (admin) : calls qui n'arrivent dans l'agenda d'AUCUN closer.
+        //  - sans closer du tout (hôte Calendly / iClosed inconnu) ;
+        //  - closer dont le nom ne correspond à aucun compte équipe (ni alias).
+        const teamNamesLc = new Set((team || []).map((u) => String(u.name || "").trim().toLowerCase()));
+        const noOwner = all.filter((l) => !l.closer);
+        const unknownOwners = {};
+        if (isAdmin && (team || []).length) all.forEach((l) => { const k = String(l.closer || "").trim(); if (k && !teamNamesLc.has(k.toLowerCase())) unknownOwners[k] = (unknownOwners[k] || 0) + 1; });
+        const unknownList = Object.entries(unknownOwners).sort((a, b) => b[1] - a[1]);
         const activeFilter = isCal ? inViewCal : inView;
         const nUpcoming = all.filter((l) => dOf(l) >= todayISO).length;
         const nPast = all.filter((l) => dOf(l) < todayISO).length;
@@ -3317,7 +3325,7 @@ export default function App() {
         // KPI sur la période sélectionnée (Aujourd'hui / Cette semaine / Tout)
         const scoped = all.filter(activeFilter);
         const periodLbl = isCal
-          ? (calView === "today" ? "aujourd'hui" : (calView === "past" ? "appels passés" : (calView === "period" ? periodRange.label : "à venir")))
+          ? (calView === "today" ? "aujourd'hui" : (calView === "past" ? "appels passés" : (calView === "period" ? periodRange.label : (calView === "noowner" ? "sans closer" : "à venir"))))
           : (crmView === "today" ? "aujourd'hui" : (crmView === "week" ? "cette semaine" : (crmView === "period" ? periodRange.label : "toutes périodes")));
         const nShow = scoped.filter((l) => heldCall(l, todayISO)).length; // non renseigné = honoré
         const nNoShow = scoped.filter((l) => l.stage === "noshow").length;
@@ -3345,6 +3353,7 @@ export default function App() {
                 <button className={`crm-chip ${calView === "upcoming" ? "on" : ""}`} onClick={() => setCalView("upcoming")}>À venir <b>{nUpcoming}</b></button>
                 <button className={`crm-chip ${calView === "past" ? "on" : ""}`} onClick={() => setCalView("past")}>Passés <b>{nPast}</b></button>
                 <button className={`crm-chip ${calView === "period" ? "on" : ""}`} onClick={() => setCalView("period")} title="Suit le sélecteur de dates en haut à droite">📅 {calView === "period" ? periodRange.label : "Période"}</button>
+                {isAdmin && noOwner.length > 0 && <button className={`crm-chip ${calView === "noowner" ? "on" : ""}`} onClick={() => setCalView("noowner")} title="Calls sans closer : ils n'apparaissent dans l'agenda de personne" style={calView === "noowner" ? { borderColor: "#B42318", boxShadow: "0 0 0 3px rgba(180,35,24,.14)" } : { color: "#B42318" }}>⚠️ Sans closer <b>{noOwner.length}</b></button>}
               </>) : (<>
                 <button className={`crm-chip ${crmView === "today" ? "on" : ""}`} onClick={() => setCrmView("today")}>Aujourd'hui <b>{nToday}</b></button>
                 <button className={`crm-chip ${crmView === "week" ? "on" : ""}`} onClick={() => setCrmView("week")}>Cette semaine <b>{nWeek}</b></button>
@@ -3383,6 +3392,12 @@ export default function App() {
           </div>
         </div>
 
+        {isAdmin && isCal && unknownList.length > 0 && (
+          <div className="esp-preview" style={{ marginTop: 0 }}>
+            <span style={{ minWidth: 0, lineHeight: 1.5 }}>⚠️ <b>{unknownList.reduce((a, [, n]) => a + n, 0)} calls</b> ont un closer qui ne correspond à aucun compte équipe — ils n'apparaissent dans l'agenda de personne : {unknownList.slice(0, 6).map(([n, c]) => `« ${n} » (${c})`).join(", ")}{unknownList.length > 6 ? "…" : ""}. Relie ces noms à un compte dans <b>Équipe › Qui est qui</b>.</span>
+            <button className="esp-open" style={{ marginLeft: "auto", flex: "none" }} onClick={() => go("equipe")}>Ouvrir Équipe →</button>
+          </div>
+        )}
         {!isAdmin && (
           <div className="kpi-grid" style={{ marginBottom: 6 }}>
             <div className="kcard"><div className="kcard-l">Ma commission{meStats && meStats.rate ? ` (${meStats.rate}%)` : ""}</div><div className="kcard-v" style={{ color: "var(--cyan)" }}>{euro((meStats && meStats.commission) || 0)}</div><div className="kcard-f">sur {euro((meStats && meStats.revenue) || 0)} générés</div></div>
@@ -3486,7 +3501,7 @@ export default function App() {
           const days = Object.keys(byDay).sort();
           if (calView === "past") days.reverse();
           const fmtDay = (d) => { try { return parseLocal(d).toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" }); } catch (e) { return d; } };
-          if (!days.length) return <div className="empty" style={{ padding: 26 }}>{calView === "past" ? "Aucun call passé." : (calView === "period" ? `Aucun call sur la période ${periodRange.label}.` : (calView === "today" ? "Aucun call aujourd'hui 🎉" : "Aucun call à venir 🎉"))}</div>;
+          if (!days.length) return <div className="empty" style={{ padding: 26 }}>{calView === "past" ? "Aucun call passé." : (calView === "period" ? `Aucun call sur la période ${periodRange.label}.` : (calView === "today" ? "Aucun call aujourd'hui 🎉" : (calView === "noowner" ? "Tous les calls ont un closer 🎉" : "Aucun call à venir 🎉")))}</div>;
           return days.map((d) => (
             <div className="cal-day" key={d}>
               <div className="cal-dhead">
