@@ -29,6 +29,31 @@ function deepFind(obj, keys, depth = 0) {
   return undefined;
 }
 
+// Formulaire de routage Calendly (questions du funnel : âge, budget, tel…) :
+// le webhook ne porte que son URI -> on va le chercher tout de suite, sinon
+// les réponses et le téléphone n'arrivent qu'au prochain import.
+async function fetchRoutingAnswers(uri) {
+  const tok = process.env.CALENDLY_TOKEN;
+  if (!tok || !/^https?:\/\//.test(String(uri || ""))) return null;
+  try {
+    const r = await fetch(uri, { headers: { Authorization: `Bearer ${tok}`, Accept: "application/json" } });
+    if (!r.ok) return null;
+    const b = await r.json();
+    const sub = (b && b.resource) || null;
+    if (!sub) return null;
+    return { qas: Array.isArray(sub.questions_and_answers) ? sub.questions_and_answers : [], tracking: sub.tracking || {} };
+  } catch (e) { return null; }
+}
+function mergeAnswers(lead, qas) {
+  qas.forEach((x) => {
+    const q = x && x.question, a = x && x.answer;
+    if (!q || a == null || String(a) === "") return;
+    lead.answers = { ...(lead.answers || {}), [String(q)]: Array.isArray(a) ? a.join(", ") : String(a) };
+    if (!lead.phone && /phone|t[ée]l|num[ée]ro|whatsapp|portable|mobile/i.test(String(q))) lead.phone = String(Array.isArray(a) ? a[0] : a);
+    if ((!lead.name || lead.name === lead.email) && /pr[ée]nom|^nom$|name/i.test(String(q))) lead.name = String(a);
+  });
+}
+
 async function getLead(email) {
   try { const s = await cmd(["HGET", "crm:leads", email]); return s ? JSON.parse(s) : null; } catch { return null; }
 }
@@ -113,14 +138,14 @@ module.exports = async (req, res) => {
         const ph = p.text_reminder_number || (byQ && byQ.answer) || byShape || locPhone;
         if (ph) lead.phone = String(ph);
       }
-      // Réponses au formulaire Calendly -> fiche lead
-      {
-        const qas = Array.isArray(p.questions_and_answers) ? p.questions_and_answers : [];
-        qas.forEach((x) => {
-          if (x && x.question && x.answer != null && String(x.answer) !== "") {
-            lead.answers = { ...(lead.answers || {}), [String(x.question)]: String(x.answer) };
-          }
-        });
+      // Réponses au formulaire de réservation + au formulaire de routage -> fiche lead
+      mergeAnswers(lead, Array.isArray(p.questions_and_answers) ? p.questions_and_answers : []);
+      if (p.routing_form_submission) {
+        const rf = await fetchRoutingAnswers(p.routing_form_submission);
+        if (rf) {
+          mergeAnswers(lead, rf.qas);
+          if (rf.tracking && rf.tracking.utm_campaign && !lead.campaign) lead.campaign = String(rf.tracking.utm_campaign);
+        }
       }
       const canceled = /canceled/.test(calendlyEvent) || p.status === "canceled";
       if (canceled) {

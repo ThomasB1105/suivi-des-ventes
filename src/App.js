@@ -108,7 +108,10 @@ const STORAGE_KEY = "melo_sales_v5";
 // Un call PASSÉ sans résultat renseigné compte comme HONORÉ (présent) : seuls
 // « no-show » et « annulé » explicites l'en sortent. Les calls à venir ne
 // comptent ni en présent ni en no-show.
-const callDayOf = (l) => toParis((l.lastCall && l.lastCall.date) || l.bookedAt || "").slice(0, 10);
+// Date de référence d'un call : fournie par le serveur (callAt = la plus
+// récente entre iClosed et Calendly), sinon repli local.
+const callAtOf = (l) => l.callAt || (l.lastCall && l.lastCall.date) || l.bookedAt || "";
+const callDayOf = (l) => toParis(callAtOf(l) || "").slice(0, 10);
 const heldCall = (l, today) => ["show", "won", "lost"].includes(l.stage)
   || (l.stage === "booked" && callDayOf(l) < today && !["noshow", "cancelled"].includes(l.showUp || "") && l.setStatus !== "cancel");
 // Call annulé (plateforme, closer ou setter) — jamais compté en présent ni en no-show.
@@ -1948,7 +1951,7 @@ export default function App() {
           .filter((l) => l.amount === 100 || l.amount === 200)
           .sort((a, b) => String(b.paidAt || "").localeCompare(String(a.paidAt || "")));
         const frD = (d) => (d ? `${String(d).slice(8, 10)}/${String(d).slice(5, 7)}/${String(d).slice(0, 4)}` : "—");
-        const lastCallD = (l) => toParis((l.lastCall && l.lastCall.date) || l.bookedAt || "").slice(0, 10);
+        const lastCallD = (l) => toParis(callAtOf(l) || "").slice(0, 10);
         const nmOf = (l) => (l.name && l.name !== l.email ? l.name : l.email);
         return (<>
           <div className="kpis" style={{ marginTop: 4 }}>
@@ -2020,7 +2023,7 @@ export default function App() {
         const later = fus.filter((l) => l.followUpAt && l.followUpAt > t0).sort((a, b) => a.followUpAt.localeCompare(b.followUpAt));
         const fmtDay = (d) => { try { return parseLocal(d).toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" }); } catch (e) { return d; } };
         const frD = (d) => (d ? `${d.slice(8, 10)}/${d.slice(5, 7)}` : "—");
-        const lastCallD = (l) => toParis((l.lastCall && l.lastCall.date) || l.bookedAt || "").slice(0, 10);
+        const lastCallD = (l) => toParis(callAtOf(l) || "").slice(0, 10);
         const nmOf = (l) => (l.name && l.name !== l.email ? l.name : l.email);
         const initials = (n) => String(n).split(/[\s@._-]+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase() || "?";
         const avaColor = (e) => ["#579BFC", "#A25DDC", "#00C875", "#FDAB3D", "#E2445C", "#66B2FF"][(String(e).charCodeAt(0) + String(e).length) % 6];
@@ -2077,7 +2080,7 @@ export default function App() {
 
       {/* SETTING DM — RDV « Appel Stratégique » -> setter DM (Aurélie) */}
       {tab === "dm" && isAdmin && (() => {
-        const tsL = (l) => toParis((l.lastCall && l.lastCall.date) || l.bookedAt || "");
+        const tsL = (l) => toParis(callAtOf(l) || "");
         const dOfL = (l) => tsL(l).slice(0, 10);
         const tOfL = (l) => { const m = tsL(l).match(/T(\d{2}:\d{2})/); return m ? m[1] : ""; };
         const t0 = toISO(new Date());
@@ -2197,7 +2200,7 @@ export default function App() {
         const frD = (d) => (d ? `${String(d).slice(8, 10)}/${String(d).slice(5, 7)}/${String(d).slice(0, 4)}` : "—");
         const nmOf = (l) => (l.name && l.name !== l.email ? l.name : l.email);
         const callLs = (crm.leads || []).filter((l) => l.hasCall !== false && (l.lastCall || l.bookedAt));
-        const callDay = (l) => toParis((l.lastCall && l.lastCall.date) || l.bookedAt || "").slice(0, 10);
+        const callDay = (l) => toParis(callAtOf(l) || "").slice(0, 10);
         const suggest = (sl) => {
           const t = String(mlQ[sl.id] || "").trim().toLowerCase();
           const words = String(sl.client || "").toLowerCase().split(/[\s@._-]+/).filter((w) => w.length >= 3 && !/gmail|hotmail|yahoo|outlook|icloud|free|com|fr/.test(w));
@@ -2360,7 +2363,7 @@ export default function App() {
 
       {/* REPLAYS — tous les calls passés avec enregistrement Fathom + résultat */}
       {tab === "replays" && (isAdmin || !isSetterRole(me.role)) && (() => {
-        const tsL = (l) => toParis((l.lastCall && l.lastCall.date) || l.bookedAt || "");
+        const tsL = (l) => toParis(callAtOf(l) || "");
         const dOfL = (l) => tsL(l).slice(0, 10);
         const tOfL = (l) => { const m = tsL(l).match(/T(\d{2}:\d{2})/); return m ? m[1] : ""; };
         const t0 = toISO(new Date());
@@ -2462,8 +2465,8 @@ export default function App() {
       {/* SAPHIA · RÉCUP — calls pris (iClosed + Calendly) non closés */}
       {tab === "saphia" && (isAdmin || isSaphiaUser) && (() => {
         const today0 = toISO(new Date());
-        const dOfL = (l) => toParis((l.lastCall && l.lastCall.date) || l.bookedAt || "").slice(0, 10);
-        const tOfL = (l) => { const m = toParis((l.lastCall && l.lastCall.date) || l.bookedAt || "").match(/T(\d{2}:\d{2})/); return m ? m[1] : ""; };
+        const dOfL = (l) => toParis(callAtOf(l) || "").slice(0, 10);
+        const tOfL = (l) => { const m = toParis(callAtOf(l) || "").match(/T(\d{2}:\d{2})/); return m ? m[1] : ""; };
         const winDays = (sapView === "all" || sapView === "period") ? 100000 : Number(sapView);
         const minD = toISO(new Date(Date.now() - winDays * 864e5));
         // TOUT lead ayant pris un appel (passé OU à venir), non closé.
@@ -2566,8 +2569,8 @@ export default function App() {
               <div className="empty" style={{ padding: 18, marginTop: 24 }}>📣 Reporting Ads : aucune utm_campaign reçue pour l'instant — elles arrivent avec les leads VSL (champ utm_campaign dans Make).</div>
             );
             const today0a = toISO(new Date());
-            const heldA = (l) => ["show", "won", "lost"].includes(l.stage) || (l.stage === "booked" && toParis((l.lastCall && l.lastCall.date) || l.bookedAt || "").slice(0, 10) < today0a);
-            const dOfA = (l) => toParis((l.lastCall && l.lastCall.date) || l.bookedAt || "").slice(0, 10);
+            const heldA = (l) => ["show", "won", "lost"].includes(l.stage) || (l.stage === "booked" && toParis(callAtOf(l) || "").slice(0, 10) < today0a);
+            const dOfA = (l) => toParis(callAtOf(l) || "").slice(0, 10);
             const wk = adsScope === "week";
             const inWeek = (d) => d >= periodRange.from && d <= periodRange.to;
             const from = periodRange.from, to = periodRange.to;
@@ -2634,7 +2637,7 @@ export default function App() {
         const from = toISO(start), to = toISO(end);
         const inWeek = (d) => d >= from && d <= to;
         const fmt = (d) => d.toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
-        const dOfL = (l) => toParis((l.lastCall && l.lastCall.date) || l.bookedAt || "").slice(0, 10);
+        const dOfL = (l) => toParis(callAtOf(l) || "").slice(0, 10);
         const leads = crm.leads || [];
 
         // ---- Calls de la semaine ----
@@ -2754,7 +2757,7 @@ export default function App() {
               <div className="empty" style={{ padding: 20, marginTop: 24 }}>Pas encore assez de réponses de formulaire (clique « Connecter Calendly » pour rattacher les questionnaires).</div>
             );
             const today0r = toISO(new Date());
-            const heldL = (l) => ["show", "won", "lost"].includes(l.stage) || (l.stage === "booked" && toParis((l.lastCall && l.lastCall.date) || l.bookedAt || "").slice(0, 10) < today0r);
+            const heldL = (l) => ["show", "won", "lost"].includes(l.stage) || (l.stage === "booked" && toParis(callAtOf(l) || "").slice(0, 10) < today0r);
             const statsOf = (ls) => {
               const p = ls.filter(heldL).length;
               const ns = ls.filter((l) => l.stage === "noshow").length;
@@ -3297,7 +3300,7 @@ export default function App() {
         const mon = new Date(wd); mon.setDate(wd.getDate() - dow);
         const sun = new Date(mon); sun.setDate(mon.getDate() + 6);
         const wFrom = toISO(mon), wTo = toISO(sun);
-        const dOf = (l) => { const t = (l.lastCall && l.lastCall.date) || l.bookedAt || ""; return toParis(t).slice(0, 10); };
+        const dOf = (l) => { const t = callAtOf(l) || ""; return toParis(t).slice(0, 10); };
         const inView = (l) => crmView === "all" ? true : (crmView === "today" ? dOf(l) === todayISO : (crmView === "period" ? (dOf(l) >= periodRange.from && dOf(l) <= periodRange.to) : (dOf(l) >= wFrom && dOf(l) <= wTo)));
         // Calendrier : Aujourd'hui / À venir (aujourd'hui inclus, puis les jours
         // suivants) / Passés (anciens appels, plus récents en premier)
@@ -3320,7 +3323,7 @@ export default function App() {
           .filter(activeFilter)
           .filter((l) => !q || `${l.email} ${l.name || ""} ${l.closer || ""}`.toLowerCase().includes(q));
         // Tri chronologique croissant (les premières heures de la journée d'abord)
-        const tsOf = (l) => toParis((l.lastCall && l.lastCall.date) || l.bookedAt || "");
+        const tsOf = (l) => toParis(callAtOf(l) || "");
         const bySort = (a, b) => tsOf(a).localeCompare(tsOf(b));
         const groups = ORDER.map((s) => ({ s, items: rows.filter((l) => l.stage === s).sort(bySort) })).filter((g) => g.items.length);
         const others = rows.filter((l) => !ORDER.includes(l.stage));
@@ -3339,7 +3342,7 @@ export default function App() {
         const srcOf = (l) => (l.lastCall ? "iClosed" : (l.bookedAt ? "Calendly" : "—"));
         const avaColor = (e) => ["#579BFC", "#A25DDC", "#00C875", "#FDAB3D", "#E2445C", "#66B2FF"][(String(e).charCodeAt(0) + String(e).length) % 6];
         const initials = (n) => String(n).split(/[\s@._-]+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase() || "?";
-        const callTs = (l) => toParis((l.lastCall && l.lastCall.date) || l.bookedAt || "");
+        const callTs = (l) => toParis(callAtOf(l) || "");
         const callDate = (l) => (callTs(l) ? callTs(l).slice(0, 10) : "—");
         const callTime = (l) => { const m = callTs(l).match(/[T ](\d{2}:\d{2})/); return m ? m[1] : ""; };
         const callEvent = (l) => (l.lastCall && l.lastCall.event) || l.bookedEvent || "";
@@ -3550,7 +3553,7 @@ export default function App() {
 
       {/* NO-SHOWS — liste complète, filtrable par date (setter + admin) */}
       {tab === "noshows" && (isAdmin || isSetterRole(me.role)) && (() => {
-        const dOfL = (l) => toParis((l.lastCall && l.lastCall.date) || l.bookedAt || "").slice(0, 10);
+        const dOfL = (l) => toParis(callAtOf(l) || "").slice(0, 10);
         const frD = (d) => (d ? `${d.slice(8, 10)}/${d.slice(5, 7)}` : "—");
         const initials = (n) => String(n).split(/[\s@._-]+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase() || "?";
         const avaColor = (e) => ["#579BFC", "#A25DDC", "#00C875", "#FDAB3D", "#E2445C", "#66B2FF"][(String(e).charCodeAt(0) + String(e).length) % 6];
@@ -3736,7 +3739,7 @@ export default function App() {
         const mineAll = (crm.leads || []).filter((l) => same(l.closer) || same(l.setter) || same(l.dmSetter));
         const mine = mineAll.filter((l) => l.hasCall !== false);
         const today = toISO(new Date());
-        const tsL = (l) => toParis((l.lastCall && l.lastCall.date) || l.bookedAt || "");
+        const tsL = (l) => toParis(callAtOf(l) || "");
         const dOfL = (l) => tsL(l).slice(0, 10);
         const tOfL = (l) => { const m = tsL(l).match(/T(\d{2}:\d{2})/); return m ? m[1] : ""; };
         const frD = (d) => (d ? `${d.slice(8, 10)}/${d.slice(5, 7)}` : "—");
