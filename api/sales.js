@@ -184,9 +184,16 @@ module.exports = async (req, res) => {
       const lf = (await cmd(["HGETALL", "crm:leads"])) || [];
       const lm = {};
       for (let i = 0; i < lf.length; i += 2) { try { lm[String(lf[i]).toLowerCase()] = JSON.parse(lf[i + 1]); } catch {} }
+      // Liens vente -> fiche posés dans « Matching ventes » (+ téléphone / nom saisis).
+      const links = {};
+      try { const lk = (await cmd(["HGETALL", "crm:salelinks"])) || []; for (let i = 0; i < lk.length; i += 2) { try { links[String(lk[i]).toLowerCase()] = JSON.parse(lk[i + 1]); } catch {} } } catch {}
       sales.forEach((s) => {
         const em = String(s.email || "").toLowerCase();
-        const l = lm[em];
+        const link = links[em] || {};
+        if (link.phone && !s.phone) s.phone = link.phone;
+        if (link.name && (!s.client || /@/.test(String(s.client)))) s.client = link.name;
+        if (link.leadEmail) s.leadEmail = link.leadEmail;
+        const l = lm[String(link.leadEmail || "").toLowerCase()] || lm[em];
         const dm = !!(l && (isDmLead(l) || l.dmSetter));
         if (l) {
           if (l.closer) s.closer = resolve(l.closer);

@@ -729,6 +729,8 @@ export default function App() {
   const [rplRes, setRplRes] = useState("all"); // Replays : "all" | "won" | "deposit" | "lost" | "pending"
   const [rplCloser, setRplCloser] = useState("all"); // Replays : filtre closer (admin)
   const [rplOnly, setRplOnly] = useState(false); // Replays : uniquement les calls avec enregistrement
+  const [matchView, setMatchView] = useState("unmatched"); // Matching ventes : "unmatched" | "all"
+  const [mlQ, setMlQ] = useState({}); // Matching ventes : recherche de fiche par vente (id -> texte)
   const [copiedKey, setCopiedKey] = useState(null); // Liens de paiement : bouton qui vient d'être copié (feedback 2 s)
   const copiedTimer = useRef(null);
   const copyWithFeedback = (key, txt) => {
@@ -773,7 +775,7 @@ export default function App() {
   // 2 min quand l'onglet est visible, et au retour sur la fenêtre) — rythme
   // choisi pour ménager le quota de commandes de la base Upstash.
   useEffect(() => {
-    if (!(tab === "crm" || tab === "calendrier" || tab === "espace" || tab === "vsl" || tab === "followups" || tab === "acomptes" || tab === "replays" || tab === "saphia" || tab === "reporting" || tab === "ads" || tab === "dm" || tab === "noshows")) return;
+    if (!(tab === "crm" || tab === "calendrier" || tab === "espace" || tab === "vsl" || tab === "followups" || tab === "acomptes" || tab === "replays" || tab === "saphia" || tab === "reporting" || tab === "ads" || tab === "dm" || tab === "matching" || tab === "noshows")) return;
     loadCrm(); if (isAdmin) loadTeam();
     const iv = setInterval(() => { if (document.visibilityState === "visible") loadCrm(true); }, 120000);
     const onFocus = () => { if (document.visibilityState !== "hidden") loadCrm(true); };
@@ -1121,9 +1123,22 @@ export default function App() {
   const overduesF = sortOverdue((impAll ? allOverdue : overdues).filter((i) => matchQ(i.sale)));
   const periodListF = periodList.filter((i) => matchQ(i.sale));
 
-  const SECTION = { clients: "Tableau de bord", cohortes: "Cohortes", mois: "Par mois", collecte: "À collecter", impayes: "Impayés", couts: "Coûts", closers: "Closers", crm: "CRM", calendrier: "Calendrier", equipe: "Équipe", espace: "Ma journée", vsl: "Leads VSL", acomptes: "Acomptes", followups: "Follow-ups", saphia: "Saphia follow up", reporting: "Reporting hebdo", ads: "Reporting Ads", dm: "Setting DM", noshows: "No-shows", replays: "Replays des calls", paiement: "Liens de paiement" };
+  const SECTION = { clients: "Tableau de bord", cohortes: "Cohortes", mois: "Par mois", collecte: "À collecter", impayes: "Impayés", couts: "Coûts", closers: "Closers", crm: "CRM", calendrier: "Calendrier", equipe: "Équipe", espace: "Ma journée", vsl: "Leads VSL", acomptes: "Acomptes", followups: "Follow-ups", saphia: "Saphia follow up", reporting: "Reporting hebdo", ads: "Reporting Ads", dm: "Setting DM", noshows: "No-shows", replays: "Replays des calls", paiement: "Liens de paiement", matching: "Matching ventes" };
   const go = (t) => { setTab(t); setNavOpen(false); };
   const navCls = (t) => `nav-item ${tab === t ? "active" : ""}`;
+  // Matching ventes : une vente est « reliée » quand une fiche CRM (avec call)
+  // porte son email de paiement (lien explicite, même email ou même téléphone).
+  const normPh = (p) => { const d = String(p || "").replace(/\D/g, ""); return d.length >= 8 ? d.slice(-9) : ""; };
+  const leadForSale = (sl) => {
+    const em = String(sl.email || "").toLowerCase();
+    const ph = normPh(sl.phone);
+    const ls = (crm.leads || []).filter((l) => l.hasCall !== false);
+    return ls.find((l) => (l.saleEmails || []).includes(em))
+      || ls.find((l) => em && String(l.email).toLowerCase() === em)
+      || (ph ? ls.find((l) => normPh(l.phone) === ph) : null)
+      || null;
+  };
+  const unmatchedN = isAdmin && (crm.leads || []).length ? sales.filter((sl) => sl.total > 0 && !leadForSale(sl)).length : 0;
   // Bulles rouges du menu (membres) : setter = leads VSL encore « Nouveau »
   // (jamais traités, 14 j) ; closer = follow-ups à faire (sans date, ou
   // date <= aujourd'hui). Un lead passé NRP / dead / non qualifié sort.
@@ -1675,6 +1690,7 @@ export default function App() {
             <button className={navCls("noshows")} onClick={() => go("noshows")}><AlertTriangle size={16} /> No-shows</button>
             <button className={navCls("replays")} onClick={() => go("replays")}><Video size={16} /> Replays</button>
             <button className={navCls("paiement")} onClick={() => go("paiement")}><Wallet size={16} /> Liens de paiement</button>
+            <button className={navCls("matching")} onClick={() => go("matching")}><Check size={16} /> Matching ventes{unmatchedN ? <span className="nav-badge" title="Ventes sans fiche CRM reliée">{unmatchedN}</span> : null}</button>
           </>) : (<>
             <div className="nav-label">Mon espace</div>
             <button className={navCls("espace")} onClick={() => go("espace")}><UserCheck size={16} /> Ma journée</button>
@@ -2164,6 +2180,126 @@ export default function App() {
               </div>
             ))}
             {others.length > 60 && <div className="mnd-foot"><span>+{others.length - 60} autres — réduis la période</span></div>}
+          </div>
+        </>);
+      })()}
+
+      {/* MATCHING VENTES — relier chaque vente du tableau de bord à sa fiche CRM (closer / setter) */}
+      {tab === "matching" && isAdmin && (() => {
+        const inP = (d) => d >= periodRange.from && d <= periodRange.to;
+        const q = crmQ.trim().toLowerCase();
+        const all = sales.filter((sl) => sl.total > 0).filter((sl) => inP(String(sl.closeDate || "").slice(0, 10)))
+          .filter((sl) => !q || [sl.client, sl.email, sl.phone, sl.closer, sl.setter].some((v) => String(v || "").toLowerCase().includes(q)))
+          .sort((a, b) => String(b.closeDate || "").localeCompare(String(a.closeDate || "")));
+        const rows = all.map((sl) => ({ sl, lead: leadForSale(sl) }));
+        const unmatched = rows.filter((r) => !r.lead);
+        const shown = matchView === "unmatched" ? unmatched : rows;
+        const frD = (d) => (d ? `${String(d).slice(8, 10)}/${String(d).slice(5, 7)}/${String(d).slice(0, 4)}` : "—");
+        const nmOf = (l) => (l.name && l.name !== l.email ? l.name : l.email);
+        const callLs = (crm.leads || []).filter((l) => l.hasCall !== false);
+        const callDay = (l) => toParis((l.lastCall && l.lastCall.date) || l.bookedAt || "").slice(0, 10);
+        const suggest = (sl) => {
+          const t = String(mlQ[sl.id] || "").trim().toLowerCase();
+          const words = String(sl.client || "").toLowerCase().split(/[\s@._-]+/).filter((w) => w.length >= 3 && !/gmail|hotmail|yahoo|outlook|icloud|free|com|fr/.test(w));
+          const score = (l) => {
+            const hay = `${l.name || ""} ${l.email} ${l.phone || ""}`.toLowerCase();
+            if (t) return hay.includes(t) ? 1 : 0;
+            return words.reduce((a, w) => a + (hay.includes(w) ? 1 : 0), 0);
+          };
+          return callLs.map((l) => ({ l, s: score(l) })).filter((x) => x.s > 0).sort((a, b) => b.s - a.s || String(callDay(b.l)).localeCompare(String(callDay(a.l)))).slice(0, 5).map((x) => x.l);
+        };
+        const link = async (sl, patch, msg) => {
+          try {
+            const r = await authFetch("/api/crm", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ linkSale: { email: String(sl.email || "").toLowerCase(), ...patch } }) });
+            const d = await r.json().catch(() => ({}));
+            if (!r.ok) throw new Error(d.error || `Erreur ${r.status}`);
+            flash(msg || "Lien enregistré ✅");
+            loadCrm();
+            try { const sr = await authFetch("/api/sales"); const sd = await sr.json(); if (sd && sd.sales) applyDbSales(normalize(sd.sales)); } catch (e2) { /* ignore */ }
+          } catch (e) { flash(`Matching : ${e.message}`); }
+        };
+        const saveField = (sl, field, value) => {
+          const v = String(value || "").trim();
+          if (v === String(sl[field === "name" ? "client" : "phone"] || "").trim()) return;
+          // Affichage tableau de bord (override local) + matching serveur (téléphone / nom).
+          persist(sales.map((s) => (s.id !== sl.id ? s : { ...s, [field === "name" ? "client" : "phone"]: v || s[field === "name" ? "client" : "phone"] })));
+          link(sl, { [field]: v }, field === "phone" ? "Téléphone enregistré — matching par numéro ✅" : "Nom enregistré ✅");
+        };
+        const paidOf = (sl) => sl.schedule.filter((i) => i.paid).reduce((a, i) => a + i.amount, 0);
+        return (<>
+          <div className="closers-head">
+            <div className="closers-title"><Check size={16} /> Matching ventes ↔ CRM · {periodRange.label}</div>
+            <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+              <div className="crm-views">
+                <button className={`crm-chip ${matchView === "unmatched" ? "on" : ""}`} onClick={() => setMatchView("unmatched")}>⚠️ Non reliées <b>{unmatched.length}</b></button>
+                <button className={`crm-chip ${matchView === "all" ? "on" : ""}`} onClick={() => setMatchView("all")}>Toutes <b>{rows.length}</b></button>
+              </div>
+              <div className="crm-search"><Search size={14} /><input value={crmQ} onChange={(e) => setCrmQ(e.target.value)} placeholder="Rechercher (nom, email, téléphone, closer…)" /></div>
+              <button className={`refresh-btn ${crmLoading ? "is-loading" : ""}`} onClick={() => loadCrm()} disabled={crmLoading}><RotateCcw size={15} className={crmLoading ? "spin" : ""} /> Actualiser</button>
+            </div>
+          </div>
+          <div className="esp-preview" style={{ background: "#F4F3FF", borderColor: "#D9D6FE", color: "#5925DC" }}>
+            <span style={{ minWidth: 0, lineHeight: 1.5 }}>🔗 Une vente est reliée à une fiche CRM par <b>email</b>, par <b>téléphone</b>, ou par un <b>lien manuel</b>. Une fois reliée, le cash remonte sur le closer / setter de la fiche (espace, commissions, reporting). Ajoute le téléphone ou choisis la fiche ci-dessous pour les ventes non reliées.</span>
+          </div>
+          <div className="kpis" style={{ marginTop: 14 }}>
+            <div className="kcard"><div className="kcard-l">Ventes sur la période</div><div className="kcard-v">{rows.length}</div><div className="kcard-f">{periodRange.label}</div></div>
+            <div className="kcard"><div className="kcard-l">Reliées</div><div className="kcard-v green">{rows.length - unmatched.length}</div><div className="kcard-f">closer / setter via la fiche CRM</div></div>
+            <div className="kcard"><div className="kcard-l">Non reliées</div><div className="kcard-v" style={{ color: unmatched.length ? "var(--red)" : "var(--green)" }}>{unmatched.length}</div><div className="kcard-f">{euro(unmatched.reduce((a, r) => a + paidOf(r.sl), 0))} encaissés sans fiche</div></div>
+          </div>
+          <div className="card" style={{ padding: 0, overflow: "hidden", marginTop: 18, marginBottom: 26 }}>
+            {shown.length === 0 && <div className="empty" style={{ padding: 22 }}>{matchView === "unmatched" ? "Toutes les ventes de la période sont reliées à une fiche 🎉" : "Aucune vente sur la période."}</div>}
+            {shown.map(({ sl, lead }) => (
+              <div className="cal-row" key={sl.id} style={{ alignItems: "flex-start", padding: "16px 18px" }}>
+                <div style={{ flex: "1 1 300px", minWidth: 260 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    <span className="cal-name">{sl.client}</span>
+                    <span className="rpl-res" style={lead ? { color: "#067647", borderColor: "#ABEFC6", background: "#ECFDF3" } : { color: "#B42318", borderColor: "#FECDCA", background: "#FEF3F2" }}>{lead ? "Reliée ✅" : "Non reliée ⚠️"}</span>
+                  </div>
+                  <div className="cal-sub" style={{ marginTop: 4 }}>{sl.email || "—"} · vente du {frD(sl.closeDate)} · <b>{euro(paidOf(sl))}</b> encaissés / {euro(sl.total)}{sl.offer ? ` · ${sl.offer}` : ""}</div>
+                  <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+                    <input className="crm-input" style={{ width: 190 }} placeholder="Nom du client" defaultValue={sl.client && !/@/.test(sl.client) ? sl.client : ""} key={sl.id + "|n|" + sl.client}
+                      onBlur={(e) => saveField(sl, "name", e.target.value)} />
+                    <input className="crm-input" style={{ width: 170 }} placeholder="📱 Téléphone" defaultValue={sl.phone || ""} key={sl.id + "|p|" + (sl.phone || "")}
+                      onBlur={(e) => saveField(sl, "phone", e.target.value)} />
+                  </div>
+                </div>
+                <div style={{ flex: "1 1 340px", minWidth: 280 }}>
+                  {lead ? (
+                    <div style={{ background: "#F9FAFB", border: "1px solid #E3E6EA", borderRadius: 12, padding: "10px 14px" }}>
+                      <div style={{ fontWeight: 700, fontSize: 13.5 }}>🧑 {nmOf(lead)} <span className="mut" style={{ fontWeight: 500 }}>· {lead.email}{lead.phone ? ` · ${lead.phone}` : ""}</span></div>
+                      <div className="mut" style={{ fontSize: 12.5, marginTop: 3 }}>call du {frD(callDay(lead))} · {(CRM_META[lead.stage] || [lead.stage])[0]} · closer <b>{lead.closer || "—"}</b> · setter call <b>{lead.setter || "—"}</b>{lead.dmSetter ? <> · setter DM <b>{lead.dmSetter}</b></> : null}</div>
+                      <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap", alignItems: "center" }}>
+                        {assignSelect(lead.closer, [...new Set([...dashClosers, ...callLs.map((l) => l.closer).filter(Boolean)])], (v) => updateLead(lead.email, { closer: v }), "Closer…")}
+                        {assignSelect(lead.setter, dashSetters, (v) => updateLead(lead.email, { setter: v }), "Setter call…")}
+                        {assignSelect(lead.dmSetter, dashSettersDm, (v) => updateLead(lead.email, { dmSetter: v }), "Setter DM…")}
+                        <button className="esp-open" onClick={() => setLeadOpen(lead.email)}>Ouvrir la fiche</button>
+                        {(lead.saleEmails || []).includes(String(sl.email || "").toLowerCase()) && String(lead.email).toLowerCase() !== String(sl.email || "").toLowerCase() && (
+                          <button className="esp-open" style={{ color: "#B42318", borderColor: "#FECDCA" }} onClick={() => link(sl, { leadEmail: "" }, "Lien retiré")}>Délier</button>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{ background: "#FFFAEB", border: "1px solid #FEDF89", borderRadius: 12, padding: "10px 14px" }}>
+                      <div style={{ fontWeight: 700, fontSize: 13 }}>Relier à une fiche CRM</div>
+                      <input className="crm-input" style={{ width: "100%", marginTop: 8 }} placeholder="Chercher un lead (nom, email, téléphone)…" value={mlQ[sl.id] || ""}
+                        onChange={(e) => setMlQ({ ...mlQ, [sl.id]: e.target.value })} />
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 8 }}>
+                        {suggest(sl).map((l) => (
+                          <div key={l.email} style={{ display: "flex", alignItems: "center", gap: 10, background: "#fff", border: "1px solid #E3E6EA", borderRadius: 10, padding: "7px 10px" }}>
+                            <div style={{ minWidth: 0, flex: 1 }}>
+                              <div style={{ fontWeight: 700, fontSize: 13, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{nmOf(l)} <span className="mut" style={{ fontWeight: 500 }}>· {l.email}</span></div>
+                              <div className="mut" style={{ fontSize: 12 }}>{l.phone ? `${l.phone} · ` : ""}call du {frD(callDay(l))} · {(CRM_META[l.stage] || [l.stage])[0]} · closer {l.closer || "—"}</div>
+                            </div>
+                            <button className="esp-open" style={{ borderColor: "#ABEFC6", color: "#067647" }} onClick={() => link(sl, { leadEmail: l.email, phone: sl.phone || undefined }, `Vente reliée à ${nmOf(l)} ✅`)}>Relier</button>
+                          </div>
+                        ))}
+                        {suggest(sl).length === 0 && <div className="mut" style={{ fontSize: 12.5 }}>Aucune fiche proposée — tape un nom, un email ou un numéro.</div>}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
           </div>
         </>);
       })()}

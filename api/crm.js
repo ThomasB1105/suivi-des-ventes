@@ -38,6 +38,32 @@ module.exports = async (req, res) => {
       let body = req.body;
       if (typeof body === "string") { try { body = JSON.parse(body); } catch { body = {}; } }
 
+      // ---- Lien vente -> fiche (admin, page Matching ventes) :
+      // { linkSale: { email, leadEmail?, phone?, name? } } ; leadEmail "" = délier.
+      if (isAdmin && body && body.linkSale) {
+        const em = String(body.linkSale.email || "").trim().toLowerCase();
+        if (!em) { res.status(400).json({ error: "Email de la vente manquant." }); return; }
+        let cur = {};
+        try { const s0 = await cmd(["HGET", "crm:salelinks", em]); cur = s0 ? JSON.parse(s0) : {}; } catch {}
+        const nxt = { ...cur };
+        if (body.linkSale.leadEmail !== undefined) nxt.leadEmail = String(body.linkSale.leadEmail || "").trim().toLowerCase() || undefined;
+        if (body.linkSale.phone !== undefined) nxt.phone = String(body.linkSale.phone || "").trim() || undefined;
+        if (body.linkSale.name !== undefined) nxt.name = String(body.linkSale.name || "").trim() || undefined;
+        nxt.at = new Date().toISOString();
+        await cmd(["HSET", "crm:salelinks", em, JSON.stringify(nxt)]);
+        // Le téléphone saisi complète la fiche liée si elle n'en a pas.
+        if (nxt.leadEmail && nxt.phone) {
+          try {
+            const s1 = await cmd(["HGET", "crm:leads", nxt.leadEmail]);
+            const L = s1 ? JSON.parse(s1) : null;
+            if (L && !L.phone) { L.phone = nxt.phone; L.updatedAt = new Date().toISOString(); await cmd(["HSET", "crm:leads", nxt.leadEmail, JSON.stringify(L)]); }
+          } catch {}
+        }
+        invalidateLeads();
+        res.status(200).json({ ok: true, link: nxt });
+        return;
+      }
+
       // ---- Attribution EN MASSE (admin) : tous les calls d'aujourd'hui et à
       // venir -> un setter/closer donné. { bulkAssign: { role, name } } ----
       if (isAdmin && body && body.bulkAssign) {
