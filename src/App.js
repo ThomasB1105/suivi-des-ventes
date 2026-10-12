@@ -110,7 +110,9 @@ const STORAGE_KEY = "melo_sales_v5";
 // comptent ni en présent ni en no-show.
 const callDayOf = (l) => toParis((l.lastCall && l.lastCall.date) || l.bookedAt || "").slice(0, 10);
 const heldCall = (l, today) => ["show", "won", "lost"].includes(l.stage)
-  || (l.stage === "booked" && callDayOf(l) < today && !["noshow", "cancelled"].includes(l.showUp || ""));
+  || (l.stage === "booked" && callDayOf(l) < today && !["noshow", "cancelled"].includes(l.showUp || "") && l.setStatus !== "cancel");
+// Call annulé (plateforme, closer ou setter) — jamais compté en présent ni en no-show.
+const cancelledCall = (l) => l.showUp === "cancelled" || l.setStatus === "cancel" || (l.stage === "setting" && !!l.bookedAt);
 
 const CRM_META = {
   booked: ["Call booké", "#579BFC"], show: ["Call fait · en cours", "#FDAB3D"], won: ["Closé", "#00C875"],
@@ -2499,6 +2501,8 @@ export default function App() {
         const upcomingN = calls.filter((l) => dOfL(l) > today0w).length;
         const present = calls.filter((l) => heldCall(l, today0w)); // non renseigné = honoré
         const noshowN = calls.filter((l) => l.stage === "noshow").length;
+        const cancelledN = calls.filter((l) => dOfL(l) <= today0w && !heldCall(l, today0w) && l.stage !== "noshow" && cancelledCall(l)).length;
+        const otherN = calls.length - present.length - noshowN - upcomingN - cancelledN; // non qualifiés / dead / NRP…
         const closed = calls.filter((l) => l.stage === "won");
         const showRate = present.length + noshowN ? present.length / (present.length + noshowN) : 0;
         const closingRate = present.length ? closed.length / present.length : 0;
@@ -2526,10 +2530,12 @@ export default function App() {
           const c = calls.filter((l) => same(l.closer));
           const p = c.filter((l) => heldCall(l, today0w));
           const ns = c.filter((l) => l.stage === "noshow").length;
+          const up = c.filter((l) => dOfL(l) > today0w).length;
+          const canc = c.filter((l) => dOfL(l) <= today0w && !heldCall(l, today0w) && l.stage !== "noshow" && cancelledCall(l)).length;
           const w = c.filter((l) => l.stage === "won").length;
           const sSales = weekSales.filter((sl) => same(saleCloser(sl)));
           const cash = sales.filter((sl) => same(saleCloser(sl))).reduce((a, sl) => a + sl.schedule.filter((i) => i.paid && inWeek(i.dueDate)).reduce((b, i) => b + i.amount, 0), 0);
-          return { n, calls: c.length, present: p.length, ns, won: w, ventes: sSales.length, cash,
+          return { n, calls: c.length, present: p.length, ns, up, canc, other: c.length - p.length - ns - up - canc, won: w, ventes: sSales.length, cash,
             showRate: p.length + ns ? p.length / (p.length + ns) : 0, closingRate: p.length ? w / p.length : 0 };
         }).sort((a, b) => b.cash - a.cash || b.won - a.won);
 
@@ -2546,7 +2552,7 @@ export default function App() {
           </div>
 
           <div className="kpis" style={{ marginTop: 4 }}>
-            <div className="kcard"><div className="kcard-l">Calls</div><div className="kcard-v">{calls.length}</div><div className="kcard-f">{present.length} honorés · {noshowN} no-show{upcomingN ? ` · ${upcomingN} à venir` : ""}</div></div>
+            <div className="kcard"><div className="kcard-l">Calls</div><div className="kcard-v">{calls.length}</div><div className="kcard-f">{present.length} honorés · {noshowN} no-show{cancelledN ? ` · ${cancelledN} annulés` : ""}{otherN > 0 ? ` · ${otherN} écartés` : ""}{upcomingN ? ` · ${upcomingN} à venir` : ""}</div></div>
             <div className="kcard"><div className="kcard-l">Show-up</div><div className="kcard-v">{pct(showRate)}</div><div className="kcard-f">présents / (présents + no-show)</div></div>
             <div className="kcard"><div className="kcard-l">Closés</div><div className="kcard-v green">{closed.length}</div><div className="kcard-f">taux de closing {pct(closingRate)}</div></div>
             <div className="kcard"><div className="kcard-l">Ventes signées</div><div className="kcard-v">{weekSales.length}</div><div className="kcard-f">{euro(contracted)} contractés</div></div>
@@ -2558,7 +2564,7 @@ export default function App() {
           <div className="section-h" style={{ marginTop: 26 }}><UserCheck size={15} /> Par closer</div>
           <div className="card" style={{ padding: 0, overflowX: "auto" }}>
             <table className="tbl">
-              <thead><tr><th>Closer</th><th className="num">Calls</th><th className="num">Honorés</th><th className="num">No-show</th><th className="num">Show-up</th><th className="num">Closés</th><th className="num">Taux closing</th><th className="num">Ventes signées</th><th className="num">Cash collecté</th></tr></thead>
+              <thead><tr><th>Closer</th><th className="num">Calls</th><th className="num">Honorés</th><th className="num">No-show</th><th className="num">Annulés</th><th className="num">À venir</th><th className="num">Show-up</th><th className="num">Closés</th><th className="num">Taux closing</th><th className="num">Ventes signées</th><th className="num">Cash collecté</th></tr></thead>
               <tbody>
                 {perCloser.map((r) => (
                   <tr key={r.n}>
@@ -2566,6 +2572,8 @@ export default function App() {
                     <td className="num">{r.calls}</td>
                     <td className="num">{r.present}</td>
                     <td className="num" style={r.ns ? { color: "var(--red)", fontWeight: 700 } : undefined}>{r.ns}</td>
+                    <td className="num mut" title={r.other > 0 ? `+ ${r.other} écarté(s) (non qualifié / dead)` : ""}>{r.canc}{r.other > 0 ? <span style={{ fontSize: 11 }}> +{r.other}</span> : null}</td>
+                    <td className="num mut">{r.up}</td>
                     <td className="num">{r.calls ? pct(r.showRate) : "—"}</td>
                     <td className="num green" style={{ fontWeight: 700 }}>{r.won}</td>
                     <td className="num">{r.present ? pct(r.closingRate) : "—"}</td>
