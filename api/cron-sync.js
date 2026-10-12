@@ -1,5 +1,11 @@
 /* eslint-disable */
-// Rattrapage automatique quotidien (Vercel Cron, voir vercel.json).
+// Rattrapage automatique quotidien.
+//
+// Déclenché par un planificateur externe (Make « Schedule » ou cron-job.org)
+// qui appelle GET /api/cron-sync avec l'en-tête
+//   Authorization: Bearer <CRON_SECRET>
+// (le cron Vercel natif fait échouer le déploiement sur ce projet, on ne
+// l'utilise pas).
 //
 // Les webhooks (Calendly, iClosed) peuvent être refusés — base indisponible,
 // secret changé, abonnement Calendly expiré… Ce cron ré-importe chaque jour

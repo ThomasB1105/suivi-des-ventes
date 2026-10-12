@@ -1,12 +1,19 @@
 {
   "functions": {
-    "api/iclosed-import.js": { "maxDuration": 60 },
-    "api/stripe-import.js": { "maxDuration": 60 },
-    "api/whop-import.js": { "maxDuration": 60 },
-    "api/calendly-import.js": { "maxDuration": 60 },
-    "api/cron-sync.js": { "maxDuration": 60 }
-  },
-  "crons": [
-    { "path": "/api/cron-sync", "schedule": "0 5 * * *" }
-  ]
+    "api/iclosed-import.js": {
+      "maxDuration": 60
+    },
+    "api/stripe-import.js": {
+      "maxDuration": 60
+    },
+    "api/whop-import.js": {
+      "maxDuration": 60
+    },
+    "api/calendly-import.js": {
+      "maxDuration": 60
+    },
+    "api/cron-sync.js": {
+      "maxDuration": 60
+    }
+  }
 }
