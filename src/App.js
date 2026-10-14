@@ -3608,14 +3608,18 @@ export default function App() {
         const win = (nsView === "all" || nsView === "period") ? 100000 : Number(nsView);
         const minNs = toISO(new Date(Date.now() - win * 864e5));
         const q = crmQ.trim().toLowerCase();
-        const rows = (crm.leads || [])
+        // Setter : ses no-shows + ceux des autres (partagés par l'API, avec téléphone).
+        const pool = isAdmin ? (crm.leads || []) : [...(crm.leads || []), ...(crm.shared || []).filter((l) => l.stage === "noshow")];
+        const seenNs = new Set();
+        const rows = pool
+          .filter((l) => { if (seenNs.has(l.email)) return false; seenNs.add(l.email); return true; })
           .filter((l) => l.stage === "noshow" && dOfL(l))
           .filter((l) => nsView === "period" ? (dOfL(l) >= periodRange.from && dOfL(l) <= periodRange.to) : (nsView === "all" || dOfL(l) >= minNs))
           .filter((l) => !q || [l.name, l.email, l.phone, l.closer, l.setter].some((v) => String(v || "").toLowerCase().includes(q)))
           .sort((a, b) => dOfL(b).localeCompare(dOfL(a)));
         return (<>
           <div className="closers-head">
-            <div className="closers-title"><AlertTriangle size={16} /> No-shows à re-booker</div>
+            <div className="closers-title"><AlertTriangle size={16} /> No-shows à re-booker{!isAdmin ? <span className="mut" style={{ fontWeight: 500, fontSize: 12.5 }}> · toute l'équipe</span> : null}</div>
             <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
               <div className="crm-views">
                 {[["7", "7 j"], ["30", "30 j"], ["90", "90 j"], ["all", "Tout"], ["period", "📅 Période"]].map(([v, lbl]) => (
@@ -3637,7 +3641,9 @@ export default function App() {
                 </div>
                 <span className="esp-tag" style={{ color: "#B42318", borderColor: "#FECDCA", background: "#FEF3F2", marginLeft: "auto" }}>No-show</span>
                 {l.phone ? <a className="ls-link ls-join" style={{ flex: "none", textDecoration: "none" }} href={`tel:${String(l.phone).replace(/[^+0-9]/g, "")}`}>📱 Appeler</a> : null}
-                <button className="esp-open" onClick={() => setLeadOpen(l.email)}>Ouvrir la fiche</button>
+                {l.phone ? <a className="ls-link" style={{ flex: "none", textDecoration: "none", borderColor: "#ABEFC6", color: "#067647" }} href={`https://wa.me/${String(l.phone).replace(/\D/g, "")}`} target="_blank" rel="noreferrer" title="Ouvrir la conversation WhatsApp">💬 WhatsApp</a> : null}
+                {l.phone ? <button className={`esp-open pay-copy ${copiedKey === "ns" + l.email ? "copied" : ""}`} onClick={() => copyWithFeedback("ns" + l.email, String(l.phone))} title="Copier le numéro">{copiedKey === "ns" + l.email ? "✓ Copié" : "📋 N°"}</button> : null}
+                {!l.shared && <button className="esp-open" onClick={() => setLeadOpen(l.email)}>Ouvrir la fiche</button>}
               </div>
             ))}
             {rows.length > 150 && <div className="mnd-foot"><span>+{rows.length - 150} autres — réduis la période ou affine la recherche</span></div>}

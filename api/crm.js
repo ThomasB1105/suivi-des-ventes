@@ -186,11 +186,17 @@ module.exports = async (req, res) => {
     if (!isAdmin) {
       // Closer : en plus de ses leads, les calls des AUTRES closers qui ont un
       // replay Fathom (onglet Replays, lecture seule, sans téléphone).
+      // Setter : en plus de ses leads, TOUS les no-shows (onglet No-shows, avec
+      // téléphone : c'est le setter qui re-booke, quel que soit le closer).
       const isCloserAcct = !["setter", "setter_dm"].includes(me.role) && !isRecup;
-      const SHARED_KEYS = ["email", "name", "closer", "setter", "dmSetter", "stage", "callResult", "showUp", "amount", "fathom", "notes", "bookedAt", "bookedEvent", "lastCall", "hasCall"];
+      const isSetterAcct = ["setter", "setter_dm"].includes(me.role);
+      const SHARED_KEYS = ["email", "name", "closer", "setter", "dmSetter", "stage", "callResult", "showUp", "amount", "fathom", "notes", "bookedAt", "bookedEvent", "lastCall", "hasCall", "callAt"];
+      const shareReplay = (l) => isCloserAcct && l.fathom && l.hasCall !== false;
+      const shareNoShow = (l) => isSetterAcct && l.stage === "noshow" && l.hasCall !== false;
+      const pickKeys = (l, keys) => ({ ...Object.fromEntries(keys.filter((k) => l[k] !== undefined).map((k) => [k, l[k]])), shared: true });
       leads = leads
-        .filter((l) => canSee(l) || (isCloserAcct && l.fathom && l.hasCall !== false))
-        .map((l) => canSee(l) ? l : { ...Object.fromEntries(SHARED_KEYS.filter((k) => l[k] !== undefined).map((k) => [k, l[k]])), shared: true });
+        .filter((l) => canSee(l) || shareReplay(l) || shareNoShow(l))
+        .map((l) => canSee(l) ? l : pickKeys(l, shareNoShow(l) ? [...SHARED_KEYS, "phone", "links"] : SHARED_KEYS));
     }
 
     res.setHeader("Cache-Control", "no-store");
