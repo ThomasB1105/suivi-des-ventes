@@ -15,6 +15,29 @@ const PAY_OFFERS = [
   { total: 2390, plans: ["plan_p7goTRMSYAoCm", "plan_6lH45EvK3yV9F", "plan_gQPSBber2xJr0", "plan_C1Fbktg1ph3YS"] },
 ];
 const PAY_DEPOSIT = { amount: 200, plan: "plan_ozrkhCDBfq4JY", promo: "ecom200" };
+// Accompagnement en one-to-one — liens de paiement Stripe (publics). Chaque
+// lien encaisse UN paiement du montant indiqué : pour 2/3/4 fois, le client
+// repasse sur le même lien à chaque échéance (pas de prélèvement automatique).
+const PAY_STRIPE = [
+  { total: 3497, plans: [
+    { n: 1, amount: 3497, url: "https://buy.stripe.com/dRm28t6PW4zxbK8a4f1Fe0p" },
+    { n: 2, amount: 1748.5, url: "https://buy.stripe.com/fZu00leio1nlbK8ekv1Fe0q" },
+    { n: 3, amount: 1165.67, url: "https://buy.stripe.com/cNi5kFb6c3vt5lKfoz1Fe0r" },
+    { n: 4, amount: 874.25, url: "https://buy.stripe.com/14AcN7cagd635lK1xJ1Fe0s" },
+  ] },
+  { total: 2797, plans: [
+    { n: 1, amount: 2797, url: "https://buy.stripe.com/aFa4gB0ryc1Z8xWa4f1Fe0t" },
+    { n: 2, amount: 1398.5, url: "https://buy.stripe.com/00w4gB7U0feb01qgsD1Fe0u" },
+    { n: 3, amount: 932.33, url: "https://buy.stripe.com/5kQcN72zG1nl6pO1xJ1Fe0v" },
+    { n: 4, amount: 699.25, url: "https://buy.stripe.com/5kQ28ta284zxg0o3FR1Fe0w" },
+  ] },
+  { total: 2397, plans: [
+    { n: 1, amount: 2397, url: "https://buy.stripe.com/8x214p7U01nl4hG2BN1Fe0x" },
+    { n: 2, amount: 1198.5, url: "https://buy.stripe.com/6oU8wR1vC9TR29y90b1Fe0y" },
+    { n: 3, amount: 799, url: "https://buy.stripe.com/eVq28t8Y42rp4hG4JV1Fe0z" },
+    { n: 4, amount: 599.25, url: "https://buy.stripe.com/7sYdRb6PW8PNcOc5NZ1Fe0A" },
+  ] },
+];
 const whopUrl = (plan) => `https://whop.com/checkout/${plan}`;
 // Rôles équipe : closer | setter (VSL, round-robin) | setter_dm (setting DM, hors round-robin)
 const isSetterRole = (r) => r === "setter" || r === "setter_dm";
@@ -2340,7 +2363,8 @@ export default function App() {
               <CopyBtn k="promo" txt={PAY_DEPOSIT.promo} label="Copier le code" doneLabel="✓ Code copié !" />
             </div>
           </div>
-          <div className="pay-grid">
+          <div className="esp-sec" style={{ marginTop: 26 }}>🎓 Ecom Ascension · Whop</div>
+          <div className="pay-grid" style={{ marginTop: 10 }}>
             {PAY_OFFERS.map((o) => (
               <div className="pay-card" key={o.total}>
                 <div className="pay-head"><span className="pay-total">{eur(o.total)}</span><span className="mut" style={{ fontSize: 12.5 }}>Ecom Ascension · {o.plans.length} plan{o.plans.length > 1 ? "s" : ""} de paiement</span></div>
@@ -2355,6 +2379,29 @@ export default function App() {
                     <a className="esp-open" href={url} target="_blank" rel="noreferrer" style={{ textDecoration: "none" }}>Ouvrir</a>
                   </div>
                 ); })}
+              </div>
+            ))}
+          </div>
+
+          <div className="esp-sec" style={{ marginTop: 30 }}>🤝 Accompagnement en one-to-one · Stripe</div>
+          <div className="esp-preview" style={{ marginTop: 0, background: "#EFF8FF", borderColor: "#B2DDFF", color: "#175CD3" }}>
+            <span style={{ minWidth: 0, lineHeight: 1.5 }}>⚠️ Chaque lien encaisse <b>un seul paiement</b> du montant indiqué. Pour un paiement en 2, 3 ou 4 fois, le client <b>repasse sur le même lien à chaque échéance</b> — aucun prélèvement automatique : note la date du 1er paiement et renvoie le même lien chaque mois jusqu'à la dernière échéance. La page affiche « Accompagnement en one-to-one » (CB, Apple Pay, Link) ; le reçu part par e-mail et le paiement remonte dans Stripe › Paiements.</span>
+          </div>
+          <div className="pay-grid" style={{ marginTop: 12 }}>
+            {PAY_STRIPE.map((o) => (
+              <div className="pay-card" key={"st" + o.total}>
+                <div className="pay-head"><span className="pay-total">{eur(o.total)}</span><span className="mut" style={{ fontSize: 12.5 }}>One-to-one · {o.plans.length} formules</span></div>
+                {o.plans.map((p) => (
+                  <div className="pay-row" key={p.url}>
+                    <span className="pay-x" style={{ background: "#EFF8FF", color: "#175CD3" }}>{p.n}x</span>
+                    <div className="pay-lab">
+                      <b>{p.n === 1 ? `Comptant · ${eur(p.amount)}` : `${p.n} × ${p.amount.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`}</b>
+                      <span title={p.url}>{p.url}</span>
+                    </div>
+                    <CopyBtn k={p.url} txt={p.url} label="📋 Copier" doneLabel="✓ Copié !" style={{ borderColor: "#B2DDFF", color: "#175CD3", minWidth: 96 }} />
+                    <a className="esp-open" href={p.url} target="_blank" rel="noreferrer" style={{ textDecoration: "none" }}>Ouvrir</a>
+                  </div>
+                ))}
               </div>
             ))}
           </div>
