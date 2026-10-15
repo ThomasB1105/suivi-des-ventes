@@ -383,7 +383,7 @@ export default function App() {
     try { return JSON.parse(localStorage.getItem("melo_costs_v1") || "[]").map((c) => ({ ...c, month: c.month || toISO(today).slice(0, 7) })); }
     catch (e) { return []; }
   });
-  const [costForm, setCostForm] = useState({ name: "", amount: "", type: "logiciel" });
+  const [costForm, setCostForm] = useState({ name: "", amount: "", type: "logiciel", channel: "paid" }); // channel : "paid" (payant/Ads) | "organic"
   const [costMonth, setCostMonth] = useState(() => toISO(today).slice(0, 7));
   const [metaSpend, setMetaSpend] = useState({ configured: false, spend: 0 });
   const [callStats, setCallStats] = useState({ closers: [], questions: [], totalCalls: 0 });
@@ -400,10 +400,14 @@ export default function App() {
   const addCost = () => {
     const amt = parseFloat(String(costForm.amount).replace(",", ".")) || 0;
     if (!costForm.name.trim() || amt <= 0) { flash("Indique un nom et un montant."); return; }
-    persistCosts([...costs, { id: `c-${Date.now()}`, month: costMonth, name: costForm.name.trim(), amount: amt, type: costForm.type }]);
-    setCostForm({ name: "", amount: "", type: "logiciel" });
+    persistCosts([...costs, { id: `c-${Date.now()}`, month: costMonth, name: costForm.name.trim(), amount: amt, type: costForm.type, channel: costForm.channel === "organic" ? "organic" : "paid" }]);
+    setCostForm({ name: "", amount: "", type: "logiciel", channel: costForm.channel });
   };
   const removeCost = (id) => persistCosts(costs.filter((c) => c.id !== id));
+  const setCostChannel = (id, channel) => persistCosts(costs.map((c) => (c.id === id ? { ...c, channel } : c)));
+  // Canal d'un coût : organique ou payant. Les coûts saisis avant l'ajout du
+  // canal comptent comme payants (c'est ainsi qu'ils étaient traités).
+  const costChan = (c) => (c.channel === "organic" ? "organic" : "paid");
   const copyPrevMonthCosts = () => {
     const [y, m] = costMonth.split("-").map(Number);
     const prev = `${m === 1 ? y - 1 : y}-${String(m === 1 ? 12 : m - 1).padStart(2, "0")}`;
@@ -1102,9 +1106,13 @@ export default function App() {
 
   // Coûts réels de la période (somme des coûts de chaque mois) + budget Ads (manuel ou Meta).
   const fromM = periodRange.from.slice(0, 7), toM = periodRange.to.slice(0, 7);
-  const periodSoftwareCosts = costs.filter((c) => c.month >= fromM && c.month <= toM).reduce((a, c) => a + c.amount, 0);
+  const periodCostList = costs.filter((c) => c.month >= fromM && c.month <= toM);
+  const periodSoftwareCosts = periodCostList.reduce((a, c) => a + c.amount, 0);
+  const periodOrganicCosts = periodCostList.filter((c) => costChan(c) === "organic").reduce((a, c) => a + c.amount, 0);
+  const periodPaidCosts = periodSoftwareCosts - periodOrganicCosts;
   const monthCosts = costs.filter((c) => c.month === costMonth).sort((a, b) => String(a.name).localeCompare(String(b.name)));
   const monthCostsTotal = monthCosts.reduce((a, c) => a + c.amount, 0);
+  const monthOrganicCosts = monthCosts.filter((c) => costChan(c) === "organic").reduce((a, c) => a + c.amount, 0);
   const metaCost = metaSpend && metaSpend.spend ? Number(metaSpend.spend) : 0;
   const adsBudgetPeriod = Object.entries(adsByMonth).filter(([m]) => m >= fromM && m <= toM).reduce((a, [, v]) => a + Number(v || 0), 0);
   const adsSpend = adsBudgetPeriod > 0 ? adsBudgetPeriod : metaCost; // manuel prioritaire, sinon Meta
@@ -1113,7 +1121,12 @@ export default function App() {
   const totalCosts = periodSoftwareCosts + adsSpend;
   const roas = adsSpend > 0 ? revenueAds / adsSpend : 0;       // Revenu Ads / budget Ads
   const mer = adsSpend > 0 ? revenueTotal / adsSpend : 0;      // Revenu total / Ads
-  const revenueANG = (revenueAds - totalCosts) * 0.2;          // (Revenu Ads − coûts) × 20%
+  const revenueOrg = kp.org;             // revenu encaissé attribué "organique"
+  // Commission ANG = 20 % de la marge Ads (revenu Ads − coûts payants − budget Ads)
+  //                + 10 % de la marge organique (revenu organique − coûts organiques)
+  const angAds = (revenueAds - periodPaidCosts - adsSpend) * 0.2;
+  const angOrg = (revenueOrg - periodOrganicCosts) * 0.1;
+  const revenueANG = angAds + angOrg;
   const netProfit = revenueTotal - totalCosts;
   const bossMoney = revenueTotal - totalCosts - revenueANG;    // argent de poche du boss
 
@@ -1824,11 +1837,12 @@ export default function App() {
         <div className={`card ${kp.overdueCount ? "kpi-alert" : ""}`}><div className="kpi-label">Impayés</div><div className="kpi-val">{euro(kp.overdueAmt)}</div><div className="kpi-foot">{kp.overdueCount} échéance{kp.overdueCount > 1 ? "s" : ""} en retard<br />{Delta(kp.overdueAmt, kpYoy.overdueAmt, "YoY")}</div></div>
         <div className="card"><div className="kpi-label" style={{ display: "flex", alignItems: "center", gap: 6 }}><Leaf size={13} color="#2BD9A0" /> Encaissé organique</div><div className="kpi-val green">{euro(kp.org)}</div><div className="kpi-foot">{kp.collected ? Math.round((kp.org / kp.collected) * 100) : 0}% de l'encaissé<br />{Delta(kp.org, kpPrev.org, "MoM")}{Delta(kp.org, kpYoy.org, "YoY")}</div></div>
         <div className="card"><div className="kpi-label" style={{ display: "flex", alignItems: "center", gap: 6 }}><Megaphone size={13} color="#7C5CFF" /> Encaissé paid</div><div className="kpi-val" style={{ color: "var(--cyan)" }}>{euro(kp.paid)}</div><div className="kpi-foot">{kp.collected ? Math.round((kp.paid / kp.collected) * 100) : 0}% de l'encaissé<br />{Delta(kp.paid, kpPrev.paid, "MoM")}{Delta(kp.paid, kpYoy.paid, "YoY")}</div></div>
-        <div className="card"><div className="kpi-label" style={{ display: "flex", alignItems: "center", gap: 6 }}><Wallet size={13} color="#FFB020" /> Coût total</div><div className="kpi-val" style={{ color: "var(--amber)" }}>{euro(totalCosts)}</div><div className="kpi-foot">{euro(periodSoftwareCosts)} coûts + {euro(adsSpend)} Ads</div></div>
+        <div className="card"><div className="kpi-label" style={{ display: "flex", alignItems: "center", gap: 6 }}><Wallet size={13} color="#FFB020" /> Coût total</div><div className="kpi-val" style={{ color: "var(--amber)" }}>{euro(totalCosts)}</div><div className="kpi-foot">{euro(periodPaidCosts)} payant + {euro(periodOrganicCosts)} organique + {euro(adsSpend)} Ads</div></div>
+        <div className="card"><div className="kpi-label" style={{ display: "flex", alignItems: "center", gap: 6 }}><Leaf size={13} color="#2BD9A0" /> Coût organique</div><div className="kpi-val" style={{ color: "var(--amber)" }}>{euro(periodOrganicCosts)}</div><div className="kpi-foot">marge organique : {euro(revenueOrg - periodOrganicCosts)}</div></div>
         <div className="card"><div className="kpi-label">ROAS</div><div className="kpi-val">{adsSpend > 0 ? `${roas.toFixed(2)}x` : "—"}</div><div className="kpi-foot">Revenu Ads / budget Ads</div></div>
         <div className="card"><div className="kpi-label">MER</div><div className="kpi-val">{adsSpend > 0 ? `${mer.toFixed(2)}x` : "—"}</div><div className="kpi-foot">Revenu total / Ads</div></div>
         <div className={`card ${netProfit < 0 ? "kpi-alert" : ""}`}><div className="kpi-label">Bénéfice net</div><div className="kpi-val" style={{ color: netProfit >= 0 ? "var(--green)" : "var(--red)" }}>{euro(netProfit)}</div><div className="kpi-foot">CA collecté − coûts</div></div>
-        <div className="card card-ang"><div className="kpi-label">💸 La moula d'ANG</div><div className="kpi-val">{euro(revenueANG)}</div><div className="kpi-foot">(Revenu Ads − coûts) × 20%</div></div>
+        <div className="card card-ang"><div className="kpi-label">💸 La moula d'ANG</div><div className="kpi-val">{euro(revenueANG)}</div><div className="kpi-foot">20% Ads {euro(angAds)} + 10% orga {euro(angOrg)}</div></div>
         <div className="card card-boss"><div className="kpi-label">💰 Argent de poche du boss</div><div className="kpi-val">{euro(bossMoney)}</div><div className="kpi-foot">collecté − coûts − ANG</div></div>
       </div>
 
@@ -3016,10 +3030,12 @@ export default function App() {
       {/* COÛTS — page mois par mois */}
       {tab === "couts" && (<>
         <div className="kpis" style={{ marginTop: 4 }}>
-          <div className="card"><div className="kpi-label">Coûts du mois · {monthLabel(costMonth)}</div><div className="kpi-val">{euro(monthCostsTotal)}</div><div className="kpi-foot">{monthCosts.length} poste{monthCosts.length > 1 ? "s" : ""} · hors Ads</div></div>
+          <div className="card"><div className="kpi-label">Coûts du mois · {monthLabel(costMonth)}</div><div className="kpi-val">{euro(monthCostsTotal)}</div><div className="kpi-foot">{monthCosts.length} poste{monthCosts.length > 1 ? "s" : ""} · {euro(monthOrganicCosts)} orga + {euro(monthCostsTotal - monthOrganicCosts)} payant</div></div>
+          <div className="card"><div className="kpi-label" style={{ display: "flex", alignItems: "center", gap: 6 }}><Leaf size={13} color="#2BD9A0" /> Coûts organiques · {periodRange.label}</div><div className="kpi-val" style={{ color: "var(--amber)" }}>{euro(periodOrganicCosts)}</div><div className="kpi-foot">marge orga {euro(revenueOrg - periodOrganicCosts)} → 10% ANG = {euro(angOrg)}</div></div>
+          <div className="card"><div className="kpi-label" style={{ display: "flex", alignItems: "center", gap: 6 }}><Megaphone size={13} color="#7C5CFF" /> Coûts payants · {periodRange.label}</div><div className="kpi-val" style={{ color: "var(--amber)" }}>{euro(periodPaidCosts + adsSpend)}</div><div className="kpi-foot">{euro(periodPaidCosts)} coûts + {euro(adsSpend)} Ads → 20% ANG = {euro(angAds)}</div></div>
           <div className="card"><div className="kpi-label" style={{ display: "flex", alignItems: "center", gap: 6 }}><Megaphone size={13} color="#7C5CFF" /> Budget Ads · {periodRange.label}</div><div className="kpi-val" style={{ color: "var(--cyan)" }}>{euro(adsSpend)}</div><div className="kpi-foot">ROAS {adsSpend ? `${roas.toFixed(2)}x` : "—"} · MER {adsSpend ? `${mer.toFixed(2)}x` : "—"}</div></div>
           <div className="card"><div className="kpi-label">Coûts totaux · {periodRange.label}</div><div className="kpi-val" style={{ color: "var(--amber)" }}>{euro(totalCosts)}</div><div className="kpi-foot">{euro(periodSoftwareCosts)} coûts + {euro(adsSpend)} Ads</div></div>
-          <div className={`card ${netProfit < 0 ? "kpi-alert" : ""}`}><div className="kpi-label">Bénéfice net · {periodRange.label}</div><div className="kpi-val" style={{ color: netProfit >= 0 ? "var(--green)" : "var(--red)" }}>{euro(netProfit)}</div><div className="kpi-foot">Revenue ANG : {euro(revenueANG)}</div></div>
+          <div className={`card ${netProfit < 0 ? "kpi-alert" : ""}`}><div className="kpi-label">Bénéfice net · {periodRange.label}</div><div className="kpi-val" style={{ color: netProfit >= 0 ? "var(--green)" : "var(--red)" }}>{euro(netProfit)}</div><div className="kpi-foot">Commission ANG : {euro(revenueANG)} (20% Ads + 10% orga)</div></div>
         </div>
 
         <div className="section-h" style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
@@ -3048,23 +3064,35 @@ export default function App() {
               <option value="pub">Publicité</option>
               <option value="autre">Autre</option>
             </select>
+            <select value={costForm.channel} onChange={(e) => setCostForm({ ...costForm, channel: e.target.value })} title="Canal : le coût réduit la marge Ads (payant) ou la marge organique">
+              <option value="paid">📣 Coût payant (Ads)</option>
+              <option value="organic">🌱 Coût organique</option>
+            </select>
             <button className="btn-primary" onClick={addCost}><Plus size={16} /> Ajouter à {monthLabel(costMonth)}</button>
           </div>
           {monthCosts.length === 0 ? (
             <div className="empty">Aucun coût sur {monthLabel(costMonth)}. Ajoute-les ci-dessus, ou copie le mois précédent.</div>
           ) : (
             <table className="tbl" style={{ marginTop: 8 }}>
-              <thead><tr><th>Poste</th><th>Type</th><th className="num">Montant</th><th className="num" /></tr></thead>
+              <thead><tr><th>Poste</th><th>Type</th><th>Canal</th><th className="num">Montant</th><th className="num" /></tr></thead>
               <tbody>
                 {monthCosts.map((c) => (
                   <tr key={c.id}>
                     <td className="lab">{c.name}</td>
                     <td><span className="badge mut" style={{ textTransform: "capitalize" }}>{c.type}</span></td>
+                    <td>
+                      <select className={`chan-sel src-${costChan(c) === "organic" ? "organic" : "paid"}`} value={costChan(c)} onChange={(e) => setCostChannel(c.id, e.target.value)} title="Canal du coût">
+                        <option value="organic">🌱 Organique</option>
+                        <option value="paid">📣 Payant</option>
+                      </select>
+                    </td>
                     <td className="num">{euro(c.amount)}</td>
                     <td className="num"><button className="mini" title="Supprimer" onClick={() => removeCost(c.id)}><Trash2 size={14} /></button></td>
                   </tr>
                 ))}
-                <tr className="tot-row"><td className="lab">Total {monthLabel(costMonth)}</td><td /><td className="num">{euro(monthCostsTotal)}</td><td /></tr>
+                <tr><td className="lab mut">🌱 Total coûts organiques</td><td /><td /><td className="num">{euro(monthOrganicCosts)}</td><td /></tr>
+                <tr><td className="lab mut">📣 Total coûts payants</td><td /><td /><td className="num">{euro(monthCostsTotal - monthOrganicCosts)}</td><td /></tr>
+                <tr className="tot-row"><td className="lab">Total {monthLabel(costMonth)}</td><td /><td /><td className="num">{euro(monthCostsTotal)}</td><td /></tr>
               </tbody>
             </table>
           )}
