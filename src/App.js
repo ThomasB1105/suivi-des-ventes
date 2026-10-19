@@ -135,10 +135,20 @@ const STORAGE_KEY = "melo_sales_v5";
 // récente entre iClosed et Calendly), sinon repli local.
 const callAtOf = (l) => l.callAt || (l.lastCall && l.lastCall.date) || l.bookedAt || "";
 const callDayOf = (l) => toParis(callAtOf(l) || "").slice(0, 10);
-const heldCall = (l, today) => ["show", "won", "lost"].includes(l.stage)
-  || (l.stage === "booked" && callDayOf(l) < today && !["noshow", "cancelled"].includes(l.showUp || "") && l.setStatus !== "cancel");
-// Call annulé (plateforme, closer ou setter) — jamais compté en présent ni en no-show.
-const cancelledCall = (l) => l.showUp === "cancelled" || l.setStatus === "cancel" || (l.stage === "setting" && !!l.bookedAt);
+const heldCall = (l, today) => HELD_BUCKETS.includes(callBucket(l, today));
+// Classement d'un call — copie de lib/callBuckets.js (reporting closers), à garder
+// identique : won · lost · show · pending (passé non renseigné = honoré) · noshow ·
+// cancelled · upcoming (aujourd'hui ou à venir) · excluded (non qualifié, dead…).
+const HELD_BUCKETS = ["won", "lost", "show", "pending"];
+const callBucket = (l, today) => {
+  if (l.stage === "won") return "won";
+  if (l.stage === "noshow" || l.showUp === "noshow") return "noshow";
+  if (l.stage === "lost") return "lost";
+  if (l.stage === "show" || l.showUp === "present") return "show";
+  if (l.showUp === "cancelled" || l.setStatus === "cancel" || (l.stage === "setting" && l.bookedAt)) return "cancelled";
+  if (l.stage === "booked") return callDayOf(l) < today ? "pending" : "upcoming";
+  return "excluded";
+};
 
 const CRM_META = {
   booked: ["Call booké", "#579BFC"], show: ["Call fait · en cours", "#FDAB3D"], won: ["Closé", "#00C875"],
@@ -2719,12 +2729,13 @@ export default function App() {
         // ---- Calls de la semaine ----
         const today0w = toISO(new Date());
         const calls = leads.filter((l) => l.hasCall !== false && inWeek(dOfL(l)));
-        const upcomingN = calls.filter((l) => dOfL(l) > today0w).length;
-        const present = calls.filter((l) => heldCall(l, today0w)); // non renseigné = honoré
-        const noshowN = calls.filter((l) => l.stage === "noshow").length;
-        const cancelledN = calls.filter((l) => dOfL(l) <= today0w && !heldCall(l, today0w) && l.stage !== "noshow" && cancelledCall(l)).length;
-        const otherN = calls.length - present.length - noshowN - upcomingN - cancelledN; // non qualifiés / dead / NRP…
-        const closed = calls.filter((l) => l.stage === "won");
+        const bk = (b) => calls.filter((l) => callBucket(l, today0w) === b);
+        const upcomingN = bk("upcoming").length;
+        const present = calls.filter((l) => HELD_BUCKETS.includes(callBucket(l, today0w))); // non renseigné = honoré
+        const noshowN = bk("noshow").length;
+        const cancelledN = bk("cancelled").length;
+        const otherN = bk("excluded").length; // non qualifiés / dead / NRP…
+        const closed = bk("won");
         const showRate = present.length + noshowN ? present.length / (present.length + noshowN) : 0;
         const closingRate = present.length ? closed.length / present.length : 0;
 
@@ -2749,14 +2760,15 @@ export default function App() {
         const perCloser = names.map((n) => {
           const same = (v) => String(v || "").trim().toLowerCase() === n.trim().toLowerCase();
           const c = calls.filter((l) => same(l.closer));
-          const p = c.filter((l) => heldCall(l, today0w));
-          const ns = c.filter((l) => l.stage === "noshow").length;
-          const up = c.filter((l) => dOfL(l) > today0w).length;
-          const canc = c.filter((l) => dOfL(l) <= today0w && !heldCall(l, today0w) && l.stage !== "noshow" && cancelledCall(l)).length;
-          const w = c.filter((l) => l.stage === "won").length;
+          const cb = (b) => c.filter((l) => callBucket(l, today0w) === b).length;
+          const p = c.filter((l) => HELD_BUCKETS.includes(callBucket(l, today0w)));
+          const ns = cb("noshow");
+          const up = cb("upcoming");
+          const canc = cb("cancelled");
+          const w = cb("won");
           const sSales = weekSales.filter((sl) => same(saleCloser(sl)));
           const cash = sales.filter((sl) => same(saleCloser(sl))).reduce((a, sl) => a + sl.schedule.filter((i) => i.paid && inWeek(i.dueDate)).reduce((b, i) => b + i.amount, 0), 0);
-          return { n, calls: c.length, present: p.length, ns, up, canc, other: c.length - p.length - ns - up - canc, won: w, ventes: sSales.length, cash,
+          return { n, calls: c.length, present: p.length, ns, up, canc, other: cb("excluded"), won: w, ventes: sSales.length, cash,
             showRate: p.length + ns ? p.length / (p.length + ns) : 0, closingRate: p.length ? w / p.length : 0 };
         }).sort((a, b) => b.cash - a.cash || b.won - a.won);
 
@@ -3153,13 +3165,13 @@ export default function App() {
 
         {/* CASES DÉDIÉES : bookés · honorés · annulés · no-show · show-up · closing · revenu · cash/appel */}
         <div className="kpi-grid">
-          <div className="kcard"><div className="kcard-l">Strategy calls bookés</div><div className="kcard-v">{callT.scheduled || 0}</div><div className="kcard-f">{callT.upcoming || 0} à venir</div></div>
+          <div className="kcard"><div className="kcard-l">Strategy calls bookés</div><div className="kcard-v">{callT.scheduled || 0}</div><div className="kcard-f">{callT.upcoming || 0} à venir{callT.excluded ? ` · ${callT.excluded} écartés` : ""}</div></div>
           <div className="kcard"><div className="kcard-l">Appels honorés</div><div className="kcard-v">{callT.present || 0}</div><div className="kcard-f">non saisi = a eu lieu</div></div>
           <div className="kcard"><div className="kcard-l">Appels annulés</div><div className="kcard-v" style={{ color: (callT.cancelled || 0) > 0 ? "var(--amber,#FDCB6E)" : "var(--text)" }}>{callT.cancelled || 0}</div><div className="kcard-f">{callStats.totalCalls ? pct(callT.cancelRate) : "—"} des bookés</div></div>
-          <div className="kcard"><div className="kcard-l">No-show</div><div className="kcard-v" style={{ color: (callT.noShow || 0) > 0 ? "var(--red)" : "var(--text)" }}>{callT.noShow || 0}</div><div className="kcard-f">{callStats.totalCalls ? pct(callT.noShowRate) : "—"} des honorés</div></div>
-          <div className="kcard"><div className="kcard-l">Taux de show-up</div><div className="kcard-v" style={{ color: "var(--cyan,#22D3EE)" }}>{callStats.totalCalls ? pct(callT.showRate) : "—"}</div><div className="kcard-f">présents / planifiés</div></div>
+          <div className="kcard"><div className="kcard-l">No-show</div><div className="kcard-v" style={{ color: (callT.noShow || 0) > 0 ? "var(--red)" : "var(--text)" }}>{callT.noShow || 0}</div><div className="kcard-f">{callStats.totalCalls ? pct(callT.noShowRate) : "—"} des calls passés</div></div>
+          <div className="kcard"><div className="kcard-l">Taux de show-up</div><div className="kcard-v" style={{ color: "var(--cyan,#22D3EE)" }}>{callStats.totalCalls ? pct(callT.showRate) : "—"}</div><div className="kcard-f">honorés / (honorés + no-show)</div></div>
           <div className="kcard"><div className="kcard-l">Taux de closing</div><div className="kcard-v green">{callStats.totalCalls ? pct(callT.closingRate) : "—"}</div><div className="kcard-f">{callT.sales} ventes / {callT.present || 0} honorés</div></div>
-          <div className="kcard"><div className="kcard-l">Revenu (iClosed)</div><div className="kcard-v green">{euro(callT.revenue || 0)}</div><div className="kcard-f">{callT.sales || 0} vente{(callT.sales || 0) > 1 ? "s" : ""}</div></div>
+          <div className="kcard"><div className="kcard-l">Revenu des calls</div><div className="kcard-v green">{euro(callT.revenue || 0)}</div><div className="kcard-f">{callT.sales || 0} vente{(callT.sales || 0) > 1 ? "s" : ""}</div></div>
           <div className="kcard"><div className="kcard-l">Cash / appel</div><div className="kcard-v">{euro(callT.cashPerCall || 0)}</div><div className="kcard-f">revenu / appel créé</div></div>
         </div>
 

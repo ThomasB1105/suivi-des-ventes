@@ -9,6 +9,8 @@
 
 const { cmd, isConfigured } = require("../lib/kv");
 const { checkAuth } = require("../lib/auth");
+const { buildLeads } = require("../lib/crmData");
+const { HELD, callBucket, callDay, parisToday } = require("../lib/callBuckets");
 
 // Lundi de la semaine d'une date ISO -> "YYYY-MM-DD"
 function weekKey(iso) {
@@ -276,6 +278,45 @@ module.exports = async (req, res) => {
 
     const series = Object.values(weeks).sort((a, b) => a.week.localeCompare(b.week));
 
+    // ---- Chiffres clés : source CRM (iClosed + Calendly + saisies des closers) ----
+    // Même base et même règle que le reporting hebdo : un call par lead, daté
+    // au RDV le plus récent, classé par callBucket. Les sections détaillées
+    // iClosed (séries, raisons, objections, questions) restent ci-dessus.
+    let crm = null;
+    try {
+      const today = parisToday();
+      const leads = (await buildLeads(cmd)).filter((l) => l.hasCall !== false && (l.lastCall || l.bookedAt));
+      const inRange = leads.filter((l) => { const d = callDay(l); return d && (!from || d >= from) && (!to || d <= to); });
+      const zero = () => ({ calls: 0, won: 0, lost: 0, show: 0, pending: 0, noshow: 0, cancelled: 0, upcoming: 0, excluded: 0, revenue: 0 });
+      const T = zero(), byC = {}, nsList = [];
+      inRange.forEach((l) => {
+        const b = callBucket(l, today);
+        const ck = l.closer || "Non attribué";
+        const g = byC[ck] || (byC[ck] = { closer: ck, ...zero() });
+        [T, g].forEach((o) => { o.calls += 1; o[b] += 1; if (b === "won") o.revenue += Number(l.amount || 0); });
+        if (b === "noshow") nsList.push({ email: l.email, name: l.name, phone: l.phone, closer: ck, date: l.callAt || l.bookedAt || (l.lastCall && l.lastCall.date), event: l.bookedEvent || (l.lastCall && l.lastCall.event) || "—" });
+      });
+      const heldOf = (o) => HELD.reduce((a, k) => a + o[k], 0);
+      const rates = (o) => {
+        const h = heldOf(o), past = h + o.noshow;
+        return { present: h, showRate: past ? h / past : 0, noShowRate: past ? o.noshow / past : 0, closingRate: h ? o.won / h : 0, cancelRate: o.calls ? o.cancelled / o.calls : 0 };
+      };
+      const tr = rates(T);
+      crm = {
+        totals: {
+          scheduled: T.calls, upcoming: T.upcoming, cancelled: T.cancelled, cancelRate: tr.cancelRate,
+          present: tr.present, noShow: T.noshow, excluded: T.excluded,
+          sales: T.won, noSale: T.lost, pending: T.pending,
+          showRate: tr.showRate, noShowRate: tr.noShowRate, closingRate: tr.closingRate,
+          engagementRate: T.calls ? (tr.present + T.upcoming) / T.calls : 0,
+          revenue: T.revenue, cashPerCall: T.calls ? T.revenue / T.calls : 0, source: "crm",
+        },
+        closers: Object.values(byC).map((g) => ({ ...g, ...rates(g) })).sort((a, b) => b.revenue - a.revenue || b.won - a.won),
+        funnel: { created: T.calls, held: tr.present, won: T.won, createdToHeld: T.calls ? tr.present / T.calls : 0, heldToWon: tr.present ? T.won / tr.present : 0, contacts: contactsCount },
+        noShows: nsList.sort((a, b) => String(b.date).localeCompare(String(a.date))),
+      };
+    } catch (e) { crm = null; }
+
     // Funnel monotone (toujours décroissant) : Appels créés -> Honorés -> Ventes.
     // (Les "contacts" du webhook sont partiels, on ne les met plus dans le funnel
     //  pour éviter un taux >100%.)
@@ -290,10 +331,7 @@ module.exports = async (req, res) => {
     };
 
     res.setHeader("Cache-Control", "s-maxage=20, stale-while-revalidate=120");
-    res.status(200).json({
-      totalCalls: calls.length,
-      outcomes: out,
-      totals: {
+    const iclosedTotals = {
         scheduled,                       // = Strategy Calls bookés
         upcoming: upcomingCount,
         cancelled: out.cancelled,
@@ -308,16 +346,22 @@ module.exports = async (req, res) => {
         engagementRate: scheduled ? (held + out.rescheduled) / scheduled : 0,
         revenue,
         cashPerCall: scheduled ? revenue / scheduled : 0,   // cash par appel
-      },
-      funnel,
+      };
+    res.status(200).json({
+      totalCalls: crm ? crm.totals.scheduled : calls.length,
+      iclosedCalls: calls.length,
+      iclosedTotals,
+      outcomes: out,
+      totals: crm ? crm.totals : iclosedTotals,
+      funnel: crm ? crm.funnel : funnel,
       series,
       breakdown: { revenue, won: out.won, deposits, recurring },
-      closers,
+      closers: crm ? crm.closers : closers,
       events: Object.values(byEvent).sort((a, b) => b.booked - a.booked),
       reasons: toArr(reasons),
       objections: toArr(objections),
       questions,
-      noShows: noShows.sort((a, b) => String(b.date).localeCompare(String(a.date))),
+      noShows: crm ? crm.noShows : noShows.sort((a, b) => String(b.date).localeCompare(String(a.date))),
     });
   } catch (e) {
     res.status(200).json({ totalCalls: 0, error: String(e.message || e) });
