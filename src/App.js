@@ -2753,13 +2753,26 @@ export default function App() {
         // ---- Vue par closer ----
         // Le closer d'une vente est retrouvé via le LEAD CRM (même email,
         // alias résolus) — le champ closer de la vente est souvent vide/brut.
+        // Closer d'une vente : fiche CRM reliée (lien manuel, email de paiement,
+        // email ou téléphone — cf. Matching ventes), sinon fiche au même email,
+        // sinon le champ de la vente. Sans closer -> ligne « Non attribué »,
+        // pour que le tableau se recoupe TOUJOURS avec les totaux.
+        const NA = "Non attribué";
         const closerByEmail = {};
-        leads.forEach((l) => { if (l.closer) closerByEmail[String(l.email).toLowerCase()] = l.closer; });
-        const saleCloser = (sl) => closerByEmail[String(sl.email || "").toLowerCase()] || sl.closer;
-        const names = [...new Set([...calls.map((l) => l.closer), ...weekSales.map((sl) => saleCloser(sl))].filter((n) => n && n !== "—"))].sort();
+        leads.forEach((l) => { if (l.closer) [l.email, ...(l.saleEmails || [])].forEach((em) => { closerByEmail[String(em || "").toLowerCase()] = l.closer; }); });
+        const saleCloser = (sl) => {
+          const ld = leadForSale(sl);
+          const c = (ld && ld.closer) || closerByEmail[String(sl.email || "").toLowerCase()] || sl.closer;
+          return c && c !== "—" ? c : NA;
+        };
+        const cashOf = (sl) => sl.schedule.filter((i) => i.paid && inWeek(i.dueDate)).reduce((b, i) => b + i.amount, 0);
+        const cashSales = sales.filter((sl) => cashOf(sl) > 0);
+        const callCloser = (l) => l.closer || NA;
+        const names = [...new Set([...calls.map(callCloser), ...weekSales.map(saleCloser), ...cashSales.map(saleCloser)])]
+          .sort((a, b) => (a === NA) - (b === NA) || a.localeCompare(b));
         const perCloser = names.map((n) => {
           const same = (v) => String(v || "").trim().toLowerCase() === n.trim().toLowerCase();
-          const c = calls.filter((l) => same(l.closer));
+          const c = calls.filter((l) => same(callCloser(l)));
           const cb = (b) => c.filter((l) => callBucket(l, today0w) === b).length;
           const p = c.filter((l) => HELD_BUCKETS.includes(callBucket(l, today0w)));
           const ns = cb("noshow");
@@ -2767,10 +2780,11 @@ export default function App() {
           const canc = cb("cancelled");
           const w = cb("won");
           const sSales = weekSales.filter((sl) => same(saleCloser(sl)));
-          const cash = sales.filter((sl) => same(saleCloser(sl))).reduce((a, sl) => a + sl.schedule.filter((i) => i.paid && inWeek(i.dueDate)).reduce((b, i) => b + i.amount, 0), 0);
+          const cash = cashSales.filter((sl) => same(saleCloser(sl))).reduce((a, sl) => a + cashOf(sl), 0);
           return { n, calls: c.length, present: p.length, ns, up, canc, other: cb("excluded"), won: w, ventes: sSales.length, cash,
             showRate: p.length + ns ? p.length / (p.length + ns) : 0, closingRate: p.length ? w / p.length : 0 };
-        }).sort((a, b) => b.cash - a.cash || b.won - a.won);
+        }).sort((a, b) => (a.n === NA) - (b.n === NA) || b.cash - a.cash || b.won - a.won);
+        const sumOf = (k) => perCloser.reduce((a, r) => a + r[k], 0);
 
         return (<>
           <div className="closers-head">
@@ -2787,8 +2801,8 @@ export default function App() {
           <div className="kpis" style={{ marginTop: 4 }}>
             <div className="kcard"><div className="kcard-l">Calls</div><div className="kcard-v">{calls.length}</div><div className="kcard-f">{present.length} honorés · {noshowN} no-show{cancelledN ? ` · ${cancelledN} annulés` : ""}{otherN > 0 ? ` · ${otherN} écartés` : ""}{upcomingN ? ` · ${upcomingN} à venir` : ""}</div></div>
             <div className="kcard"><div className="kcard-l">Show-up</div><div className="kcard-v">{pct(showRate)}</div><div className="kcard-f">présents / (présents + no-show)</div></div>
-            <div className="kcard"><div className="kcard-l">Closés</div><div className="kcard-v green">{closed.length}</div><div className="kcard-f">taux de closing {pct(closingRate)}</div></div>
-            <div className="kcard"><div className="kcard-l">Ventes signées</div><div className="kcard-v">{weekSales.length}</div><div className="kcard-f">{euro(contracted)} contractés</div></div>
+            <div className="kcard"><div className="kcard-l">Closés</div><div className="kcard-v green">{closed.length}</div><div className="kcard-f">calls de la période conclus · closing {pct(closingRate)}</div></div>
+            <div className="kcard"><div className="kcard-l">Ventes signées</div><div className="kcard-v">{weekSales.length}</div><div className="kcard-f">1er paiement sur la période · {euro(contracted)} contractés</div></div>
             <div className="kcard"><div className="kcard-l">Cash collecté</div><div className="kcard-v green">{euro(cashWeek)}</div><div className="kcard-f">encaissé sur {byPeriod ? "la période" : "la semaine"}</div></div>
             <div className="kcard"><div className="kcard-l">% collecté / contracté</div><div className="kcard-v" style={{ color: "var(--cyan)" }}>{contracted ? pct(pctCollected) : "—"}</div><div className="kcard-f">{euro(collectedOnContracted)} déjà encaissés sur les ventes de {byPeriod ? "la période" : "la semaine"}</div></div>
             <div className="kcard"><div className="kcard-l">Leads traités</div><div className="kcard-v">{treated.length}<span className="mut" style={{ fontSize: 15, fontWeight: 600 }}> / {received.length}</span></div><div className="kcard-f">entrants reçus sur {byPeriod ? "la période" : "la semaine"}</div></div>
@@ -2814,7 +2828,22 @@ export default function App() {
                     <td className="num green" style={{ fontWeight: 800 }}>{euro(r.cash)}</td>
                   </tr>
                 ))}
-                {perCloser.length === 0 && <tr><td colSpan={9}><div className="empty" style={{ padding: 18 }}>Aucune activité sur cette semaine.</div></td></tr>}
+                {perCloser.length > 1 && (
+                  <tr className="tot-row">
+                    <td className="lab">Total</td>
+                    <td className="num">{sumOf("calls")}</td>
+                    <td className="num">{sumOf("present")}</td>
+                    <td className="num">{sumOf("ns")}</td>
+                    <td className="num">{sumOf("canc")}{sumOf("other") > 0 ? <span style={{ fontSize: 11 }}> +{sumOf("other")}</span> : null}</td>
+                    <td className="num">{sumOf("up")}</td>
+                    <td className="num">{sumOf("present") + sumOf("ns") ? pct(sumOf("present") / (sumOf("present") + sumOf("ns"))) : "—"}</td>
+                    <td className="num">{sumOf("won")}</td>
+                    <td className="num">{sumOf("present") ? pct(sumOf("won") / sumOf("present")) : "—"}</td>
+                    <td className="num">{sumOf("ventes")}</td>
+                    <td className="num">{euro(sumOf("cash"))}</td>
+                  </tr>
+                )}
+                {perCloser.length === 0 && <tr><td colSpan={11}><div className="empty" style={{ padding: 18 }}>Aucune activité sur cette période.</div></td></tr>}
               </tbody>
             </table>
           </div>
