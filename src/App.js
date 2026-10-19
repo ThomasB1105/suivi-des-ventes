@@ -767,13 +767,61 @@ export default function App() {
   const [sapCloser, setSapCloser] = useState("all"); // Saphia : filtre par closer
   const [nsView, setNsView] = useState("7"); // onglet No-shows : fenêtre en jours
   // Impayés côté setter (relances) : échéances en retard servies par /api/impayes.
-  const [impSet, setImpSet] = useState({ items: [], loaded: false });
+  const [impSet, setImpSet] = useState({ items: [], leads: {}, notes: {}, loaded: false });
   const [impSetLoading, setImpSetLoading] = useState(false);
   const [impSetMonth, setImpSetMonth] = useState("all"); // "all" | "YYYY-MM" (mois d'échéance)
   const loadImpSet = async () => {
     setImpSetLoading(true);
-    try { const r = await authFetch("/api/impayes"); const d = await r.json(); if (d && Array.isArray(d.items)) setImpSet({ items: d.items, loaded: true }); } catch (e) { /* réessai au prochain affichage */ }
+    try { const r = await authFetch("/api/impayes"); const d = await r.json(); if (d && Array.isArray(d.items)) setImpSet({ items: d.items, leads: d.leads || {}, notes: d.notes || {}, loaded: true }); } catch (e) { /* réessai au prochain affichage */ }
     setImpSetLoading(false);
+  };
+  // Notes de suivi des impayés (partagées admin / setters, par vente).
+  const [impNoteOpen, setImpNoteOpen] = useState(null); // saleId dont le panneau de notes est ouvert
+  const [impNoteDraft, setImpNoteDraft] = useState("");
+  const addImpNote = async (saleId) => {
+    const text = impNoteDraft.trim();
+    if (!text) return;
+    try {
+      const r = await authFetch("/api/impayes", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ saleId, text }) });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.error || `Erreur ${r.status}`);
+      setImpSet((p) => ({ ...p, notes: { ...(p.notes || {}), [saleId]: d.notes || [] } }));
+      setImpNoteDraft("");
+      flash("Note ajoutée ✅");
+    } catch (e) { flash(`Note : ${e.message}`); }
+  };
+  const fmtNoteAt = (at) => { const t = toParis(at); return t ? `${t.slice(8, 10)}/${t.slice(5, 7)} ${t.slice(11, 16)}` : ""; };
+  // Bouton « Notes (n) » + aperçu de la dernière note.
+  const impNotesBtn = (saleId) => {
+    const ns = (impSet.notes || {})[saleId] || [];
+    const last = ns[ns.length - 1];
+    return (
+      <button className="esp-open" style={{ flex: "none", maxWidth: 260, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", ...(impNoteOpen === saleId ? { borderColor: "#6C5CE7", color: "#5925DC" } : {}) }}
+        title={last ? `${fmtNoteAt(last.at)} · ${last.by} : ${last.text}` : "Ajouter une note de suivi"}
+        onClick={() => { setImpNoteOpen(impNoteOpen === saleId ? null : saleId); setImpNoteDraft(""); }}>
+        📝 {ns.length ? `Notes (${ns.length})` : "Note"}
+      </button>
+    );
+  };
+  // Panneau : historique des notes + saisie.
+  const impNotesPanel = (saleId) => {
+    const ns = (impSet.notes || {})[saleId] || [];
+    return (
+      <div style={{ background: "#F9FAFB", borderTop: "1px solid rgba(15,23,42,.06)", padding: "12px 18px 14px 66px" }}>
+        {ns.length === 0 && <div className="mut" style={{ fontSize: 12.5, marginBottom: 8 }}>Aucune note pour l'instant.</div>}
+        {[...ns].reverse().map((n, k) => (
+          <div key={k} style={{ fontSize: 13, marginBottom: 6, lineHeight: 1.45 }}>
+            <span className="mut" style={{ fontSize: 11.5 }}>{fmtNoteAt(n.at)} · <b>{n.by}</b></span><br />{n.text}
+          </div>
+        ))}
+        <div style={{ display: "flex", gap: 8, marginTop: 8, alignItems: "flex-start" }}>
+          <textarea className="cal-note" rows={2} style={{ flex: 1, minWidth: 0 }} placeholder="Ex : appelé, promet de payer vendredi…" value={impNoteDraft}
+            onChange={(e) => setImpNoteDraft(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) addImpNote(saleId); }} />
+          <button className="refresh-btn" style={{ flex: "none" }} onClick={() => addImpNote(saleId)} disabled={!impNoteDraft.trim()}>Ajouter</button>
+        </div>
+      </div>
+    );
   };
   const [rplRes, setRplRes] = useState("all"); // Replays : "all" | "won" | "deposit" | "lost" | "pending"
   const [rplCloser, setRplCloser] = useState("all"); // Replays : filtre closer (admin)
@@ -822,6 +870,7 @@ export default function App() {
   // Impayés setter : chargés au démarrage (bulle du menu) et à l'ouverture de l'onglet.
   useEffect(() => {
     if (authed && !isAdmin && isSetterRole(me.role) && (tab === "impayesSet" || !impSet.loaded)) loadImpSet();
+    if (authed && isAdmin && tab === "impayes") loadImpSet();
   }, [tab, authed]); // eslint-disable-line
 
   // Temps réel : les webhooks (Calendly / iClosed / paiements) alimentent la
@@ -3006,13 +3055,14 @@ export default function App() {
           ) : (
             <table className="tbl">
               <thead><tr>
-                <th>Client</th><th>Source</th><th>Offre</th><th className="num">Échéance</th><th className="num">Retard</th><th className="num">Montant</th><th className="num">Relance</th>
+                <th>Client</th><th>Source</th><th>Offre</th><th className="num">Échéance</th><th className="num">Retard</th><th className="num">Montant</th><th>Suivi</th><th className="num">Relance</th>
               </tr></thead>
               <tbody>
-                {overduesF.map((i) => (
-                  <tr key={i.id}>
+                {overduesF.map((i, k) => { const ld = leadForSale(i.sale); const firstOfSale = overduesF.findIndex((x) => x.sale.id === i.sale.id) === k; return (
+                  <React.Fragment key={i.id}>
+                  <tr>
                     <td className="lab">
-                      <button className="client-link" title="Voir la fiche" onClick={() => openEdit(i.sale)}>{i.sale.client} <Pencil size={11} /></button>
+                      <button className="client-link" title="Modifier la vente (échéances)" onClick={() => openEdit(i.sale)}>{i.sale.client} <Pencil size={11} /></button>
                       {(i.sale.email || i.sale.phone) && <div className="mut" style={{ fontWeight: 400, fontSize: 11, marginTop: 2 }}>{[i.sale.email, i.sale.phone].filter(Boolean).join(" · ")}</div>}
                     </td>
                     <td><span className={`src src-${i.sale.channel === "paid" ? "paid" : "organic"}`}>{i.sale.channel === "paid" ? <Megaphone size={11} /> : <Leaf size={11} />}{i.sale.channel === "paid" ? "Ads" : "Organique"}</span></td>
@@ -3020,6 +3070,12 @@ export default function App() {
                     <td className="num">{dateLabel(i.dueDate)}</td>
                     <td className="num red">{daysLate(i.dueDate)} j</td>
                     <td className="num">{euro(i.amount)}</td>
+                    <td>
+                      <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                        {impNotesBtn(i.sale.id)}
+                        {ld ? <button className="esp-open" style={{ flex: "none" }} onClick={() => setLeadOpen(ld.email)}>Fiche</button> : <span className="mut" style={{ fontSize: 11.5 }} title="Relie la vente dans Matching ventes">pas de fiche</span>}
+                      </div>
+                    </td>
                     <td className="num">
                       <div className="row-actions">
                         <button className="mini ok" title="Encaissé (Stripe)" onClick={() => setPayment(i.sale.id, i.id, true, "auto")}><Check size={14} /></button>
@@ -3030,8 +3086,10 @@ export default function App() {
                       </div>
                     </td>
                   </tr>
-                ))}
-                <tr className="tot-row"><td className="lab">Total impayés</td><td /><td /><td /><td className="num mut">{overduesF.length} éch.</td><td className="num red">{euro(overduesF.reduce((a, i) => a + i.amount, 0))}</td><td /></tr>
+                  {impNoteOpen === i.sale.id && firstOfSale && <tr><td colSpan={8} style={{ padding: 0 }}>{impNotesPanel(i.sale.id)}</td></tr>}
+                  </React.Fragment>
+                ); })}
+                <tr className="tot-row"><td className="lab">Total impayés</td><td /><td /><td /><td className="num mut">{overduesF.length} éch.</td><td className="num red">{euro(overduesF.reduce((a, i) => a + i.amount, 0))}</td><td /><td /></tr>
               </tbody>
             </table>
           )}
@@ -3718,7 +3776,8 @@ export default function App() {
             {!impSet.loaded && <div className="empty" style={{ padding: 22 }}>Chargement…</div>}
             {impSet.loaded && rows.length === 0 && <div className="empty" style={{ padding: 22 }}>Aucun impayé {impSetMonth === "all" ? "" : `en ${ymLabel(impSetMonth)} `}🎉</div>}
             {rows.slice(0, 200).map((i) => (
-              <div className="esp-todo" key={i.id}>
+              <React.Fragment key={i.id}>
+              <div className="esp-todo">
                 <span className="mnd-ava" style={{ background: "#E2445C", width: 34, height: 34, fontSize: 12.5 }}>{String(i.client).split(/[\s@._-]+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase() || "?"}</span>
                 <div style={{ minWidth: 0 }}>
                   <div className="esp-todo-txt">{i.client}{i.closer ? <span className="mut" style={{ fontWeight: 500 }}> · {i.closer}</span> : null}</div>
@@ -3728,7 +3787,11 @@ export default function App() {
                 {i.phone ? <a className="ls-link ls-join" style={{ flex: "none", textDecoration: "none" }} href={`tel:${String(i.phone).replace(/[^+0-9]/g, "")}`}>📱 Appeler</a> : null}
                 {i.phone ? <a className="ls-link" style={{ flex: "none", textDecoration: "none", borderColor: "#ABEFC6", color: "#067647" }} href={`https://wa.me/${String(i.phone).replace(/\D/g, "")}`} target="_blank" rel="noreferrer">💬 WhatsApp</a> : null}
                 {i.phone ? <button className={`esp-open pay-copy ${copiedKey === "imp" + i.id ? "copied" : ""}`} onClick={() => copyWithFeedback("imp" + i.id, String(i.phone))} title="Copier le numéro">{copiedKey === "imp" + i.id ? "✓ Copié" : "📋 N°"}</button> : <span className="mut" style={{ fontSize: 12 }}>pas de téléphone</span>}
+                {impNotesBtn(i.saleId)}
+                {i.leadEmail ? <button className="esp-open" onClick={() => setLeadOpen(i.leadEmail)}>Ouvrir la fiche</button> : <span className="mut" style={{ fontSize: 12 }} title="Aucune fiche CRM reliée à ce paiement">pas de fiche</span>}
               </div>
+              {impNoteOpen === i.saleId && rows.find((r) => r.saleId === i.saleId) === i && impNotesPanel(i.saleId)}
+              </React.Fragment>
             ))}
             {rows.length > 200 && <div className="mnd-foot"><span>+{rows.length - 200} autres — choisis un mois</span></div>}
           </div>
@@ -4289,14 +4352,18 @@ export default function App() {
 
       {/* FICHE LEAD — réponses aux questions, coordonnées, notes, historique */}
       {leadOpen && (() => {
-        const L = (crm.leads || []).find((x) => x.email === leadOpen);
+        const own = (crm.leads || []).find((x) => x.email === leadOpen);
+        const L = own || (crm.shared || []).find((x) => x.email === leadOpen) || (impSet.leads || {})[leadOpen];
         if (!L) return null;
+        const ro = !own && !isAdmin; // fiche d'un autre membre : consultation seule
         const nm = L.name && L.name !== L.email ? L.name : L.email;
         const qa = L.answers && typeof L.answers === "object" ? Object.entries(L.answers) : [];
         return (
           <div className="overlay" onClick={(e) => e.target === e.currentTarget && setLeadOpen(null)}>
             <div className="modal lead-sheet">
               <button className="modal-close" onClick={() => setLeadOpen(null)}><X size={20} /></button>
+              {ro && <div className="esp-preview" style={{ marginBottom: 12, background: "#F9FAFB", borderColor: "#E3E6EA", color: "#475467" }}>👁 Fiche en consultation — le suivi se note dans les notes de relance.</div>}
+              <fieldset disabled={ro} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
               <div className="ls-head">
                 <span className="mnd-ava" style={{ background: "linear-gradient(135deg,#7C5CFF,#9D5CFF)", width: 46, height: 46, fontSize: 17 }}>{String(nm)[0].toUpperCase()}</span>
                 <div style={{ minWidth: 0 }}>
@@ -4397,6 +4464,7 @@ export default function App() {
                   ))}
                 </div>
               </>)}
+              </fieldset>
             </div>
           </div>
         );
