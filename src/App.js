@@ -756,6 +756,15 @@ export default function App() {
   const [sapView, setSapView] = useState("30"); // Saphia : fenêtre en jours ("7"|"30"|"90"|"all")
   const [sapCloser, setSapCloser] = useState("all"); // Saphia : filtre par closer
   const [nsView, setNsView] = useState("7"); // onglet No-shows : fenêtre en jours
+  // Impayés côté setter (relances) : échéances en retard servies par /api/impayes.
+  const [impSet, setImpSet] = useState({ items: [], loaded: false });
+  const [impSetLoading, setImpSetLoading] = useState(false);
+  const [impSetMonth, setImpSetMonth] = useState("all"); // "all" | "YYYY-MM" (mois d'échéance)
+  const loadImpSet = async () => {
+    setImpSetLoading(true);
+    try { const r = await authFetch("/api/impayes"); const d = await r.json(); if (d && Array.isArray(d.items)) setImpSet({ items: d.items, loaded: true }); } catch (e) { /* réessai au prochain affichage */ }
+    setImpSetLoading(false);
+  };
   const [rplRes, setRplRes] = useState("all"); // Replays : "all" | "won" | "deposit" | "lost" | "pending"
   const [rplCloser, setRplCloser] = useState("all"); // Replays : filtre closer (admin)
   const [rplOnly, setRplOnly] = useState(false); // Replays : uniquement les calls avec enregistrement
@@ -800,6 +809,11 @@ export default function App() {
       flash(e.name === "AbortError" ? "Connexion Calendly trop longue (interrompue)." : `Calendly : ${e.message}`);
     } finally { clearTimeout(to); setCalSync(false); }
   };
+  // Impayés setter : chargés au démarrage (bulle du menu) et à l'ouverture de l'onglet.
+  useEffect(() => {
+    if (authed && !isAdmin && isSetterRole(me.role) && (tab === "impayesSet" || !impSet.loaded)) loadImpSet();
+  }, [tab, authed]); // eslint-disable-line
+
   // Temps réel : les webhooks (Calendly / iClosed / paiements) alimentent la
   // base en continu ; l'interface se resynchronise toute seule (toutes les
   // 2 min quand l'onglet est visible, et au retour sur la fenêtre) — rythme
@@ -1162,7 +1176,7 @@ export default function App() {
   const overduesF = sortOverdue((impAll ? allOverdue : overdues).filter((i) => matchQ(i.sale)));
   const periodListF = periodList.filter((i) => matchQ(i.sale));
 
-  const SECTION = { clients: "Tableau de bord", cohortes: "Cohortes", mois: "Par mois", collecte: "À collecter", impayes: "Impayés", couts: "Coûts", closers: "Closers", crm: "CRM", calendrier: "Calendrier", equipe: "Équipe", espace: "Ma journée", vsl: "Leads VSL", acomptes: "Acomptes", followups: "Follow-ups", saphia: "Saphia follow up", reporting: "Reporting hebdo", ads: "Reporting Ads", dm: "Setting DM", noshows: "No-shows", replays: "Replays des calls", paiement: "Liens de paiement", matching: "Matching ventes" };
+  const SECTION = { clients: "Tableau de bord", cohortes: "Cohortes", mois: "Par mois", collecte: "À collecter", impayes: "Impayés", couts: "Coûts", closers: "Closers", crm: "CRM", calendrier: "Calendrier", equipe: "Équipe", espace: "Ma journée", vsl: "Leads VSL", acomptes: "Acomptes", followups: "Follow-ups", saphia: "Saphia follow up", reporting: "Reporting hebdo", ads: "Reporting Ads", dm: "Setting DM", noshows: "No-shows", impayesSet: "Impayés", replays: "Replays des calls", paiement: "Liens de paiement", matching: "Matching ventes" };
   const go = (t) => { setTab(t); setNavOpen(false); };
   const navCls = (t) => `nav-item ${tab === t ? "active" : ""}`;
   // Matching ventes : une vente est « reliée » quand une fiche CRM (avec call)
@@ -1735,6 +1749,7 @@ export default function App() {
             <button className={navCls("espace")} onClick={() => go("espace")}><UserCheck size={16} /> Ma journée</button>
             {me.role === "setter" && <button className={navCls("vsl")} onClick={() => go("vsl")}><Leaf size={16} /> Leads VSL{vslTodo ? <span className="nav-badge" title="Nouveaux leads à traiter">{vslTodo}</span> : null}</button>}
             {isSetterRole(me.role) && <button className={navCls("noshows")} onClick={() => go("noshows")}><AlertTriangle size={16} /> No-shows</button>}
+            {isSetterRole(me.role) && <button className={navCls("impayesSet")} onClick={() => go("impayesSet")}><Landmark size={16} /> Impayés{impSet.items.length ? <span className="nav-badge" title="Échéances en retard à relancer">{impSet.items.length}</span> : null}</button>}
             {!isSetterRole(me.role) && <button className={navCls("followups")} onClick={() => go("followups")}><RotateCcw size={16} /> Follow-ups{fupTodo ? <span className="nav-badge" title="Follow-ups à faire">{fupTodo}</span> : null}</button>}
             {!isSetterRole(me.role) && <button className={navCls("acomptes")} onClick={() => go("acomptes")}><Landmark size={16} /> Acomptes</button>}
             {!isSetterRole(me.role) && <button className={navCls("replays")} onClick={() => go("replays")}><Video size={16} /> Replays</button>}
@@ -3627,6 +3642,58 @@ export default function App() {
       })()}
 
       {/* NO-SHOWS — liste complète, filtrable par date (setter + admin) */}
+      {/* IMPAYÉS (setter) — échéances en retard à relancer, filtre par mois */}
+      {tab === "impayesSet" && !isAdmin && isSetterRole(me.role) && (() => {
+        const items = impSet.items || [];
+        const months = [...new Set(items.map((i) => i.dueDate.slice(0, 7)))].sort().reverse();
+        const ymLabel = (ym) => { try { return parseLocal(`${ym}-01`).toLocaleDateString("fr-FR", { month: "long", year: "numeric" }); } catch (e) { return ym; } };
+        const q = crmQ.trim().toLowerCase();
+        const rows = items
+          .filter((i) => impSetMonth === "all" || i.dueDate.startsWith(impSetMonth))
+          .filter((i) => !q || [i.client, i.email, i.phone, i.closer, i.offer].some((v) => String(v || "").toLowerCase().includes(q)));
+        const total = rows.reduce((a, i) => a + i.amount, 0);
+        const t0 = toISO(new Date());
+        const late = (d) => Math.max(0, Math.round((parseLocal(t0) - parseLocal(d)) / 864e5));
+        const clients = new Set(rows.map((i) => (i.email || i.client).toLowerCase())).size;
+        return (<>
+          <div className="closers-head">
+            <div className="closers-title"><Landmark size={16} /> Impayés à relancer</div>
+            <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+              <div className="crm-search"><Search size={14} /><input value={crmQ} onChange={(e) => setCrmQ(e.target.value)} placeholder="Rechercher (nom, email, téléphone…)" /></div>
+              <button className={`refresh-btn ${impSetLoading ? "is-loading" : ""}`} onClick={loadImpSet} disabled={impSetLoading}><RotateCcw size={15} className={impSetLoading ? "spin" : ""} /> Actualiser</button>
+            </div>
+          </div>
+          <div className="kpis" style={{ marginTop: 4 }}>
+            <div className="kcard"><div className="kcard-l">Montant en retard</div><div className="kcard-v" style={{ color: "var(--red)" }}>{euro(total)}</div><div className="kcard-f">{impSetMonth === "all" ? "tous les mois" : ymLabel(impSetMonth)}</div></div>
+            <div className="kcard"><div className="kcard-l">Échéances</div><div className="kcard-v">{rows.length}</div><div className="kcard-f">{clients} client{clients > 1 ? "s" : ""} à relancer</div></div>
+          </div>
+          <div className="crm-views vsl-views" style={{ marginTop: 18 }}>
+            <button className={`crm-chip vsl-chip ${impSetMonth === "all" ? "on" : ""}`} onClick={() => setImpSetMonth("all")}>Tous <b>{items.length}</b></button>
+            {months.map((ym) => (
+              <button key={ym} className={`crm-chip vsl-chip ${impSetMonth === ym ? "on" : ""}`} onClick={() => setImpSetMonth(ym)} style={{ textTransform: "capitalize" }}>{ymLabel(ym)} <b>{items.filter((i) => i.dueDate.startsWith(ym)).length}</b></button>
+            ))}
+          </div>
+          <div className="card" style={{ padding: 0, overflow: "hidden", marginTop: 12, marginBottom: 26 }}>
+            {!impSet.loaded && <div className="empty" style={{ padding: 22 }}>Chargement…</div>}
+            {impSet.loaded && rows.length === 0 && <div className="empty" style={{ padding: 22 }}>Aucun impayé {impSetMonth === "all" ? "" : `en ${ymLabel(impSetMonth)} `}🎉</div>}
+            {rows.slice(0, 200).map((i) => (
+              <div className="esp-todo" key={i.id}>
+                <span className="mnd-ava" style={{ background: "#E2445C", width: 34, height: 34, fontSize: 12.5 }}>{String(i.client).split(/[\s@._-]+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase() || "?"}</span>
+                <div style={{ minWidth: 0 }}>
+                  <div className="esp-todo-txt">{i.client}{i.closer ? <span className="mut" style={{ fontWeight: 500 }}> · {i.closer}</span> : null}</div>
+                  <div className="esp-todo-lead">échéance du {i.dueDate.slice(8, 10)}/{i.dueDate.slice(5, 7)}/{i.dueDate.slice(0, 4)}{i.email ? ` · ${i.email}` : ""}{i.phone ? ` · ${i.phone}` : ""}</div>
+                </div>
+                <span className="esp-tag" style={{ color: "#B42318", borderColor: "#FECDCA", background: "#FEF3F2", marginLeft: "auto" }}>{euro(i.amount)} · J+{late(i.dueDate)}</span>
+                {i.phone ? <a className="ls-link ls-join" style={{ flex: "none", textDecoration: "none" }} href={`tel:${String(i.phone).replace(/[^+0-9]/g, "")}`}>📱 Appeler</a> : null}
+                {i.phone ? <a className="ls-link" style={{ flex: "none", textDecoration: "none", borderColor: "#ABEFC6", color: "#067647" }} href={`https://wa.me/${String(i.phone).replace(/\D/g, "")}`} target="_blank" rel="noreferrer">💬 WhatsApp</a> : null}
+                {i.phone ? <button className={`esp-open pay-copy ${copiedKey === "imp" + i.id ? "copied" : ""}`} onClick={() => copyWithFeedback("imp" + i.id, String(i.phone))} title="Copier le numéro">{copiedKey === "imp" + i.id ? "✓ Copié" : "📋 N°"}</button> : <span className="mut" style={{ fontSize: 12 }}>pas de téléphone</span>}
+              </div>
+            ))}
+            {rows.length > 200 && <div className="mnd-foot"><span>+{rows.length - 200} autres — choisis un mois</span></div>}
+          </div>
+        </>);
+      })()}
+
       {tab === "noshows" && (isAdmin || isSetterRole(me.role)) && (() => {
         const dOfL = (l) => toParis(callAtOf(l) || "").slice(0, 10);
         const frD = (d) => (d ? `${d.slice(8, 10)}/${d.slice(5, 7)}` : "—");
