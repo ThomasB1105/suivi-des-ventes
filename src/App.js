@@ -140,6 +140,21 @@ const heldCall = (l, today) => HELD_BUCKETS.includes(callBucket(l, today));
 // identique : won · lost · show · pending (passé non renseigné = honoré) · noshow ·
 // cancelled · upcoming (aujourd'hui ou à venir) · excluded (non qualifié, dead…).
 const HELD_BUCKETS = ["won", "lost", "show", "pending"];
+// Calls d'un lead : le call courant + les calls précédents archivés lors d'un
+// re-booking (pastCalls) — copie de expandCalls (lib/callBuckets.js).
+const pastCallStage = (p) => (p.callResult === "won" || p.stage === "won") ? "won"
+  : (p.showUp === "noshow" || p.stage === "noshow") ? "noshow"
+  : (p.callResult === "lost" || p.stage === "lost") ? "lost"
+  : (p.showUp === "present" || p.stage === "show") ? "show" : "booked";
+const expandCalls = (leads) => {
+  const out = [];
+  (leads || []).forEach((l) => {
+    out.push(l);
+    (l.pastCalls || []).forEach((p) => out.push({ ...l, callAt: p.at, bookedAt: p.at, bookedEvent: p.event || l.bookedEvent, lastCall: undefined,
+      closer: p.closer || l.closer, stage: pastCallStage(p), showUp: p.showUp, callResult: p.callResult, setStatus: undefined, amount: 0, pastCalls: undefined, isPastCall: true }));
+  });
+  return out;
+};
 const callBucket = (l, today) => {
   if (l.stage === "won") return "won";
   if (l.stage === "noshow" || l.showUp === "noshow") return "noshow";
@@ -463,7 +478,10 @@ export default function App() {
         const total = schedule.reduce((a, i) => a + (i.cancelled || i.refunded ? 0 : i.amount), 0);
         const channel = loc.channelManual ? loc.channel
           : ((inc.channel === "none" && loc.channel === "paid") ? "paid" : (inc.channel || loc.channel));
-        return { ...inc, client: loc.client, phone: loc.phone || inc.phone, email: loc.email || inc.email, closer: loc.closer, source: inc.source && inc.source !== "À attribuer" ? inc.source : loc.source, channel, channelManual: loc.channelManual, ov, deletedInsts: loc.deletedInsts || [], schedule, total };
+        // Closer : l'attribution CRM (renvoyée par le serveur) fait foi ; la valeur
+        // locale ne sert que si le serveur n'en a pas.
+        const incCloser = inc.closer && inc.closer !== "—" ? inc.closer : "";
+        return { ...inc, client: loc.client, phone: loc.phone || inc.phone, email: loc.email || inc.email, closer: incCloser || loc.closer, source: inc.source && inc.source !== "À attribuer" ? inc.source : loc.source, channel, channelManual: loc.channelManual, ov, deletedInsts: loc.deletedInsts || [], schedule, total };
       });
       // conserver les ventes purement manuelles (ajoutées via "Ajouter une vente").
       // Les fiches d'origine serveur (id "sio-…") absentes de la réponse ont été
@@ -861,7 +879,7 @@ export default function App() {
       const r = await authFetch("/api/calendly-import?setup=1", { method: "POST", signal: ctrl.signal });
       const d = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(d && d.error ? d.error : `Erreur ${r.status}`);
-      flash(`Calendly (${d.account}) : ${d.imported || 0} RDV · ${d.formResponses || 0} fiches questions${d.formsError ? ` · formulaires : ${d.formsError}` : ""} · webhook ${d.webhook}.`);
+      flash(`Calendly (${d.account}) : ${d.imported || 0} RDV · ${d.noShows || 0} no-show · ${d.cancelled || 0} annulés · ${d.formResponses || 0} fiches questions${d.formsError ? ` · formulaires : ${d.formsError}` : ""} · webhook ${d.webhook}.`);
       loadCrm();
     } catch (e) {
       flash(e.name === "AbortError" ? "Connexion Calendly trop longue (interrompue)." : `Calendly : ${e.message}`);
@@ -955,8 +973,14 @@ export default function App() {
   // Attribution setter/closer depuis le TABLEAU DE BORD : écrit dans le lead
   // CRM (même email) -> stats, espace et commissions du closer à jour.
   const setSaleAttrib = async (s, patch) => {
-    const em = String(s.email || "").toLowerCase();
+    // On écrit sur la fiche CRM RELIÉE à la vente (lien manuel, email de
+    // paiement, téléphone…) — pas sur une fiche fantôme à l'email de paiement.
+    const ld = leadForSale(s);
+    const em = String((ld && ld.email) || s.email || "").toLowerCase();
     if (!em) { flash("Cette vente n'a pas d'email : impossible de la relier au CRM."); return; }
+    // Affichage immédiat (et conservé : la synchro ne l'écrase plus).
+    persist(sales.map((x) => (x.id === s.id ? { ...x, ...patch } : x)));
+    if (ld) setCrm((p) => ({ ...p, leads: p.leads.map((l) => (l.email === ld.email ? { ...l, ...patch } : l)) }));
     try {
       const r = await authFetch("/api/crm", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: em, ...patch }) });
       if (!r.ok) throw new Error(`Erreur ${r.status}`);
@@ -2777,7 +2801,8 @@ export default function App() {
 
         // ---- Calls de la semaine ----
         const today0w = toISO(new Date());
-        const calls = leads.filter((l) => l.hasCall !== false && inWeek(dOfL(l)));
+        // Un lead re-booké compte pour chacun de ses calls, à leur date (pastCalls).
+        const calls = expandCalls(leads).filter((l) => l.hasCall !== false && inWeek(dOfL(l)));
         const bk = (b) => calls.filter((l) => callBucket(l, today0w) === b);
         const upcomingN = bk("upcoming").length;
         const present = calls.filter((l) => HELD_BUCKETS.includes(callBucket(l, today0w))); // non renseigné = honoré

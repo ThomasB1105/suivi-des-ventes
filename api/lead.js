@@ -12,6 +12,7 @@
 const { cmd, isConfigured } = require("../lib/kv");
 const { pickNextAssignee, buildRoleMap } = require("../lib/crmData");
 const { applyDm } = require("../lib/dm");
+const { archiveOnRebook } = require("../lib/callBuckets");
 
 const pick = (o, ...ks) => { for (const k of ks) if (o && o[k] != null && o[k] !== "") return o[k]; return undefined; };
 function deepEmail(obj, depth = 0) {
@@ -120,6 +121,35 @@ module.exports = async (req, res) => {
 
     // ---- Format Calendly (webhook v2) ----
     const calendlyEvent = String(body.event || "");
+
+    // ---- No-show marqué dans Calendly (« Mark as no-show ») ----
+    if (/^invitee_no_show\.(created|deleted)$/.test(calendlyEvent)) {
+      const p = body.payload || {};
+      let email = String(p.email || "").toLowerCase();
+      const invUri = [p.invitee, p.uri, p.no_show && p.no_show.invitee].find((u) => /\/invitees\//.test(String(u || "")));
+      const tok = process.env.CALENDLY_TOKEN;
+      if (!email && invUri && tok) {
+        try {
+          const r = await fetch(String(invUri), { headers: { Authorization: `Bearer ${tok}`, Accept: "application/json" } });
+          if (r.ok) { const d = await r.json(); email = String((d && d.resource && d.resource.email) || "").toLowerCase(); }
+        } catch (e) { /* ignore */ }
+      }
+      if (!email) { res.status(200).json({ ok: true, ignored: "no-show sans email" }); return; }
+      const lead = await getLead(email);
+      if (!lead) { res.status(200).json({ ok: true, ignored: "lead inconnu" }); return; }
+      const created = /created$/.test(calendlyEvent);
+      if (created) {
+        if (!lead.showUp || lead.showUpAuto !== false) { lead.showUp = "noshow"; lead.showUpAuto = true; }
+        pushHistory(lead, "calendly_noshow", "No-show marqué dans Calendly");
+      } else if (lead.showUp === "noshow" && lead.showUpAuto !== false) {
+        delete lead.showUp; delete lead.showUpAuto;
+        pushHistory(lead, "calendly_noshow", "No-show retiré dans Calendly");
+      }
+      await saveLead(lead);
+      res.status(200).json({ ok: true, noShow: created, email });
+      return;
+    }
+
     const isCalendly = /^invitee\.(created|canceled)$/.test(calendlyEvent) || (body.payload && body.payload.scheduled_event);
     if (isCalendly) {
       const p = body.payload || {};
@@ -160,6 +190,9 @@ module.exports = async (req, res) => {
           pushHistory(lead, "calendly_cancel", `RDV annulé${ev.name ? ` · ${ev.name}` : ""}`);
         }
       } else {
+        // Re-booking : le résultat du call précédent (no-show, non closé…) est
+        // archivé à SA date, et le nouveau RDV repart sans résultat.
+        if (archiveOnRebook(lead, ev.start_time)) pushHistory(lead, "rebook", "Nouveau RDV — résultat du call précédent archivé");
         if (!lead.manualStage && !["won", "lost"].includes(lead.stage)) lead.stage = "booked";
         // Nouveau créneau : une annulation auto précédente ne tient plus.
         if (lead.showUp === "cancelled" && lead.showUpAuto !== false) { delete lead.showUp; delete lead.showUpAuto; }

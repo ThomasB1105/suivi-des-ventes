@@ -13,6 +13,7 @@ const { cmd, isConfigured } = require("../lib/kv");
 const { checkAuth } = require("../lib/auth");
 const { pickNextAssignee, buildRoleMap } = require("../lib/crmData");
 const { applyDm } = require("../lib/dm");
+const { archiveOnRebook } = require("../lib/callBuckets");
 
 const BASE = "https://api.calendly.com";
 
@@ -58,14 +59,22 @@ module.exports = async (req, res) => {
     if (req.query && (req.query.setup === "1" || req.query.setup === "true")) {
       const hookUrl = `https://${req.headers.host}/api/lead${secret ? `?secret=${secret}` : ""}`;
       try {
+        // RDV créés / annulés + no-show marqués dans Calendly (« Mark as no-show »).
+        const EVENTS = ["invitee.created", "invitee.canceled", "invitee_no_show.created", "invitee_no_show.deleted"];
         const w = await cGet("/webhook_subscriptions", tok, { organization, scope: "organization", count: 100 });
-        const exists = ((w && w.collection) || []).some((h) => String(h.callback_url || "").startsWith(`https://${req.headers.host}/api/lead`) && h.state === "active");
-        if (exists) webhook = "déjà actif";
+        const ours = ((w && w.collection) || []).filter((h) => String(h.callback_url || "").startsWith(`https://${req.headers.host}/api/lead`) && h.state === "active");
+        const complete = ours.find((h) => EVENTS.every((e) => (h.events || []).includes(e)));
+        if (complete) webhook = "déjà actif";
         else {
+          // Abonnement incomplet (sans les no-show) : Calendly ne permet pas de le
+          // modifier -> on le supprime et on le recrée avec tous les événements.
+          for (const h of ours) {
+            try { await fetch(String(h.uri), { method: "DELETE", headers: { Authorization: `Bearer ${tok}` } }); } catch (e) { /* ignore */ }
+          }
           const r = await fetch(BASE + "/webhook_subscriptions", {
             method: "POST",
             headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
-            body: JSON.stringify({ url: hookUrl, events: ["invitee.created", "invitee.canceled"], organization, scope: "organization" }),
+            body: JSON.stringify({ url: hookUrl, events: EVENTS, organization, scope: "organization" }),
           });
           const d = await r.json().catch(() => ({}));
           if (r.ok) webhook = "activé";
@@ -91,11 +100,13 @@ module.exports = async (req, res) => {
     }
 
     // Invités de chaque RDV (actif OU annulé) -> upsert crm:leads (borne : 150 RDV / run).
-    // Les RDV sont triés par date croissante : un re-booking postérieur écrase
-    // proprement une annulation antérieure.
+    // On garde les 150 RDV les PLUS RÉCENTS (à venir inclus) : les semaines en
+    // cours doivent toujours être à jour ; l'historique ancien s'obtient avec
+    // un ?days= plus court. L'ordre reste croissant : un re-booking postérieur
+    // écrase proprement une annulation antérieure.
     const roleMap = await buildRoleMap(cmd); // rôle des hôtes (Qui est qui / comptes)
-    let stored = 0, skipped = 0, cancelledSeen = 0;
-    for (const ev of events.slice(0, 150)) {
+    let stored = 0, skipped = 0, cancelledSeen = 0, noShowSeen = 0;
+    for (const ev of events.slice(-150)) {
       const uuid = String(ev.uri || "").split("/").pop();
       if (!uuid) continue;
       let inv;
@@ -152,6 +163,8 @@ module.exports = async (req, res) => {
         // On garde le RDV le plus récent comme référence (>= : permet de
         // compléter les liens/l'événement d'un RDV déjà importé)
         if (!lead.bookedAt || String(ev.start_time) >= String(lead.bookedAt)) {
+          // Re-booking : résultat du call précédent archivé à sa date (pastCalls).
+          archiveOnRebook(lead, ev.start_time);
           lead.bookedAt = ev.start_time;
           lead.bookedEvent = ev.name || "Calendly";
           // Ce RDV actif est la nouvelle référence : une annulation auto antérieure ne tient plus.
@@ -163,6 +176,23 @@ module.exports = async (req, res) => {
             cancel: p.cancel_url || undefined,
           };
           if (links.join || links.reschedule || links.cancel) lead.links = { ...(lead.links || {}), ...links };
+        }
+        // No-show marqué dans Calendly sur un RDV PLUS ANCIEN que la référence
+        // (le lead a été re-booké depuis) -> archivé comme call no-show.
+        if (p.no_show && lead.bookedAt && String(ev.start_time) < String(lead.bookedAt)) {
+          const key = String(ev.start_time).slice(0, 16);
+          if (!(lead.pastCalls || []).some((pc) => String(pc.at).slice(0, 16) === key)) {
+            lead.pastCalls = [...(lead.pastCalls || []), { at: ev.start_time, event: ev.name, closer: lead.closer, showUp: "noshow" }].slice(-10);
+            noShowSeen += 1;
+          }
+        }
+        // No-show marqué DANS Calendly (« Mark as no-show ») sur le RDV de
+        // référence du lead. Une saisie manuelle dans l'app reste prioritaire.
+        if (String(lead.bookedAt) === String(ev.start_time)) {
+          if (p.no_show) {
+            if (!lead.showUp || lead.showUpAuto !== false) { lead.showUp = "noshow"; lead.showUpAuto = true; }
+            noShowSeen += 1;
+          } else if (lead.showUp === "noshow" && lead.showUpAuto === true) { delete lead.showUp; delete lead.showUpAuto; }
         }
         lead.source = lead.source || "Calendly";
         // UTM du lien de booking (Calendly les stocke dans invitee.tracking)
@@ -255,6 +285,7 @@ module.exports = async (req, res) => {
       events: events.length,
       imported: stored,
       cancelled: cancelledSeen,
+      noShows: noShowSeen,
       skipped,
       formsSeen,
       formSubmissions: subsSeen,

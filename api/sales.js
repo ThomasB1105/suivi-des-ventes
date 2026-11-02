@@ -187,13 +187,18 @@ module.exports = async (req, res) => {
       // Liens vente -> fiche posés dans « Matching ventes » (+ téléphone / nom saisis).
       const links = {};
       try { const lk = (await cmd(["HGETALL", "crm:salelinks"])) || []; for (let i = 0; i < lk.length; i += 2) { try { links[String(lk[i]).toLowerCase()] = JSON.parse(lk[i + 1]); } catch {} } } catch {}
+      // Repli par téléphone (9 derniers chiffres) : paiement fait avec un autre
+      // email que la fiche CRM.
+      const normPh = (p) => { const d = String(p || "").replace(/\D/g, ""); return d.length >= 8 ? d.slice(-9) : ""; };
+      const byPhone = {};
+      Object.values(lm).forEach((l) => { const ph = normPh(l.phone); if (ph && !byPhone[ph]) byPhone[ph] = l; });
       sales.forEach((s) => {
         const em = String(s.email || "").toLowerCase();
         const link = links[em] || {};
         if (link.phone && !s.phone) s.phone = link.phone;
         if (link.name && (!s.client || /@/.test(String(s.client)))) s.client = link.name;
         if (link.leadEmail) s.leadEmail = link.leadEmail;
-        const l = lm[String(link.leadEmail || "").toLowerCase()] || lm[em];
+        const l = lm[String(link.leadEmail || "").toLowerCase()] || lm[em] || byPhone[normPh(s.phone || link.phone)];
         const dm = !!(l && (isDmLead(l) || l.dmSetter));
         if (l) {
           if (l.closer) s.closer = resolve(l.closer);

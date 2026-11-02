@@ -10,7 +10,7 @@
 const { cmd, isConfigured } = require("../lib/kv");
 const { checkAuth } = require("../lib/auth");
 const { buildLeads } = require("../lib/crmData");
-const { HELD, callBucket, callDay, parisToday } = require("../lib/callBuckets");
+const { HELD, callBucket, callDay, parisToday, expandCalls } = require("../lib/callBuckets");
 
 // Lundi de la semaine d'une date ISO -> "YYYY-MM-DD"
 function weekKey(iso) {
@@ -285,7 +285,8 @@ module.exports = async (req, res) => {
     let crm = null;
     try {
       const today = parisToday();
-      const leads = (await buildLeads(cmd)).filter((l) => l.hasCall !== false && (l.lastCall || l.bookedAt));
+      // Un lead re-booké compte pour chacun de ses calls (pastCalls), à leur date.
+      const leads = expandCalls(await buildLeads(cmd)).filter((l) => l.hasCall !== false && (l.lastCall || l.bookedAt));
       const inRange = leads.filter((l) => { const d = callDay(l); return d && (!from || d >= from) && (!to || d <= to); });
       const zero = () => ({ calls: 0, won: 0, lost: 0, show: 0, pending: 0, noshow: 0, cancelled: 0, upcoming: 0, excluded: 0, revenue: 0 });
       const T = zero(), byC = {}, nsList = [];
