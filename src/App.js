@@ -2809,6 +2809,9 @@ export default function App() {
         const noshowN = bk("noshow").length;
         const cancelledN = bk("cancelled").length;
         const otherN = bk("excluded").length; // non qualifiés / dead / NRP…
+        const pendingN = bk("pending").length; // calls passés SANS résultat saisi (comptés honorés)
+        const confPresent = present.length - pendingN; // présents confirmés par le closer
+        const confShowRate = confPresent + noshowN ? confPresent / (confPresent + noshowN) : 0;
         const closed = bk("won");
         const showRate = present.length + noshowN ? present.length / (present.length + noshowN) : 0;
         const closingRate = present.length ? closed.length / present.length : 0;
@@ -2855,7 +2858,7 @@ export default function App() {
           const w = cb("won");
           const sSales = weekSales.filter((sl) => same(saleCloser(sl)));
           const cash = cashSales.filter((sl) => same(saleCloser(sl))).reduce((a, sl) => a + cashOf(sl), 0);
-          return { n, calls: c.length, present: p.length, ns, up, canc, other: cb("excluded"), won: w, ventes: sSales.length, cash,
+          return { n, calls: c.length, present: p.length, pend: cb("pending"), ns, up, canc, other: cb("excluded"), won: w, ventes: sSales.length, cash,
             showRate: p.length + ns ? p.length / (p.length + ns) : 0, closingRate: p.length ? w / p.length : 0 };
         }).sort((a, b) => (a.n === NA) - (b.n === NA) || b.cash - a.cash || b.won - a.won);
         const sumOf = (k) => perCloser.reduce((a, r) => a + r[k], 0);
@@ -2873,8 +2876,8 @@ export default function App() {
           </div>
 
           <div className="kpis" style={{ marginTop: 4 }}>
-            <div className="kcard"><div className="kcard-l">Calls</div><div className="kcard-v">{calls.length}</div><div className="kcard-f">{present.length} honorés · {noshowN} no-show{cancelledN ? ` · ${cancelledN} annulés` : ""}{otherN > 0 ? ` · ${otherN} écartés` : ""}{upcomingN ? ` · ${upcomingN} à venir` : ""}</div></div>
-            <div className="kcard"><div className="kcard-l">Show-up</div><div className="kcard-v">{pct(showRate)}</div><div className="kcard-f">présents / (présents + no-show)</div></div>
+            <div className="kcard"><div className="kcard-l">Calls</div><div className="kcard-v">{calls.length}</div><div className="kcard-f">{present.length} honorés{pendingN ? ` (dont ${pendingN} sans résultat)` : ""} · {noshowN} no-show{cancelledN ? ` · ${cancelledN} annulés` : ""}{otherN > 0 ? ` · ${otherN} écartés` : ""}{upcomingN ? ` · ${upcomingN} à venir` : ""}</div></div>
+            <div className="kcard"><div className="kcard-l">Show-up</div><div className="kcard-v">{pct(showRate)}</div><div className="kcard-f">{pendingN ? <>sur les résultats saisis : <b>{confPresent + noshowN ? pct(confShowRate) : "—"}</b> · <span style={{ color: "#B54708" }}>{pendingN} call{pendingN > 1 ? "s" : ""} sans résultat</span></> : "présents / (présents + no-show)"}</div></div>
             <div className="kcard"><div className="kcard-l">Closés</div><div className="kcard-v green">{closed.length}</div><div className="kcard-f">calls de la période conclus · closing {pct(closingRate)}</div></div>
             <div className="kcard"><div className="kcard-l">Ventes signées</div><div className="kcard-v">{weekSales.length}</div><div className="kcard-f">1er paiement sur la période · {euro(contracted)} contractés</div></div>
             <div className="kcard"><div className="kcard-l">Cash collecté</div><div className="kcard-v green">{euro(cashWeek)}</div><div className="kcard-f">encaissé sur {byPeriod ? "la période" : "la semaine"}</div></div>
@@ -2885,13 +2888,14 @@ export default function App() {
           <div className="section-h" style={{ marginTop: 26 }}><UserCheck size={15} /> Par closer</div>
           <div className="card" style={{ padding: 0, overflowX: "auto" }}>
             <table className="tbl">
-              <thead><tr><th>Closer</th><th className="num">Calls</th><th className="num">Honorés</th><th className="num">No-show</th><th className="num">Annulés</th><th className="num">À venir</th><th className="num">Show-up</th><th className="num">Closés</th><th className="num">Taux closing</th><th className="num">Ventes signées</th><th className="num">Cash collecté</th></tr></thead>
+              <thead><tr><th>Closer</th><th className="num">Calls</th><th className="num">Honorés</th><th className="num" title="Calls passés sans résultat saisi par le closer (comptés comme honorés)">Sans résultat</th><th className="num">No-show</th><th className="num">Annulés</th><th className="num">À venir</th><th className="num">Show-up</th><th className="num">Closés</th><th className="num">Taux closing</th><th className="num">Ventes signées</th><th className="num">Cash collecté</th></tr></thead>
               <tbody>
                 {perCloser.map((r) => (
                   <tr key={r.n}>
                     <td className="lab">{r.n}</td>
                     <td className="num">{r.calls}</td>
                     <td className="num">{r.present}</td>
+                    <td className="num" style={r.pend ? { color: "#B54708", fontWeight: 700 } : { color: "var(--muted)" }}>{r.pend}</td>
                     <td className="num" style={r.ns ? { color: "var(--red)", fontWeight: 700 } : undefined}>{r.ns}</td>
                     <td className="num mut" title={r.other > 0 ? `+ ${r.other} écarté(s) (non qualifié / dead)` : ""}>{r.canc}{r.other > 0 ? <span style={{ fontSize: 11 }}> +{r.other}</span> : null}</td>
                     <td className="num mut">{r.up}</td>
@@ -2907,6 +2911,7 @@ export default function App() {
                     <td className="lab">Total</td>
                     <td className="num">{sumOf("calls")}</td>
                     <td className="num">{sumOf("present")}</td>
+                    <td className="num">{sumOf("pend")}</td>
                     <td className="num">{sumOf("ns")}</td>
                     <td className="num">{sumOf("canc")}{sumOf("other") > 0 ? <span style={{ fontSize: 11 }}> +{sumOf("other")}</span> : null}</td>
                     <td className="num">{sumOf("up")}</td>
@@ -2917,7 +2922,7 @@ export default function App() {
                     <td className="num">{euro(sumOf("cash"))}</td>
                   </tr>
                 )}
-                {perCloser.length === 0 && <tr><td colSpan={11}><div className="empty" style={{ padding: 18 }}>Aucune activité sur cette période.</div></td></tr>}
+                {perCloser.length === 0 && <tr><td colSpan={12}><div className="empty" style={{ padding: 18 }}>Aucune activité sur cette période.</div></td></tr>}
               </tbody>
             </table>
           </div>
@@ -3278,7 +3283,7 @@ export default function App() {
         {/* CASES DÉDIÉES : bookés · honorés · annulés · no-show · show-up · closing · revenu · cash/appel */}
         <div className="kpi-grid">
           <div className="kcard"><div className="kcard-l">Strategy calls bookés</div><div className="kcard-v">{callT.scheduled || 0}</div><div className="kcard-f">{callT.upcoming || 0} à venir{callT.excluded ? ` · ${callT.excluded} écartés` : ""}</div></div>
-          <div className="kcard"><div className="kcard-l">Appels honorés</div><div className="kcard-v">{callT.present || 0}</div><div className="kcard-f">non saisi = a eu lieu</div></div>
+          <div className="kcard"><div className="kcard-l">Appels honorés</div><div className="kcard-v">{callT.present || 0}</div><div className="kcard-f">{callT.pending ? <span style={{ color: "#B54708" }}>dont {callT.pending} sans résultat saisi</span> : "tous les résultats sont saisis"}</div></div>
           <div className="kcard"><div className="kcard-l">Appels annulés</div><div className="kcard-v" style={{ color: (callT.cancelled || 0) > 0 ? "var(--amber,#FDCB6E)" : "var(--text)" }}>{callT.cancelled || 0}</div><div className="kcard-f">{callStats.totalCalls ? pct(callT.cancelRate) : "—"} des bookés</div></div>
           <div className="kcard"><div className="kcard-l">No-show</div><div className="kcard-v" style={{ color: (callT.noShow || 0) > 0 ? "var(--red)" : "var(--text)" }}>{callT.noShow || 0}</div><div className="kcard-f">{callStats.totalCalls ? pct(callT.noShowRate) : "—"} des calls passés</div></div>
           <div className="kcard"><div className="kcard-l">Taux de show-up</div><div className="kcard-v" style={{ color: "var(--cyan,#22D3EE)" }}>{callStats.totalCalls ? pct(callT.showRate) : "—"}</div><div className="kcard-f">honorés / (honorés + no-show)</div></div>
