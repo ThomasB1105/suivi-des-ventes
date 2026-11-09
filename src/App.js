@@ -887,7 +887,7 @@ export default function App() {
   };
   // Impayés setter : chargés au démarrage (bulle du menu) et à l'ouverture de l'onglet.
   useEffect(() => {
-    if (authed && !isAdmin && isSetterRole(me.role) && (tab === "impayesSet" || !impSet.loaded)) loadImpSet();
+    if (authed && !isAdmin && me.role === "setter" && (tab === "impayesSet" || !impSet.loaded)) loadImpSet();
     if (authed && isAdmin && tab === "impayes") loadImpSet();
   }, [tab, authed]); // eslint-disable-line
 
@@ -1832,7 +1832,7 @@ export default function App() {
             <button className={navCls("espace")} onClick={() => go("espace")}><UserCheck size={16} /> Ma journée</button>
             {me.role === "setter" && <button className={navCls("vsl")} onClick={() => go("vsl")}><Leaf size={16} /> Leads VSL{vslTodo ? <span className="nav-badge" title="Nouveaux leads à traiter">{vslTodo}</span> : null}</button>}
             {isSetterRole(me.role) && <button className={navCls("noshows")} onClick={() => go("noshows")}><AlertTriangle size={16} /> No-shows</button>}
-            {isSetterRole(me.role) && <button className={navCls("impayesSet")} onClick={() => go("impayesSet")}><Landmark size={16} /> Impayés{impSet.items.length ? <span className="nav-badge" title="Échéances en retard à relancer">{impSet.items.length}</span> : null}</button>}
+            {me.role === "setter" && <button className={navCls("impayesSet")} onClick={() => go("impayesSet")}><Landmark size={16} /> Impayés{impSet.items.length ? <span className="nav-badge" title="Échéances en retard à relancer">{impSet.items.length}</span> : null}</button>}
             {!isSetterRole(me.role) && <button className={navCls("followups")} onClick={() => go("followups")}><RotateCcw size={16} /> Follow-ups{fupTodo ? <span className="nav-badge" title="Follow-ups à faire">{fupTodo}</span> : null}</button>}
             {!isSetterRole(me.role) && <button className={navCls("acomptes")} onClick={() => go("acomptes")}><Landmark size={16} /> Acomptes</button>}
             {!isSetterRole(me.role) && <button className={navCls("replays")} onClick={() => go("replays")}><Video size={16} /> Replays</button>}
@@ -3817,7 +3817,7 @@ export default function App() {
 
       {/* NO-SHOWS — liste complète, filtrable par date (setter + admin) */}
       {/* IMPAYÉS (setter) — échéances en retard à relancer, filtre par mois */}
-      {tab === "impayesSet" && !isAdmin && isSetterRole(me.role) && (() => {
+      {tab === "impayesSet" && !isAdmin && me.role === "setter" && (() => {
         const items = impSet.items || [];
         const months = [...new Set(items.map((i) => i.dueDate.slice(0, 7)))].sort().reverse();
         const ymLabel = (ym) => { try { return parseLocal(`${ym}-01`).toLocaleDateString("fr-FR", { month: "long", year: "numeric" }); } catch (e) { return ym; } };

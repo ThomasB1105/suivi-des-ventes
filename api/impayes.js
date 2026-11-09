@@ -9,7 +9,7 @@
 // échéances marquées payées, ventes supprimées) -> mêmes impayés que l'onglet
 // admin. Ne renvoie QUE les échéances en retard, sans le reste des finances.
 // Notes : hash crm:impnotes (saleId -> liste JSON), partagées admin / setters.
-// Accès : admin, setter, setter DM.
+// Accès : admin et setter (pas le setter DM, pas les closers).
 
 const { cmd, isConfigured } = require("../lib/kv");
 const { identify } = require("../lib/auth");
@@ -36,7 +36,7 @@ module.exports = async (req, res) => {
   if (req.method === "OPTIONS") { res.status(204).end(); return; }
   if (!isConfigured()) { res.status(200).json({ items: [], leads: {}, notes: {} }); return; }
   const me = await identify(req, cmd);
-  if (!me || !["admin", "setter", "setter_dm"].includes(me.role)) { res.status(401).json({ error: "Non autorisé." }); return; }
+  if (!me || !["admin", "setter"].includes(me.role)) { res.status(401).json({ error: "Non autorisé." }); return; }
 
   try {
     if (req.method === "POST") {
