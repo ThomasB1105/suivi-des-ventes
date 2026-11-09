@@ -3125,6 +3125,51 @@ export default function App() {
           )}
         </div>
       )}
+      {tab === "impayes" && (() => {
+        // Paiements ARRÊTÉS : client qui ne paie plus mais sans échéance prévue
+        // (plan non transmis par la plateforme) -> invisible dans les impayés.
+        // Critères : aucune échéance à venir/en retard, dernier paiement il y a
+        // plus de 35 jours, encaissé entre un acompte et une offre complète.
+        const t0 = toISO(new Date());
+        const stopped = sales.filter((sl) => {
+          const active = sl.schedule.filter((i) => !i.cancelled && !i.refunded);
+          if (active.some((i) => !i.paid)) return false;
+          const paidList = active.filter((i) => i.paid);
+          const paid = paidList.reduce((a, i) => a + i.amount, 0);
+          const last = paidList.map((i) => i.dueDate).sort().pop();
+          if (!last) return false;
+          const days = Math.round((parseLocal(t0) - parseLocal(last)) / 864e5);
+          return days > 35 && paid > 250 && paid < 2300 && matchQ(sl);
+        }).map((sl) => {
+          const paidList = sl.schedule.filter((i) => i.paid && !i.cancelled && !i.refunded);
+          return { sl, paid: paidList.reduce((a, i) => a + i.amount, 0), last: paidList.map((i) => i.dueDate).sort().pop(), n: paidList.length };
+        }).sort((a, b) => a.last.localeCompare(b.last));
+        if (!stopped.length) return null;
+        return (<>
+          <div className="section-h" style={{ marginTop: 26 }}><AlertTriangle size={15} /> Paiements arrêtés · à vérifier <span className="mnd-gcount">{stopped.length}</span></div>
+          <div className="mut" style={{ fontSize: 12.5, margin: "-6px 2px 10px" }}>Ces clients ne paient plus depuis plus de 35 jours mais n'ont aucune échéance prévue (plan de paiement non transmis par la plateforme) : ils n'apparaissent donc pas dans les impayés. Ouvre la vente et ajoute les échéances restantes pour qu'ils remontent.</div>
+          <div className="card" style={{ padding: 6 }}>
+            <table className="tbl">
+              <thead><tr><th>Client</th><th>Offre</th><th className="num">Encaissé</th><th className="num">Paiements</th><th className="num">Dernier paiement</th><th /></tr></thead>
+              <tbody>
+                {stopped.map(({ sl, paid, last, n }) => { const ld = leadForSale(sl); return (
+                  <tr key={sl.id}>
+                    <td className="lab">{sl.client}{(sl.email || sl.phone) && <div className="mut" style={{ fontWeight: 400, fontSize: 11, marginTop: 2 }}>{[sl.email, sl.phone].filter(Boolean).join(" · ")}</div>}</td>
+                    <td className="mut">{sl.offer}</td>
+                    <td className="num">{euro(paid)}</td>
+                    <td className="num">{n}</td>
+                    <td className="num red">{dateLabel(last)} · {daysLate(last)} j</td>
+                    <td className="num" style={{ whiteSpace: "nowrap" }}>
+                      <button className="esp-open" onClick={() => openEdit(sl)}>Compléter l'échéancier</button>
+                      {ld ? <button className="esp-open" style={{ marginLeft: 6 }} onClick={() => setLeadOpen(ld.email)}>Fiche</button> : null}
+                    </td>
+                  </tr>
+                ); })}
+              </tbody>
+            </table>
+          </div>
+        </>);
+      })()}
 
       {/* À COLLECTER — piloté par la plage de dates globale */}
       {tab === "collecte" && (<>

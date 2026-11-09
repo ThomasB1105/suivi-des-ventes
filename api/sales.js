@@ -27,6 +27,25 @@ const addMonthsISO = (iso, n) => {
 // l'offre systeme.io via l'email).
 const GENERIC_OFFER = /^(stripe|whop|import|client|—|-|)$/i;
 
+// Offres connues (liens de paiement Whop et Stripe) : total -> nombre max de mensualités.
+const KNOWN_OFFERS = [
+  { total: 3497, max: 4 }, { total: 2797, max: 4 }, { total: 2397, max: 4 },   // one-to-one (Stripe)
+  { total: 3490, max: 6 }, { total: 2790, max: 4 }, { total: 2390, max: 4 },   // Ecom Ascension (Whop)
+];
+// Plan déduit des montants : tous les paiements égaux à la mensualité exacte
+// (au centime près) d'une offre connue en 2× ou plus.
+function inferPlan(evs) {
+  if (!evs.length) return null;
+  const cents = evs.map((e) => Math.round(Number(e.amount || 0) * 100));
+  if (!cents.every((c) => c === cents[0]) || cents[0] <= 0) return null;
+  for (const o of KNOWN_OFFERS) {
+    for (let n = 2; n <= o.max; n++) {
+      if (Math.abs((o.total * 100) / n - cents[0]) <= 1 && evs.length < n) return { n, amount: cents[0] / 100, total: o.total };
+    }
+  }
+  return null;
+}
+
 function groupIntoSales(events) {
   const byClient = {};
   events.filter((e) => Number(e.amount) > 0).forEach((e) => {
@@ -97,6 +116,18 @@ function groupIntoSales(events) {
       const open = evs
         .filter((e) => e.planOpen && e.planAmount > 0)
         .sort((a, b) => String(b.date).localeCompare(String(a.date)))[0];
+      // 2ter) aucun plan transmis (liens de paiement Stripe one-to-one : chaque
+      //       échéance est un paiement isolé). Si tous les paiements ont le
+      //       montant EXACT d'une mensualité d'une offre connue (ex. 874,25 € =
+      //       3 497 € en 4×), on en déduit le plan et on projette le reste.
+      const inferred = !open ? inferPlan(evs) : null;
+      if (inferred) {
+        const lastDate = evs.map((e) => e.date).sort().pop();
+        const remaining = Math.max(0, inferred.n - evs.length);
+        for (let i = 1; i <= remaining; i++) {
+          schedule.push({ id: `inst-${evs[0].id}-p${i}`, dueDate: addMonthsISO(lastDate, i), amount: inferred.amount, paid: false, method: null });
+        }
+      }
       if (open) {
         const paidLike = evs.filter((e) => Math.abs(e.amount - open.planAmount) < 0.5);
         const lastDate = (paidLike.map((e) => e.date).sort().pop()) || open.date;
