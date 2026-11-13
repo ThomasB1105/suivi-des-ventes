@@ -4431,6 +4431,12 @@ export default function App() {
         const L = own || (crm.shared || []).find((x) => x.email === leadOpen) || (impSet.leads || {})[leadOpen];
         if (!L) return null;
         const ro = !own && !isAdmin; // fiche d'un autre membre : consultation seule
+        // Téléphone : fiche CRM, sinon celui de l'impayé ou de la vente reliée.
+        const phone = L.phone
+          || ((impSet.items || []).find((i) => i.leadEmail === L.email && i.phone) || {}).phone
+          || (isAdmin ? (sales.find((sl) => sl.phone && (leadForSale(sl) || {}).email === L.email) || {}).phone : "")
+          || "";
+        const telHref = `tel:${String(phone).replace(/[^+0-9]/g, "")}`;
         const nm = L.name && L.name !== L.email ? L.name : L.email;
         const qa = L.answers && typeof L.answers === "object" ? Object.entries(L.answers) : [];
         return (
@@ -4443,7 +4449,7 @@ export default function App() {
                 <span className="mnd-ava" style={{ background: "linear-gradient(135deg,#7C5CFF,#9D5CFF)", width: 46, height: 46, fontSize: 17 }}>{String(nm)[0].toUpperCase()}</span>
                 <div style={{ minWidth: 0 }}>
                   <div style={{ fontFamily: "'Montserrat'", fontWeight: 800, fontSize: 19 }}>{nm}</div>
-                  <div className="mut" style={{ fontSize: 12.5, marginTop: 2 }}>{L.email}{L.phone ? <> · <a href={`tel:${String(L.phone).replace(/[^+0-9]/g, "")}`} style={{ color: "var(--cyan)", textDecoration: "none" }}>{L.phone}</a></> : null}</div>
+                  <div className="mut" style={{ fontSize: 12.5, marginTop: 2 }}>{L.email}{phone ? <> · <a href={telHref} style={{ color: "var(--cyan)", textDecoration: "none" }}>{phone}</a></> : null}</div>
                 </div>
                 <select className="mnd-status" value={L.stage} style={{ backgroundColor: (CRM_META[L.stage] || ["", "#666"])[1], marginLeft: "auto" }}
                   onChange={(e) => updateLead(L.email, { stage: e.target.value })}>
@@ -4459,6 +4465,17 @@ export default function App() {
               ) : null}
               <div className="ls-grid">
                 <div><span className="ls-l">Source</span><span>{L.source || "—"}</span></div>
+                <div style={{ gridColumn: "1 / -1" }}>
+                  <span className="ls-l">Téléphone</span>
+                  {phone ? (
+                    <span style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                      <a href={telHref} style={{ color: "var(--cyan)", textDecoration: "none", fontWeight: 700 }}>{phone}</a>
+                      <a className="ls-link ls-join" style={{ textDecoration: "none" }} href={telHref}>📱 Appeler</a>
+                      <a className="ls-link" style={{ textDecoration: "none", borderColor: "#ABEFC6", color: "#067647" }} href={`https://wa.me/${String(phone).replace(/\D/g, "")}`} target="_blank" rel="noreferrer">💬 WhatsApp</a>
+                      <a href="#copier" role="button" className={`esp-open pay-copy ${copiedKey === "ls" + L.email ? "copied" : ""}`} style={{ textDecoration: "none" }} onClick={(e) => { e.preventDefault(); copyWithFeedback("ls" + L.email, String(phone)); }}>{copiedKey === "ls" + L.email ? "✓ Copié" : "📋 Copier"}</a>
+                    </span>
+                  ) : <span className="mut">non renseigné</span>}
+                </div>
                 <div><span className="ls-l">Setter call</span><span>{L.setter || "—"}</span></div>
                 {L.dmSetter ? <div><span className="ls-l">Setter DM</span><span>{L.dmSetter}</span></div> : null}
                 <div><span className="ls-l">Closer</span><span>{L.closer || "—"}</span></div>

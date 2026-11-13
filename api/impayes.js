@@ -81,6 +81,9 @@ module.exports = async (req, res) => {
         if (!(Number(i.amount) > 0)) return;
         if (lead && !leadOut[lead.email]) {
           leadOut[lead.email] = { ...Object.fromEntries(LEAD_KEYS.filter((k) => lead[k] !== undefined).map((k) => [k, lead[k]])), shared: true };
+          // Téléphone / nom : repris du paiement quand la fiche CRM n'en a pas.
+          if (!leadOut[lead.email].phone && s.phone) leadOut[lead.email].phone = s.phone;
+          if ((!lead.name || lead.name === lead.email) && s.client && !/@/.test(String(s.client))) leadOut[lead.email].name = s.client;
         }
         items.push({
           id: `${s.id}|${i.id}`,
