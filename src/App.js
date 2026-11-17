@@ -896,7 +896,7 @@ export default function App() {
   // 2 min quand l'onglet est visible, et au retour sur la fenêtre) — rythme
   // choisi pour ménager le quota de commandes de la base Upstash.
   useEffect(() => {
-    if (!(tab === "crm" || tab === "calendrier" || tab === "espace" || tab === "vsl" || tab === "followups" || tab === "acomptes" || tab === "replays" || tab === "saphia" || tab === "reporting" || tab === "ads" || tab === "dm" || tab === "matching" || tab === "noshows")) return;
+    if (!(tab === "crm" || tab === "calendrier" || tab === "espace" || tab === "vsl" || tab === "followups" || tab === "acomptes" || tab === "replays" || tab === "saphia" || tab === "reporting" || tab === "ads" || tab === "dm" || tab === "matching" || tab === "rapport" || tab === "noshows")) return;
     loadCrm(); if (isAdmin) loadTeam();
     const iv = setInterval(() => { if (document.visibilityState === "visible") loadCrm(true); }, 120000);
     const onFocus = () => { if (document.visibilityState !== "hidden") loadCrm(true); };
@@ -1259,7 +1259,7 @@ export default function App() {
   const overduesF = sortOverdue((impAll ? allOverdue : overdues).filter((i) => matchQ(i.sale)));
   const periodListF = periodList.filter((i) => matchQ(i.sale));
 
-  const SECTION = { clients: "Tableau de bord", cohortes: "Cohortes", mois: "Par mois", collecte: "À collecter", impayes: "Impayés", couts: "Coûts", closers: "Closers", crm: "CRM", calendrier: "Calendrier", equipe: "Équipe", espace: "Ma journée", vsl: "Leads VSL", acomptes: "Acomptes", followups: "Follow-ups", saphia: "Saphia follow up", reporting: "Reporting hebdo", ads: "Reporting Ads", dm: "Setting DM", noshows: "No-shows", impayesSet: "Impayés", replays: "Replays des calls", paiement: "Liens de paiement", matching: "Matching ventes" };
+  const SECTION = { clients: "Tableau de bord", cohortes: "Cohortes", mois: "Par mois", collecte: "À collecter", impayes: "Impayés", couts: "Coûts", closers: "Closers", crm: "CRM", calendrier: "Calendrier", equipe: "Équipe", espace: "Ma journée", vsl: "Leads VSL", acomptes: "Acomptes", followups: "Follow-ups", saphia: "Saphia follow up", reporting: "Reporting hebdo", ads: "Reporting Ads", dm: "Setting DM", noshows: "No-shows", impayesSet: "Impayés", replays: "Replays des calls", paiement: "Liens de paiement", matching: "Matching ventes", rapport: "Rapport détaillé" };
   const go = (t) => { setTab(t); setNavOpen(false); };
   const navCls = (t) => `nav-item ${tab === t ? "active" : ""}`;
   // Matching ventes : une vente est « reliée » quand une fiche CRM (avec call)
@@ -1813,6 +1813,7 @@ export default function App() {
             <button className={navCls("closers")} onClick={() => go("closers")}><UserCheck size={16} /> Closers</button>
             <button className={navCls("reporting")} onClick={() => go("reporting")}><TrendingUp size={16} /> Reporting</button>
             <button className={navCls("ads")} onClick={() => go("ads")}><Megaphone size={16} /> Ads</button>
+            <button className={navCls("rapport")} onClick={() => go("rapport")}><ClipboardList size={16} /> Rapport détaillé</button>
             <button className={navCls("dm")} onClick={() => go("dm")}><Mail size={16} /> Setting DM</button>
             <div className="nav-label">CRM</div>
             <button className={navCls("crm")} onClick={() => go("crm")}><ClipboardList size={16} /> CRM</button>
@@ -2780,6 +2781,174 @@ export default function App() {
               </div>
             </>);
         })();
+      })()}
+
+      {/* RAPPORT DÉTAILLÉ — funnel, ventes, cash, ads, équipe : semaine par semaine */}
+      {tab === "rapport" && isAdmin && (() => {
+        const from = periodRange.from, to = periodRange.to;
+        const t0 = toISO(new Date());
+        const leads = crm.leads || [];
+        const allCalls = expandCalls(leads).filter((l) => l.hasCall !== false && (l.lastCall || l.bookedAt));
+        const mondayOf = (iso) => { const d = parseLocal(iso); return toISO(addDays(d, -((d.getDay() + 6) % 7))); };
+        const weeks = [];
+        for (let m = mondayOf(from); m <= to; m = toISO(addDays(parseLocal(m), 7))) {
+          const a = m < from ? from : m;
+          const e = toISO(addDays(parseLocal(m), 6));
+          weeks.push({ a, b: e > to ? to : e, label: `${a.slice(8, 10)}/${a.slice(5, 7)}` });
+        }
+        // Source d'un lead : DM > Ads (VSL / campagne) > Organique (iClosed / YouTube) > Autre.
+        const srcOf = (l) => (l.dm || l.dmSetter) ? "dm" : (/vsl/i.test(l.source || "") || l.campaign) ? "ads" : (/iclosed|youtube/i.test(l.source || "") ? "orga" : "autre");
+        const offerOf = (t) => t >= 3400 ? "mastermind" : (t >= 2700 && t < 2900) ? "launch" : (t >= 2300 && t < 2450) ? "o2390" : "autre";
+        const nInst = (sl) => sl.schedule.filter(isActive).length;
+        const histBookings = [];
+        leads.forEach((l) => (l.history || []).forEach((h) => {
+          if (h && h.type === "calendly_booked") {
+            const m = String(h.label || "").match(/\((\d{4}-\d{2}-\d{2})\)/);
+            const bookDay = toParis(h.at || "").slice(0, 10);
+            if (m && bookDay) histBookings.push({ call: m[1], delay: Math.max(0, Math.round((parseLocal(m[1]) - parseLocal(bookDay)) / 864e5)) });
+          }
+        }));
+        const stats = (a, b) => {
+          const inR = (d) => !!d && d >= a && d <= b;
+          const nl = leads.filter((l) => inR(toParis(l.createdAt || "").slice(0, 10)));
+          const calls = allCalls.filter((l) => inR(callDayOf(l)));
+          const bk = (k) => calls.filter((l) => callBucket(l, t0) === k).length;
+          const held = calls.filter((l) => HELD_BUCKETS.includes(callBucket(l, t0))).length;
+          const noshow = bk("noshow");
+          const setterCancel = calls.filter((l) => ["cancel", "unqualified"].includes(l.setStatus || "") || l.stage === "unqualified").length;
+          const leadCancel = calls.filter((l) => l.showUp === "cancelled" && l.setStatus !== "cancel").length;
+          const reports = leads.reduce((n, l) => n + (l.history || []).filter((h) => h && h.type === "calendly_resched" && inR(toParis(h.at || "").slice(0, 10))).length, 0);
+          const signed = sales.filter((sl) => inR(String(sl.closeDate || "").slice(0, 10)));
+          const byOffer = (k) => signed.filter((sl) => offerOf(sl.total) === k).length;
+          const cash = sales.reduce((x, sl) => x + sl.schedule.filter((i) => i.paid && inR(i.dueDate)).reduce((y, i) => y + i.amount, 0), 0);
+          const multi = sales.filter((sl) => nInst(sl) > 1);
+          const unpaid = multi.reduce((x, sl) => x + sl.schedule.filter((i) => statusOf(i) === "overdue" && inR(i.dueDate)).reduce((y, i) => y + i.amount, 0), 0);
+          const refunds = multi.reduce((x, sl) => x + sl.schedule.filter((i) => i.refunded && inR(i.dueDate)).reduce((y, i) => y + i.amount, 0), 0);
+          const dl = histBookings.filter((h) => inR(h.call));
+          const adsLeads = nl.filter((l) => srcOf(l) === "ads").length;
+          const adsCalls = calls.filter((l) => srcOf(l) === "ads").length;
+          const adsSales = signed.filter((sl) => sl.channel === "paid").length;
+          const fathom = (k) => calls.filter((l) => l.fathom && callBucket(l, t0) === k).length;
+          return {
+            leads: nl.length, ads: adsLeads, orga: nl.filter((l) => srcOf(l) === "orga").length, dm: nl.filter((l) => srcOf(l) === "dm").length, autre: nl.filter((l) => srcOf(l) === "autre").length,
+            booked: calls.length, setterCancel, leadCancel, held, noshow, reports, upcoming: bk("upcoming"),
+            showRate: held + noshow ? held / (held + noshow) : null, won: bk("won"), closing: held ? bk("won") / held : null,
+            sales: signed.length, mastermind: byOffer("mastermind"), launch: byOffer("launch"), o2390: byOffer("o2390"), oautre: byOffer("autre"),
+            p1: signed.filter((sl) => nInst(sl) <= 1).length, p3: signed.filter((sl) => nInst(sl) === 3).length, pmulti: signed.filter((sl) => nInst(sl) > 1).length,
+            signedCA: signed.reduce((x, sl) => x + sl.total, 0), cash, unpaid, refunds,
+            delay: dl.length ? dl.reduce((x, h) => x + h.delay, 0) / dl.length : null, delayN: dl.length,
+            adsCalls, adsSales, fathomWon: fathom("won"), fathomLost: fathom("lost"),
+          };
+        };
+        const W = weeks.map((w) => ({ ...w, s: stats(w.a, w.b) }));
+        const TOT = stats(from, to);
+        const E = (v) => euro(v || 0), N = (v) => (v == null ? "—" : String(v)), P = (v) => (v == null ? "—" : pct(v)), D = (v) => (v == null ? "—" : `${v.toFixed(1)} j`);
+        const SECTIONS = [
+          ["1. Funnel", [
+            ["Leads entrants", "leads", N], ["· dont Ads (VSL)", "ads", N], ["· dont Organique (YouTube / iClosed)", "orga", N], ["· dont DM (Instagram)", "dm", N], ["· dont autre / direct", "autre", N],
+            ["Calls bookés", "booked", N], ["Annulés / non qualifiés par le setter", "setterCancel", N], ["Annulés par le lead", "leadCancel", N],
+            ["Calls tenus", "held", N], ["Show-up", "showRate", P], ["No-shows", "noshow", N], ["Reports (replanifiés)", "reports", N], ["Calls à venir", "upcoming", N],
+            ["Calls closés", "won", N], ["Taux de closing", "closing", P],
+            ["Ventes signées", "sales", N], ["· Mastermind 3 490 €", "mastermind", N], ["· Launch 2 790 €", "launch", N], ["· Offre 2 390 €", "o2390", N], ["· Autre montant", "oautre", N],
+            ["· Payé comptant (1×)", "p1", N], ["· Payé en plusieurs fois", "pmulti", N], ["· dont en 3 fois", "p3", N],
+            ["CA signé", "signedCA", E], ["Cash encaissé", "cash", E],
+            ["Impayés (paiements en plusieurs fois)", "unpaid", E], ["Remboursements (paiements en plusieurs fois)", "refunds", E],
+            ["Délai moyen booking → call", "delay", D],
+          ]],
+          ["3. Enregistrements (Fathom)", [["Calls closés avec replay", "fathomWon", N], ["Calls perdus avec replay", "fathomLost", N]]],
+        ];
+        // Ads : par mois (budget saisi dans Coûts > Budget Ads).
+        const months = [];
+        for (let m = from.slice(0, 7); m <= to.slice(0, 7);) { months.push(m); const [y, mo] = m.split("-").map(Number); m = `${mo === 12 ? y + 1 : y}-${String(mo === 12 ? 1 : mo + 1).padStart(2, "0")}`; }
+        const ads = months.map((m) => {
+          const [y, mo] = m.split("-").map(Number);
+          const a = `${m}-01`, b = toISO(new Date(y, mo, 0));
+          const st = stats(a < from ? from : a, b > to ? to : b);
+          const spend = Number(adsByMonth[m] || 0);
+          return { m, spend, ...st, cpl: spend && st.ads ? spend / st.ads : null, cpc: spend && st.adsCalls ? spend / st.adsCalls : null, cps: spend && st.adsSales ? spend / st.adsSales : null };
+        });
+        const setters = (team || []).filter((u) => isSetterRole(u.role)), closers = (team || []).filter((u) => !isSetterRole(u.role));
+        const topObj = (callStats.objections || []).slice(0, 3), topReasons = (callStats.reasons || []).slice(0, 3);
+        // Exports
+        const text = () => {
+          const L = [`RAPPORT ${periodRange.label}`, ""];
+          SECTIONS.forEach(([title, rows]) => {
+            L.push(title.toUpperCase());
+            rows.forEach(([lab, k, f]) => L.push(`${lab} : ${f(TOT[k])}  [${W.map((w) => `${w.label} ${f(w.s[k])}`).join(" · ")}]`));
+            L.push("");
+          });
+          L.push("2. ADS (par mois)");
+          ads.forEach((x) => L.push(`${monthLabel(x.m)} : budget ${x.spend ? E(x.spend) : "non saisi"} · ${x.ads} leads ads · ${x.adsCalls} calls · ${x.adsSales} ventes · CPL ${x.cpl ? E(x.cpl) : "—"} · coût/call ${x.cpc ? E(x.cpc) : "—"} · coût/vente ${x.cps ? E(x.cps) : "—"}`));
+          L.push("", "5. ÉQUIPE", `${setters.length} setter(s) : ${setters.map((u) => `${u.name} (${u.rate || 0} %)`).join(", ") || "—"}`, `${closers.length} closer(s) : ${closers.map((u) => `${u.name} (${u.rate || 0} %)`).join(", ") || "—"}`);
+          if (topObj.length) L.push(`Objections principales : ${topObj.map((o) => `${o.label} (${o.n})`).join(", ")}`);
+          if (topReasons.length) L.push(`Raisons de non-vente : ${topReasons.map((o) => `${o.label} (${o.n})`).join(", ")}`);
+          return L.join("\n");
+        };
+        const csv = () => {
+          const esc = (v) => `"${String(v).replace(/"/g, '""')}"`;
+          const rows = [["Indicateur", ...W.map((w) => `Sem. ${w.label}`), "Total"].map(esc).join(";")];
+          SECTIONS.forEach(([title, list]) => { rows.push(esc(title)); list.forEach(([lab, k, f]) => rows.push([lab, ...W.map((w) => f(w.s[k])), f(TOT[k])].map(esc).join(";"))); });
+          rows.push(esc("2. Ads (par mois)"));
+          ads.forEach((x) => rows.push([monthLabel(x.m), `budget ${x.spend ? E(x.spend) : "non saisi"}`, `CPL ${x.cpl ? E(x.cpl) : "—"}`, `coût/call ${x.cpc ? E(x.cpc) : "—"}`, `coût/vente ${x.cps ? E(x.cps) : "—"}`].map(esc).join(";")));
+          const blob = new Blob(["﻿" + rows.join("\n")], { type: "text/csv;charset=utf-8" });
+          const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = `rapport_${from}_${to}.csv`; a.click(); setTimeout(() => URL.revokeObjectURL(url), 2000);
+        };
+        const cell = { padding: "8px 10px", borderTop: "1px solid rgba(15,23,42,.06)", whiteSpace: "nowrap", fontSize: 12.5, textAlign: "right" };
+        return (<>
+          <div className="closers-head">
+            <div className="closers-title"><ClipboardList size={16} /> Rapport détaillé · {periodRange.label}</div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+              <button className="crm-chip" onClick={() => setRange({ from: "2026-09-01", to: "2026-10-31" })}>📅 Septembre → octobre 2026</button>
+              <button className={`esp-open pay-copy ${copiedKey === "rapport" ? "copied" : ""}`} onClick={() => copyWithFeedback("rapport", text())}>{copiedKey === "rapport" ? "✓ Copié" : "📋 Copier (texte WhatsApp)"}</button>
+              <button className="esp-open" onClick={csv}>⬇️ Export CSV</button>
+              <button className={`refresh-btn ${crmLoading ? "is-loading" : ""}`} onClick={() => loadCrm()} disabled={crmLoading}><RotateCcw size={15} className={crmLoading ? "spin" : ""} /> Actualiser</button>
+            </div>
+          </div>
+          <div className="mut" style={{ fontSize: 12.5, margin: "0 2px 12px" }}>Semaines du lundi au dimanche, bornées à la période choisie en haut à droite. Calls datés au RDV (re-bookings comptés séparément), ventes à la date du 1er paiement, cash à la date d'encaissement. « Calls tenus » inclut les calls passés sans résultat saisi.</div>
+          {SECTIONS.map(([title, rows]) => (
+            <div key={title} style={{ marginBottom: 20 }}>
+              <div className="esp-sec" style={{ marginTop: 6 }}>{title}</div>
+              <div className="card" style={{ padding: 0, overflowX: "auto" }}>
+                <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 260 + W.length * 82 }}>
+                  <thead><tr>
+                    <th style={{ ...cell, textAlign: "left", position: "sticky", left: 0, background: "#fff", fontWeight: 700 }}>Indicateur</th>
+                    {W.map((w) => <th key={w.a} style={{ ...cell, fontWeight: 700, color: "var(--muted)" }}>Sem. {w.label}</th>)}
+                    <th style={{ ...cell, fontWeight: 800 }}>Total</th>
+                  </tr></thead>
+                  <tbody>
+                    {rows.map(([lab, k, f]) => (
+                      <tr key={k}>
+                        <td style={{ ...cell, textAlign: "left", position: "sticky", left: 0, background: "#fff", fontWeight: lab.startsWith("·") ? 400 : 600, color: lab.startsWith("·") ? "var(--muted)" : "var(--text)" }}>{lab}</td>
+                        {W.map((w) => <td key={w.a} style={cell}>{f(w.s[k])}</td>)}
+                        <td style={{ ...cell, fontWeight: 800 }}>{f(TOT[k])}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ))}
+          <div className="esp-sec" style={{ marginTop: 6 }}>2. Ads (par mois)</div>
+          <div className="card" style={{ padding: 0, overflowX: "auto", marginBottom: 20 }}>
+            <table className="tbl">
+              <thead><tr><th>Mois</th><th className="num">Budget dépensé</th><th className="num">Leads Ads</th><th className="num">Calls Ads</th><th className="num">Ventes Ads</th><th className="num">Coût / lead</th><th className="num">Coût / call booké</th><th className="num">Coût / vente</th></tr></thead>
+              <tbody>
+                {ads.map((x) => (
+                  <tr key={x.m}><td className="lab" style={{ textTransform: "capitalize" }}>{monthLabel(x.m)}</td><td className="num">{x.spend ? E(x.spend) : <span className="mut">non saisi</span>}</td><td className="num">{x.ads}</td><td className="num">{x.adsCalls}</td><td className="num">{x.adsSales}</td><td className="num">{x.cpl ? E(x.cpl) : "—"}</td><td className="num">{x.cpc ? E(x.cpc) : "—"}</td><td className="num">{x.cps ? E(x.cps) : "—"}</td></tr>
+                ))}
+              </tbody>
+            </table>
+            {ads.some((x) => !x.spend) && <div className="empty" style={{ padding: "10px 16px", fontSize: 12.5 }}>Budget Ads « non saisi » : renseigne-le mois par mois dans <b>Coûts › Budget Ads</b> pour obtenir les coûts par lead, par call et par vente.</div>}
+          </div>
+          <div className="esp-sec" style={{ marginTop: 6 }}>5. Équipe et objections</div>
+          <div className="card" style={{ padding: "14px 18px", marginBottom: 26, fontSize: 13.5, lineHeight: 1.7 }}>
+            <div><b>{setters.length} setter{setters.length > 1 ? "s" : ""}</b> : {setters.map((u) => `${u.name} (${roleLabel(u.role)}, ${u.rate || 0} %)`).join(" · ") || "—"}</div>
+            <div><b>{closers.length} closer{closers.length > 1 ? "s" : ""}</b> : {closers.map((u) => `${u.name} (${u.rate || 0} % de commission)`).join(" · ") || "—"}</div>
+            <div><b>Objections les plus fréquentes</b> (iClosed) : {topObj.length ? topObj.map((o) => `${o.label} (${o.n})`).join(" · ") : "—"}</div>
+            <div><b>Raisons de non-vente</b> (iClosed) : {topReasons.length ? topReasons.map((o) => `${o.label} (${o.n})`).join(" · ") : "—"}</div>
+            <div className="mut" style={{ fontSize: 12.5, marginTop: 6 }}>Les enregistrements eux-mêmes sont dans <b>Replays</b> (filtre Closé / Non closé) ; scripts, messages et contenus des offres ne sont pas dans l'app.</div>
+          </div>
+        </>);
       })()}
 
       {/* REPORTING HEBDO — semaine dernière (lundi -> dimanche) + vue par closer */}
