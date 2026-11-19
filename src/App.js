@@ -5,8 +5,14 @@ import {
 } from "recharts";
 import {
   AlertTriangle, Check, Plus, X, Calendar, TrendingUp, Trash2, Landmark,
-  RotateCcw, Users, UserCheck, Phone, Mail, Leaf, Megaphone, Grid3x3, Search, Pencil, Wallet, Eye, EyeOff, Download, ClipboardList, Video,
+  RotateCcw, Users, UserCheck, Phone, Mail, Leaf, Megaphone, Grid3x3, Search, Pencil, Wallet, Eye, EyeOff, Download, ClipboardList, Video, GraduationCap,
 } from "lucide-react";
+
+/* ---- Formation des closers — vidéos Google Drive (partagées « tous les
+   utilisateurs disposant du lien »), lues dans l'app via le lecteur Drive. ---- */
+const FORMATION_VIDEOS = [
+  { id: "1hoT8dXT1OT3MMmz72Y5DS4nxnTaZW07V", title: "Call de closing — Melo", date: "12 novembre 2026", desc: "Enregistrement d'un call de closing mené par Melo." },
+];
 
 /* ---- Liens de paiement Whop (checkout publics) — onglet « Liens de paiement » ---- */
 const PAY_OFFERS = [
@@ -1259,7 +1265,7 @@ export default function App() {
   const overduesF = sortOverdue((impAll ? allOverdue : overdues).filter((i) => matchQ(i.sale)));
   const periodListF = periodList.filter((i) => matchQ(i.sale));
 
-  const SECTION = { clients: "Tableau de bord", cohortes: "Cohortes", mois: "Par mois", collecte: "À collecter", impayes: "Impayés", couts: "Coûts", closers: "Closers", crm: "CRM", calendrier: "Calendrier", equipe: "Équipe", espace: "Ma journée", vsl: "Leads VSL", acomptes: "Acomptes", followups: "Follow-ups", saphia: "Saphia follow up", reporting: "Reporting hebdo", ads: "Reporting Ads", dm: "Setting DM", noshows: "No-shows", impayesSet: "Impayés", replays: "Replays des calls", paiement: "Liens de paiement", matching: "Matching ventes", rapport: "Rapport détaillé" };
+  const SECTION = { clients: "Tableau de bord", cohortes: "Cohortes", mois: "Par mois", collecte: "À collecter", impayes: "Impayés", couts: "Coûts", closers: "Closers", crm: "CRM", calendrier: "Calendrier", equipe: "Équipe", espace: "Ma journée", vsl: "Leads VSL", acomptes: "Acomptes", followups: "Follow-ups", saphia: "Saphia follow up", reporting: "Reporting hebdo", ads: "Reporting Ads", dm: "Setting DM", noshows: "No-shows", impayesSet: "Impayés", replays: "Replays des calls", paiement: "Liens de paiement", formation: "Formation", matching: "Matching ventes", rapport: "Rapport détaillé" };
   const go = (t) => { setTab(t); setNavOpen(false); };
   const navCls = (t) => `nav-item ${tab === t ? "active" : ""}`;
   // Matching ventes : une vente est « reliée » quand une fiche CRM (avec call)
@@ -1629,6 +1635,12 @@ export default function App() {
         .rpl-play{display:inline-flex;align-items:center;gap:7px;padding:9px 15px;border-radius:10px;border:none;background:linear-gradient(135deg,#6C5CE7,#8E7CF8);color:#fff;font-weight:700;font-size:12.5px;text-decoration:none;box-shadow:0 4px 12px rgba(108,92,231,.28);white-space:nowrap;font-family:'Inter';}
         .rpl-play:hover{filter:brightness(1.06);}
         .pay-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:16px;margin-top:16px;}
+        .fm-list{display:flex;flex-direction:column;gap:18px;margin-top:16px;max-width:980px;}
+        .fm-card{background:#fff;border:1px solid var(--line);border-radius:16px;overflow:hidden;box-shadow:0 6px 18px rgba(16,24,40,.04);}
+        .fm-player{position:relative;width:100%;aspect-ratio:16/9;background:#0B0B12;}
+        .fm-player iframe{position:absolute;inset:0;width:100%;height:100%;border:0;}
+        .fm-info{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:14px 18px;flex-wrap:wrap;}
+        .fm-title{font-weight:800;font-size:15px;}
         .pay-card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:18px 20px;box-shadow:0 6px 18px rgba(16,24,40,.04);}
         .pay-head{display:flex;align-items:baseline;gap:10px;margin-bottom:12px;}
         .pay-total{font-family:'Montserrat';font-weight:800;font-size:22px;letter-spacing:-.02em;}
@@ -1827,6 +1839,7 @@ export default function App() {
             <button className={navCls("noshows")} onClick={() => go("noshows")}><AlertTriangle size={16} /> No-shows</button>
             <button className={navCls("replays")} onClick={() => go("replays")}><Video size={16} /> Replays</button>
             <button className={navCls("paiement")} onClick={() => go("paiement")}><Wallet size={16} /> Liens de paiement</button>
+            <button className={navCls("formation")} onClick={() => go("formation")}><GraduationCap size={16} /> Formation</button>
             <button className={navCls("matching")} onClick={() => go("matching")}><Check size={16} /> Matching ventes{unmatchedN ? <span className="nav-badge" title="Ventes sans fiche CRM reliée">{unmatchedN}</span> : null}</button>
           </>) : (<>
             <div className="nav-label">Mon espace</div>
@@ -1838,6 +1851,7 @@ export default function App() {
             {!isSetterRole(me.role) && <button className={navCls("acomptes")} onClick={() => go("acomptes")}><Landmark size={16} /> Acomptes</button>}
             {!isSetterRole(me.role) && <button className={navCls("replays")} onClick={() => go("replays")}><Video size={16} /> Replays</button>}
             {!isSetterRole(me.role) && <button className={navCls("paiement")} onClick={() => go("paiement")}><Wallet size={16} /> Liens de paiement</button>}
+            {!isSetterRole(me.role) && <button className={navCls("formation")} onClick={() => go("formation")}><GraduationCap size={16} /> Formation</button>}
             {isSaphiaUser && <button className={navCls("saphia")} onClick={() => go("saphia")}><Phone size={16} /> Follow up</button>}
             <button className={navCls("calendrier")} onClick={() => go("calendrier")}><Calendar size={16} /> Calendrier</button>
           </>)}
@@ -2520,6 +2534,33 @@ export default function App() {
           </div>
         </>);
       })()}
+
+      {/* FORMATION — vidéos de formation des closers (lecteur Google Drive intégré) */}
+      {tab === "formation" && (isAdmin || !isSetterRole(me.role)) && (
+        <>
+          <div className="closers-head">
+            <div className="closers-title"><GraduationCap size={16} /> Formation closers</div>
+            <span className="mut" style={{ fontSize: 12.5 }}>Regarde les calls de référence pour t'approprier la méthode de closing.</span>
+          </div>
+          <div className="fm-list">
+            {FORMATION_VIDEOS.map((v) => (
+              <div className="fm-card" key={v.id}>
+                <div className="fm-player">
+                  <iframe src={`https://drive.google.com/file/d/${v.id}/preview`} title={v.title} allow="autoplay; fullscreen" allowFullScreen loading="lazy" />
+                </div>
+                <div className="fm-info">
+                  <div style={{ minWidth: 0 }}>
+                    <div className="fm-title">🎓 {v.title}</div>
+                    <div className="mut" style={{ fontSize: 12.5, marginTop: 4 }}>{v.date}{v.desc ? ` · ${v.desc}` : ""}</div>
+                  </div>
+                  <a className="esp-open" href={`https://drive.google.com/file/d/${v.id}/view`} target="_blank" rel="noreferrer" style={{ textDecoration: "none", flexShrink: 0 }}>Ouvrir dans Drive</a>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="mut" style={{ fontSize: 12, marginTop: 10 }}>Si la vidéo ne se lance pas, ouvre-la dans Drive : la lecture intégrée demande parfois d'être connecté à un compte Google.</div>
+        </>
+      )}
 
       {/* REPLAYS — tous les calls passés avec enregistrement Fathom + résultat */}
       {tab === "replays" && (isAdmin || !isSetterRole(me.role)) && (() => {
