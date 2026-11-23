@@ -54,6 +54,39 @@ module.exports = async (req, res) => {
       return;
     }
 
+    // ---- Export des soumissions de formulaires de routage (?submissions=1) ----
+    // Lecture seule, admin uniquement : toutes les personnes passées par un
+    // formulaire Calendly, AVEC ou SANS réservation (submitter vide = pas de
+    // RDV). Email / téléphone / prénom repris des réponses au formulaire.
+    if (req.query && (req.query.submissions === "1" || req.query.submissions === "true")) {
+      if (!checkAuth(req)) { res.status(401).json({ error: "Réservé à l'admin." }); return; }
+      const pick = (qas, re) => { const x = qas.find((q) => q && re.test(String(q.question || ""))); return x ? (Array.isArray(x.answer) ? x.answer.join(", ") : String(x.answer || "")) : ""; };
+      const out = []; const forms = [];
+      const rf = await cGet("/routing_forms", tok, { organization, count: 100 });
+      for (const form of (rf && rf.collection) || []) {
+        forms.push({ name: form.name, status: form.status });
+        let next = null, pages = 0;
+        do {
+          const page = next ? await cGet(next, tok) : await cGet("/routing_form_submissions", tok, { form: form.uri, count: 100, sort: "created_at:desc" });
+          for (const sub of (page && page.collection) || []) {
+            const qas = Array.isArray(sub.questions_and_answers) ? sub.questions_and_answers : [];
+            out.push({
+              at: sub.created_at, form: form.name, booked: !!sub.submitter,
+              email: pick(qas, /e-?mail|courriel/i).toLowerCase(),
+              phone: pick(qas, /phone|t[ée]l|num[ée]ro|whatsapp/i),
+              name: pick(qas, /pr[ée]nom|^nom|name/i),
+              result: sub.result && sub.result.type,
+              answers: qas.map((q) => ({ q: q.question, a: Array.isArray(q.answer) ? q.answer.join(", ") : q.answer })),
+            });
+          }
+          next = page && page.pagination && page.pagination.next_page;
+        } while (next && ++pages < 60);
+      }
+      res.setHeader("Cache-Control", "no-store");
+      res.status(200).json({ forms, count: out.length, submissions: out });
+      return;
+    }
+
     // ---- 1) Webhook temps réel (optionnel, ?setup=1) ----
     let webhook = null;
     if (req.query && (req.query.setup === "1" || req.query.setup === "true")) {
