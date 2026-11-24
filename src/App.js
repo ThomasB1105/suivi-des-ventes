@@ -21,6 +21,12 @@ const PAY_OFFERS = [
   { total: 2390, plans: ["plan_p7goTRMSYAoCm", "plan_6lH45EvK3yV9F", "plan_gQPSBber2xJr0", "plan_C1Fbktg1ph3YS"] },
 ];
 const PAY_DEPOSIT = { amount: 200, plan: "plan_ozrkhCDBfq4JY", promo: "ecom200" };
+// Offre Black Friday (Whop) : un plan par nombre de paiements.
+const PAY_BLACKFRIDAY = [
+  { n: 1, plan: "plan_h0k3m3zprkKB8" },
+  { n: 2, plan: "plan_GDmpEsGYzucaZ" },
+  { n: 3, plan: "plan_aaxszuVkjImB7" },
+];
 // Accompagnement en one-to-one — liens de paiement Stripe (publics). Chaque
 // lien encaisse UN paiement du montant indiqué : pour 2/3/4 fois, le client
 // repasse sur le même lien à chaque échéance (pas de prélèvement automatique).
@@ -2490,6 +2496,24 @@ export default function App() {
               <CopyBtn k="promo" txt={PAY_DEPOSIT.promo} label="Copier le code" doneLabel="✓ Code copié !" />
             </div>
           </div>
+          <div className="esp-sec" style={{ marginTop: 26 }}>🖤 Offre Black Friday · Whop</div>
+          <div className="pay-grid" style={{ marginTop: 10 }}>
+            <div className="pay-card" style={{ borderColor: "#101828", boxShadow: "0 6px 18px rgba(16,24,40,.10)" }}>
+              <div className="pay-head"><span className="pay-total" style={{ color: "#101828" }}>Black Friday</span><span className="mut" style={{ fontSize: 12.5 }}>Ecom Ascension · {PAY_BLACKFRIDAY.length} plans de paiement</span></div>
+              {PAY_BLACKFRIDAY.map((p) => { const url = whopUrl(p.plan); return (
+                <div className="pay-row" key={p.plan}>
+                  <span className="pay-x" style={{ background: "#101828", color: "#fff" }}>{p.n}x</span>
+                  <div className="pay-lab">
+                    <b>{p.n === 1 ? "Comptant" : `En ${p.n} fois`}</b>
+                    <span title={url}>{url}</span>
+                  </div>
+                  <CopyBtn k={p.plan} txt={url} label="📋 Copier" doneLabel="✓ Copié !" style={{ borderColor: "#98A2B3", color: "#101828", minWidth: 96 }} />
+                  <a className="esp-open" href={url} target="_blank" rel="noreferrer" style={{ textDecoration: "none" }}>Ouvrir</a>
+                </div>
+              ); })}
+            </div>
+          </div>
+
           <div className="esp-sec" style={{ marginTop: 26 }}>🎓 Ecom Ascension · Whop</div>
           <div className="pay-grid" style={{ marginTop: 10 }}>
             {PAY_OFFERS.map((o) => (
