@@ -4699,6 +4699,17 @@ export default function App() {
               ) : null}
               <div className="ls-grid">
                 <div><span className="ls-l">Source</span><span>{L.source || "—"}</span></div>
+                {L.yc ? (
+                  <div style={{ gridColumn: "1 / -1" }}>
+                    <span className="ls-l">Parcours page</span>
+                    <span style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                      <span title="Part de la VSL regardée (meilleur temps atteint)" style={{ background: "#EEF2FF", color: "#3538CD", borderRadius: 999, padding: "2px 10px", fontWeight: 700, fontSize: 12.5 }}>🎬 VSL {L.yc.vslPct || 0} %{L.yc.vslDur ? ` · ${Math.round((L.yc.vslSec || 0) / 60)} min sur ${Math.round(L.yc.vslDur / 60)}` : ""}</span>
+                      {L.yc.page ? <span className="mut" style={{ fontSize: 12.5 }}>page /p/{L.yc.page}</span> : null}
+                      {L.yc.utm && (L.yc.utm.utm_source || L.yc.utm.utm_campaign) ? <span className="mut" style={{ fontSize: 12.5 }}>{[L.yc.utm.utm_source, L.yc.utm.utm_campaign, L.yc.utm.utm_content && !/^yc_/.test(L.yc.utm.utm_content) ? L.yc.utm.utm_content : ""].filter(Boolean).join(" · ")}</span> : <span className="mut" style={{ fontSize: 12.5 }}>{L.yc.ref ? "via " + String(L.yc.ref).replace(/^https?:\/\//, "").split("/")[0] : "accès direct"}</span>}
+                      <span className="mut" style={{ fontSize: 12.5 }}>{L.yc.visits || 1} visite{(L.yc.visits || 1) > 1 ? "s" : ""} · {L.yc.cta || 0} clic{(L.yc.cta || 0) > 1 ? "s" : ""}</span>
+                    </span>
+                  </div>
+                ) : null}
                 <div style={{ gridColumn: "1 / -1" }}>
                   <span className="ls-l">Téléphone</span>
                   {phone ? (

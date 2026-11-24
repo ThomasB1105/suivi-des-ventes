@@ -13,6 +13,7 @@ const { cmd, isConfigured } = require("../lib/kv");
 const { pickNextAssignee, buildRoleMap } = require("../lib/crmData");
 const { applyDm } = require("../lib/dm");
 const { archiveOnRebook } = require("../lib/callBuckets");
+const { attachVisitor } = require("../lib/yc");
 
 const pick = (o, ...ks) => { for (const k of ks) if (o && o[k] != null && o[k] !== "") return o[k]; return undefined; };
 function deepEmail(obj, depth = 0) {
@@ -213,6 +214,9 @@ module.exports = async (req, res) => {
       // c'est ce qui relie le booking à la pub, même sans passer par Make.
       const trk = p.tracking || {};
       if (trk.utm_campaign && !lead.campaign) lead.campaign = String(trk.utm_campaign);
+      // Page YouClose : utm_content=yc_<visiteur> -> parcours (source, VSL regardée) sur la fiche.
+      const ycv = String(trk.utm_content || "").match(/^yc_([a-z0-9]{6,40})$/i);
+      if (ycv && !canceled) { try { await attachVisitor(cmd, lead, ycv[1], pushHistory); } catch (e) { /* non bloquant */ } }
       // Hôte Calendly attribué dans la colonne de SON rôle (Qui est qui /
       // comptes ; closer par défaut). Remplace l'auto, jamais le manuel.
       const ms = Array.isArray(ev.event_memberships) ? ev.event_memberships : [];

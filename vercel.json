@@ -21,5 +21,11 @@
       "path": "/api/cron-sync",
       "schedule": "0 5 * * *"
     }
+  ],
+  "rewrites": [
+    {
+      "source": "/p/:slug",
+      "destination": "/api/p?slug=:slug"
+    }
   ]
 }

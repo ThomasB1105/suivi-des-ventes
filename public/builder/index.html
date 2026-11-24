@@ -1,0 +1,494 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>YouClose Pages</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@600;700;800&family=Inter:wght@400;500;600&display=swap">
+<style>
+/* Layout : barre d'actions en haut, formulaire à gauche (sections repliables), aperçu en direct à droite. Identité YouClose (blanc, violet pour l'action principale). */
+:root{
+  --bg:#F6F7F9; --panel:#FFFFFF; --raised:#F3F4F8; --ink:#0B0E1A; --ink2:#3A4057; --mute:#6B7287; --line:rgba(11,14,26,.10);
+  --primary:#6D5BF6; --primary-soft:rgba(109,91,246,.10); --primary-text:#5641E6; --ok:#0F9D63; --ok-soft:rgba(15,157,99,.10); --bad:#E11D48; --bad-soft:rgba(225,29,72,.09);
+  --display:"Plus Jakarta Sans",ui-sans-serif,system-ui,sans-serif; --body:"Inter",ui-sans-serif,system-ui,sans-serif;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0B0E1A;--panel:#141929;--raised:#1B2135;--ink:#F3F4F8;--ink2:#C9CDDB;--mute:#9AA1B5;--line:rgba(255,255,255,.10);--primary:#7C6CFF;--primary-soft:rgba(124,108,255,.16);--primary-text:#BDB4FF;--ok:#4ADE9B;--ok-soft:rgba(74,222,155,.13);--bad:#FB7185;--bad-soft:rgba(251,113,133,.14);color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#0B0E1A;--panel:#141929;--raised:#1B2135;--ink:#F3F4F8;--ink2:#C9CDDB;--mute:#9AA1B5;--line:rgba(255,255,255,.10);--primary:#7C6CFF;--primary-soft:rgba(124,108,255,.16);--primary-text:#BDB4FF;--ok:#4ADE9B;--ok-soft:rgba(74,222,155,.13);--bad:#FB7185;--bad-soft:rgba(251,113,133,.14);color-scheme:dark}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{height:100%}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
+.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:20;background:var(--panel);border-bottom:1px solid var(--line);padding-block:10px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:21;background:var(--panel)}
+.brand{display:flex;align-items:center;gap:9px;font-family:var(--display);font-weight:800;font-size:18px;letter-spacing:-.03em}
+.brand svg{width:26px;height:24px}
+.brand small{font-family:var(--body);font-weight:600;font-size:12px;color:var(--mute);letter-spacing:0;margin-left:2px}
+.top-r{margin-left:auto;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;height:38px;padding:0 14px;border-radius:12px;border:1px solid var(--line);background:transparent;font-weight:600;font-size:13.5px;white-space:nowrap}
+.btn:hover{background:var(--raised)}
+.btn.pri{background:var(--primary);border-color:var(--primary);color:#fff;box-shadow:0 8px 22px -10px rgba(109,91,246,.9)}
+.btn.pri:hover{filter:brightness(1.07)}
+.btn.ghost{border-color:transparent;color:var(--mute)}
+.btn.sm{height:32px;padding:0 10px;font-size:12.5px}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.seg{display:inline-flex;background:var(--raised);border-radius:999px;padding:3px;gap:2px}
+.seg button{border:0;background:transparent;padding:6px 12px;border-radius:999px;font-weight:600;font-size:12.5px;color:var(--mute)}
+.seg button.on{background:var(--panel);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.12)}
+.layout{display:grid;grid-template-columns:400px minmax(0,1fr);gap:0;min-height:calc(100% - 59px)}
+.side{border-right:1px solid var(--line);background:var(--panel);padding-block:16px 60px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:16px;display:flex;flex-direction:column;gap:12px;overflow:auto;max-height:calc(100vh - 59px);position:sticky;top:59px}
+.ai{border:1px solid rgba(109,91,246,.35);background:var(--primary-soft);border-radius:16px;padding:14px;display:flex;flex-direction:column;gap:9px}
+.ai h2{margin:0;font-family:var(--display);font-size:15px;font-weight:800;display:flex;align-items:center;gap:7px}
+.ai p{margin:0;font-size:12.5px;color:var(--ink2)}
+.status{font-size:12.5px;color:var(--primary-text);min-height:18px}
+.status.err{color:var(--bad)}
+details{border:1px solid var(--line);border-radius:16px;background:var(--panel)}
+summary{list-style:none;display:flex;align-items:center;gap:10px;padding:12px 14px;cursor:pointer;font-weight:700;font-family:var(--display);font-size:14px}
+summary::-webkit-details-marker{display:none}
+summary .chev{margin-left:auto;color:var(--mute);transition:transform .2s}
+details[open] summary .chev{transform:rotate(90deg)}
+.sw{position:relative;width:36px;height:21px;flex:none}
+.sw input{position:absolute;inset:0;opacity:0;margin:0;cursor:pointer}
+.sw span{position:absolute;inset:0;border-radius:99px;background:var(--line);transition:background .2s;pointer-events:none}
+.sw span::after{content:"";position:absolute;top:3px;left:3px;width:15px;height:15px;border-radius:50%;background:#fff;transition:transform .2s;box-shadow:0 1px 2px rgba(0,0,0,.25)}
+.sw input:checked + span{background:var(--primary)}
+.sw input:checked + span::after{transform:translateX(15px)}
+.sw input:focus-visible + span{outline:2px solid var(--primary);outline-offset:2px}
+.fields{padding:2px 14px 14px;display:flex;flex-direction:column;gap:11px}
+.f{display:flex;flex-direction:column;gap:5px}
+.f > label,.f > .lab{font-size:12.5px;font-weight:600;color:var(--ink2)}
+.f input[type=text],.f input[type=url],.f textarea{width:100%;border:1px solid var(--line);border-radius:10px;padding:8px 10px;background:var(--raised);min-width:0}
+.f textarea{resize:vertical;min-height:70px;line-height:1.45}
+.f textarea.code{font-family:ui-monospace,Menlo,monospace;font-size:12px}
+.help{font-size:11.5px;color:var(--mute)}
+.colors{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.color{display:flex;flex-direction:column;gap:5px;font-size:12px;font-weight:600;color:var(--ink2)}
+.color input{width:100%;height:36px;border:1px solid var(--line);border-radius:10px;background:var(--raised);padding:3px;cursor:pointer}
+.check{display:flex;align-items:center;gap:8px;font-size:13px}
+.check input{width:16px;height:16px;accent-color:var(--primary)}
+.list{display:flex;flex-direction:column;gap:8px}
+.item{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px;align-items:start;padding:10px;border-radius:12px;background:var(--raised)}
+.item .ins{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+.item .ins input{border:1px solid var(--line);border-radius:8px;padding:6px 8px;background:var(--panel);min-width:0;font-size:12.5px}
+.item .ins input.full{grid-column:1/-1}
+.del{border:0;background:transparent;color:var(--mute);width:28px;height:28px;border-radius:8px;font-size:16px;line-height:1}
+.del:hover{background:var(--bad-soft);color:var(--bad)}
+.stage{padding-block:16px 40px;padding-left:16px;padding-right:max(16px,env(safe-area-inset-right,0px));display:flex;flex-direction:column;gap:10px;min-width:0}
+.stage-h{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:12.5px;color:var(--mute)}
+.stage-h b{color:var(--ink)}
+.frame{margin:0 auto;width:100%;border-radius:16px;overflow:hidden;border:1px solid var(--line);background:#0e0e10;box-shadow:0 20px 50px -30px rgba(0,0,0,.5);transition:max-width .3s}
+.frame.mobile{max-width:400px}
+.loading{padding:60px 20px;text-align:center;color:#9AA1B5}
+.modal{position:fixed;inset:0;background:rgba(5,7,14,.55);display:flex;align-items:center;justify-content:center;z-index:40;padding:20px}
+.modal-in{background:var(--panel);border-radius:18px;width:min(760px,100%);max-height:90vh;display:flex;flex-direction:column;gap:12px;padding:18px}
+.modal-in textarea{width:100%;min-height:50vh;border:1px solid var(--line);border-radius:12px;padding:10px;font-family:ui-monospace,Menlo,monospace;font-size:11.5px;background:var(--raised)}
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--panel);padding:10px 16px;border-radius:12px;font-weight:600;font-size:13px;z-index:50}
+@media (max-width:980px){.layout{grid-template-columns:1fr}.side{position:static;max-height:none;border-right:0;border-bottom:1px solid var(--line);padding-right:max(16px,env(safe-area-inset-right,0px))}.stage{padding-left:max(16px,env(safe-area-inset-left,0px))}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+.pub{border:1px solid var(--line);border-radius:16px;padding:14px;display:flex;flex-direction:column;gap:10px}
+.pub h2{margin:0;font-family:var(--display);font-size:15px;font-weight:800}
+.slug{display:flex;align-items:center;border:1px solid var(--line);border-radius:10px;background:var(--raised);overflow:hidden}
+.slug span{padding:8px 0 8px 10px;color:var(--mute);font-size:12.5px;white-space:nowrap}
+.slug input{border:0!important;background:transparent!important;padding-left:2px!important}
+.plist{display:flex;flex-direction:column;gap:8px;padding:0 14px 14px}
+.prow{border:1px solid var(--line);border-radius:12px;padding:10px;display:flex;flex-direction:column;gap:6px;font-size:12.5px}
+.prow a{color:var(--primary-text);font-weight:600;text-decoration:none;word-break:break-all}
+.pstats{display:flex;gap:10px;flex-wrap:wrap;color:var(--mute)}
+.pstats b{color:var(--ink);font-variant-numeric:tabular-nums}
+body{margin:0}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="brand"><svg viewBox="0 0 26 24" aria-hidden="true"><path d="M13 1.5 25 22.5H1z" fill="currentColor"/><path d="M7.6 15.2l3.6 3.4 7.4-8.6" fill="none" stroke="var(--panel)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>YouClose <small>Pages</small></div>
+  <div class="seg" role="group" aria-label="Taille de l'aperçu"><button type="button" class="on" data-dev="desk">Ordinateur</button><button type="button" data-dev="mob">Mobile</button></div>
+  <div class="top-r">
+    <button type="button" class="btn ghost" id="reset">Revenir au modèle</button>
+    <button type="button" class="btn" id="dl" hidden>Télécharger le .html</button>
+    <button type="button" class="btn" id="copy">Copier le code</button>
+    <button type="button" class="btn pri" id="publish">Publier la page</button>
+  </div>
+</header>
+
+<div class="layout">
+  <aside class="side" id="side">
+    <section class="pub" aria-labelledby="pubT">
+      <h2 id="pubT">Publication</h2>
+      <div class="f"><label for="pTitle">Nom de la page</label><input type="text" id="pTitle"></div>
+      <div class="f"><label for="pSlug">Adresse de la page</label><div class="slug"><span>ang-industries.com/p/</span><input type="text" id="pSlug" autocomplete="off"></div></div>
+      <div class="status" id="pubStatus" role="status"></div>
+    </section>
+    <details id="myPages"><summary><span>Mes pages et leurs chiffres</span><span class="chev">›</span></summary><div class="plist" id="pagesList"><span class="help">Chargement…</span></div></details>
+    <section class="ai" id="aiBox" aria-labelledby="aiT">
+      <h2 id="aiT"><svg width="15" height="15" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M10 2.5 11.6 8 17 10l-5.4 2L10 17.5 8.4 12 3 10l5.4-2z"/></svg>Écrire la page avec l'IA</h2>
+      <p>Décris ton offre, ta cible et ce qui te rend crédible. L'IA réécrit tous les textes de la page ; tu gardes la main sur chaque champ.</p>
+      <label class="sr" for="brief" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)">Brief de l'offre</label>
+      <textarea id="brief" style="width:100%;min-height:96px;border:1px solid var(--line);border-radius:10px;padding:8px 10px;background:var(--panel);resize:vertical">Accompagnement e-commerce sur Google Ads pour débutants. Cible : salariés et étudiants qui veulent un revenu à côté. Coach : Melo, 2 millions d'euros générés sur Google Ads, +200 élèves, note 4,9/5. Appel stratégique gratuit pour candidater. Ton direct, tutoiement.</textarea>
+      <div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="btn sm" id="aiGo" style="background:var(--panel)">Écrire les textes</button><button type="button" class="btn sm ghost" id="aiStop" hidden>Arrêter</button></div>
+      <div class="status" id="aiStatus" role="status"></div>
+    </section>
+    <div id="form"></div>
+  </aside>
+  <main class="stage">
+    <div class="stage-h"><span>Aperçu en direct</span><span>·</span><span id="size">Chargement du modèle…</span><span>·</span><span>Les vidéos et le calendrier s'affichent une fois la page en ligne.</span></div>
+    <div class="frame" id="frame"><div class="loading">Chargement du modèle…</div></div>
+  </main>
+</div>
+<div id="layer"></div>
+
+<script>
+/* ---------- Données par défaut : la page Ecom Ascension ---------- */
+const DEFAULTS = {
+  meta: { title: 'Ecom Ascension · VSL', slug: 'ecom-ascension' },
+  accent: '#0066ff', accentLight: '#3399ff', bg: '#0e0e10', ctaUrl: '',
+  on: { vsl: true, rdv: true, tm: true, av: true, hist: true },
+  vsl: { l1: 'De 0 à 10 000€ grâce à', l2: "l'e-commerce sur Google Ads", hint: 'Regarde [[la masterclass]], __juste ici__, et découvre la compétence qui peut te rendre **libre financièrement**.',
+    embed: 'https://fast.vidalytics.com/embeds/PNeFWKmR/nQ182gaB7LlVh8BA/', cta: 'Réserver mon appel stratégique', rating: '4,9/5 • +200 élèves accompagnés', trustpilot: true },
+  rdv: { eyebrow: 'Dernière étape', title: 'Réserve ton appel', sub: 'Stratégique gratuit', hint: "Choisis le créneau qui t'arrange juste en dessous.",
+    calendly: 'https://calendly.com/d/d3hn-nwt-f77?hide_gdpr_banner=1&background_color=ffffff&primary_color=0066ff', rating: '4,9/5 • +200 élèves accompagnés' },
+  tm: { eyebrow: "Résultats d'élèves", title: 'Ils étaient à ta place...', sub: "Regarde où ils en sont aujourd'hui", ctaMain: 'Oui, je veux les mêmes résultats', ctaSub: 'Rejoins les 200 élèves déjà accompagnés', rating: '4,9/5 de satisfaction client', trustpilot: true,
+    items: [
+      { name: 'Thomas', result: '0 → 80K€/mois', src: 'https://youtu.be/r1h-Fdavllw' },
+      { name: 'Virgil', result: '0 → 50K€/mois', src: 'https://youtu.be/c4bp3YlCbrM' },
+      { name: 'Tibo', result: '0 → 20K€/mois', src: 'https://d1yei2z3i6k35z.cloudfront.net/1301588/6a589667b6fa45.60650445_07082.mp4' },
+      { name: 'Flo', result: '0 → 10K€/mois', src: 'https://d1yei2z3i6k35z.cloudfront.net/1301588/6a4eae306e8b72.60365932_07081.mp4' },
+      { name: 'Lucas', result: '0 → 5K€/mois', src: 'https://d1yei2z3i6k35z.cloudfront.net/1301588/691b393891546_11171.mp4' } ] },
+  av: { eyebrow: "Avis d'élèves", title: 'Ils en parlent mieux que moi', sub: 'Écoute leurs retours', ctaMain: 'Je veux être le prochain', ctaSub: 'Réserve ton appel stratégique gratuit', rating: '4,9/5 de satisfaction client', trustpilot: true,
+    items: [
+      'https://d1yei2z3i6k35z.cloudfront.net/1301588/6ab38268eeb2e4.54920775_enchainementtémoignagesV1.mp4',
+      'https://d1yei2z3i6k35z.cloudfront.net/1301588/6ab38269018751.25681502_WhatsAppVideo2026-09-08at12.36.30.mp4',
+      'https://d1yei2z3i6k35z.cloudfront.net/1301588/6ab38268f2ed58.43172259_129c671c-70e1-4ed2-b4b9-4bc1af3c979f.mov',
+      'https://d1yei2z3i6k35z.cloudfront.net/1301588/6ab38268eb5926.87602021_d0c61d65-42cb-44fe-97c6-4fbaa4a603ed.mov',
+      'https://d1yei2z3i6k35z.cloudfront.net/1301588/6afecddfe3f7b8.48541622_avis-client-ecom-ascension-tunnel.mp4',
+      'https://d1yei2z3i6k35z.cloudfront.net/1301588/6afecddfeb2ee9.83357073_avis-client-03-ecom-ascension.mp4',
+      'https://d1yei2z3i6k35z.cloudfront.net/1301588/6afecddfeb7234.76685661_avis-client-ecom-ascension.mp4',
+      'https://d1yei2z3i6k35z.cloudfront.net/1301588/6afecddfed07e8.35115196_avis-client-hassan-01-ecom-ascension.mp4',
+      'https://d1yei2z3i6k35z.cloudfront.net/1301588/6afecddfed8ec7.73615496_avis-client-04-ecom-ascension.mp4',
+      'https://d1yei2z3i6k35z.cloudfront.net/1301588/6ab38269016a45.03775410_7b35f8c4-1b10-4d7d-bb7f-21d1ccc2a13e.mov',
+      'https://d1yei2z3i6k35z.cloudfront.net/1301588/6ab3826901db02.19448527_BE913594-9D0D-406D-A2AC-14566BC7E113-Review-Stéphane.MP4' ] },
+  hist: { eyebrow: 'Qui est Melo', title: "L'homme derrière", titleAccent: 'Ecom Ascension.', name: 'Melo', tagline: "2 millions d'euros générés sur Google Ads",
+    photo: 'https://d1yei2z3i6k35z.cloudfront.net/1301588/6a50f56aa355b6.83298270_ChatGPTImage10juil.202611_36_34.png', btn: 'Je réserve mon appel',
+    paras: "Je suis né au Cap-Vert, dans une famille d'ouvriers qui a tout sacrifié pour offrir une vie meilleure à ses enfants.\n\nEn France, je me construis un rêve : devenir footballeur pro. J'étais tout près d'y arriver... jusqu'au jour où une blessure a brusquement mis fin à ma carrière.\n\nEn cherchant une nouvelle voie, je découvre l'e-commerce. Et là, c'est le déclic. Je m'y plonge comme un acharné.\n\nAujourd'hui, je transmets une méthode simple et accessible, pensée pour ceux qui partent de zéro comme moi, ceux qui n'ont peut-être rien au départ, mais qui possèdent la seule chose impossible à acheter : **la rage de réussir.**" },
+};
+const KEY = 'yc-pages-draft-v1';
+const clone = (o) => JSON.parse(JSON.stringify(o));
+let S = clone(DEFAULTS);
+try { const d = JSON.parse(localStorage.getItem(KEY) || 'null'); if (d && d.vsl) S = Object.assign(clone(DEFAULTS), d); } catch (e) {}
+const save = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} };
+
+/* ---------- Outils ---------- */
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const nowrapMoney = (h) => h.replace(/(\d[\d  .,]*\s?(?:€|K€|k€|\$))/g, '<span class="ea-nowrap">$1</span>');
+const rich = (s) => esc(s).replace(/\[\[(.+?)\]\]/g, '<strong class="ea-hint-mc">$1</strong>').replace(/__(.+?)__/g, '<strong class="ea-hint-ici">$1</strong>').replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+const ytId = (s) => { s = String(s || '').trim(); const m = s.match(/(?:youtu\.be\/|v=|\/shorts\/|\/embed\/)([A-Za-z0-9_-]{11})/); if (m) return m[1]; return /^[A-Za-z0-9_-]{11}$/.test(s) ? s : ''; };
+const safeUrl = (u) => /^https:\/\//i.test(String(u || '').trim()) ? String(u).trim() : '';
+const hexRgb = (h) => { const m = String(h).replace('#', '').match(/^([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i); return m ? [m[1], m[2], m[3]].map((x) => parseInt(x, 16)).join(', ') : '0, 102, 255'; };
+const vidalytics = (e) => { const m = String(e || '').match(/vidalytics\.com\/embeds\/([A-Za-z0-9]+)\/([A-Za-z0-9]+)/); return m ? { acc: m[1], id: m[2] } : null; };
+const SC = '</' + 'script>';
+const PLAY = '<span><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></span>';
+const ARROW_L = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>';
+const ARROW_R = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>';
+const ph = (label, ratio) => `<div style="position:absolute;inset:0;display:grid;place-items:center;background:linear-gradient(135deg,#17171c,#060608);color:rgba(255,255,255,.55);font:600 12px Inter,sans-serif;letter-spacing:.04em;text-align:center;padding:10px">${esc(label)}</div>`;
+const offset = (i, n) => { const half = Math.floor(n / 2); let o = i % n; if (o > half) o -= n; return o; };
+
+let CSS = '', JS = {};
+const stars = (txt, tp, pre) => `<div class="ea-${pre}-proof"><div class="ea-${pre}-stars">⭐⭐⭐⭐⭐ <span>${esc(txt)}</span></div>${tp ? `<div class="ea-${pre}-tp"><span class="ea-${pre}-tp-star">★</span> Trustpilot <span class="ea-${pre}-tp-badge">${pre === 'tm' || pre === 'av' ? 'EXCELLENT' : '★ ★ ★ ★ ★'}</span></div>` : ''}</div>`;
+
+/* ---------- Génération de la page ---------- */
+function sections(P) {
+  const href = S.on.rdv ? '#ea-rdv' : (safeUrl(S.ctaUrl) || '#');
+  const out = [];
+  if (S.on.vsl) {
+    const v = S.vsl, vd = vidalytics(v.embed), mp4 = /\.(mp4|mov|webm|m4v)(\?|#|$)/i.test(String(v.embed || '').trim()) && safeUrl(v.embed);
+    const embed = mp4 ? `<div style="position:relative;padding-top:56.25%"><video data-yc-vsl src="${esc(mp4)}" controls playsinline preload="metadata" controlslist="nodownload" style="position:absolute;inset:0;width:100%;height:100%;background:#000"></video></div>` : P ? `<div style="position:relative;padding-top:56.25%">${ph('VSL · ' + (vd ? 'Vidalytics' : 'vidéo intégrée') + ' (lecture une fois la page en ligne)')}</div>`
+      : vd ? `<div id="vidalytics_embed_${esc(vd.id)}" style="width: 100%; position:relative; padding-top: 56.25%;"></div>` : String(v.embed || '');
+    out.push(`<div class="ea-vsl">
+    <h1 class="ea-title" id="ea-title">
+        <span class="ea-title-l1" id="ea-l1">${nowrapMoney(esc(v.l1))}</span>
+        <span class="ea-title-l2" id="ea-l2"><span class="ea-l2-txt" id="ea-l2-txt">${nowrapMoney(esc(v.l2))}</span></span>
+        <span class="ea-title-mesure" id="ea-mesure" aria-hidden="true"></span>
+    </h1>
+    <p class="ea-hint">${rich(v.hint)}</p>
+    <div class="ea-hint-arrow" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></div>
+    <div class="ea-video"><div class="ea-video-frame">${embed}</div></div>
+    <div class="ea-step" id="ea-cta">
+        <a href="${esc(href)}" class="ea-btn">${esc(v.cta)} <span class="ea-btn-arrow">→</span></a>
+        <div class="ea-proof"><div class="ea-stars">⭐⭐⭐⭐⭐ <span>${esc(v.rating)}</span></div>${v.trustpilot ? '<div class="ea-tp"><span class="ea-tp-star">★</span> Trustpilot <span class="ea-tp-badge">★ ★ ★ ★ ★</span></div>' : ''}</div>
+    </div>
+</div>`);
+  }
+  if (S.on.rdv) {
+    const r = S.rdv, cal = safeUrl(r.calendly);
+    out.push(`<div id="ea-rdv" class="ea-rdv">
+    <div class="ea-rdv-eyebrow">${esc(r.eyebrow)}</div>
+    <h2 class="ea-rdv-title">${esc(r.title)}</h2>
+    <p class="ea-rdv-sub">${esc(r.sub)}</p>
+    <p class="ea-rdv-hint">${esc(r.hint)}</p>
+    <div class="ea-rdv-cal">${P ? `<div style="position:relative;height:420px">${ph('Calendrier de réservation (Calendly)')}</div>` : `<div class="calendly-inline-widget" id="ea-rdv-widget" data-url="${esc(cal)}" data-resize="true" style="min-width:320px;height:700px;"></div>`}</div>
+    <div class="ea-rdv-proof"><div class="ea-rdv-stars">⭐⭐⭐⭐⭐ <span>${esc(r.rating)}</span></div></div>
+</div>`);
+  }
+  if (S.on.tm && S.tm.items.length) {
+    const t = S.tm, n = t.items.length;
+    const slides = t.items.map((it, i) => {
+      const y = ytId(it.src), url = safeUrl(it.src);
+      const media = P ? ph('Vidéo · ' + (y ? 'YouTube' : 'MP4'))
+        : y ? `<img class="ea-tm-poster" src="https://i.ytimg.com/vi/${y}/maxresdefault.jpg" alt="" onerror="this.onerror=null;this.src='https://i.ytimg.com/vi/${y}/hqdefault.jpg';">`
+        : `<video src="${esc(url)}#t=0.001" preload="metadata" controlslist="nodownload" playsinline></video>`;
+      return `        <div class="ea-tm-slide" data-x="${offset(i, n)}">
+            <div class="ea-tm-card">
+                <div class="ea-tm-frame"${y && !P ? ` data-yt="${y}"` : ''}>
+                    ${media}
+                    <div class="ea-tm-shade"></div>
+                    <button class="ea-tm-play" type="button" aria-label="Lire la vidéo">${PLAY}</button>
+                </div>
+                <div class="ea-tm-meta"><span class="ea-tm-name">${esc(it.name)}</span><span class="ea-tm-result">${esc(it.result)}</span></div>
+            </div>
+        </div>`;
+    }).join('\n');
+    out.push(`<div id="ea-tm" class="ea-tm">
+    <div class="ea-tm-head"><div class="ea-tm-eyebrow">${esc(t.eyebrow)}</div><h2 class="ea-tm-title">${esc(t.title)}</h2><p class="ea-tm-sub">${esc(t.sub)}</p></div>
+    <div class="ea-tm-stage" id="ea-tm-stage">
+${slides}
+    </div>
+    <div class="ea-tm-controls"><button class="ea-tm-nav" id="ea-tm-prev" type="button" aria-label="Témoignage précédent">${ARROW_L}</button><div class="ea-tm-dots" id="ea-tm-dots">${P ? t.items.map((x, i) => `<span class="ea-tm-dot${i ? '' : ' ea-active'}"></span>`).join('') : ''}</div><button class="ea-tm-nav" id="ea-tm-next" type="button" aria-label="Témoignage suivant">${ARROW_R}</button></div>
+    <div class="ea-tm-cta"><a href="${esc(href)}" class="ea-tm-btn"><span class="ea-tm-btn-main">${esc(t.ctaMain)}</span><span class="ea-tm-btn-sub">${esc(t.ctaSub)}</span></a>${stars(t.rating, t.trustpilot, 'tm')}</div>
+</div>`);
+  }
+  if (S.on.av && S.av.items.length) {
+    const a = S.av, n = a.items.length;
+    const slides = a.items.map((src, i) => {
+      const o = offset(i, n);
+      return `        <div class="ea-av-slide" data-x="${o}"${P ? ` style="--x:${Math.max(-3, Math.min(3, o))}"` : ''}>
+            <div class="ea-av-card"><div class="ea-av-frame">
+                ${P ? ph('Avis vidéo ' + (i + 1)) : `<video src="${esc(safeUrl(src))}#t=0.001" preload="metadata" controlslist="nodownload" playsinline></video>`}
+                <div class="ea-av-shade"></div>
+                <button class="ea-av-play" type="button" aria-label="Lire la vidéo">${PLAY}</button>
+            </div></div>
+        </div>`;
+    }).join('\n');
+    out.push(`<div id="ea-av" class="ea-av">
+    <div class="ea-av-head"><div class="ea-av-eyebrow">${esc(a.eyebrow)}</div><h2 class="ea-av-title">${esc(a.title)}</h2><p class="ea-av-sub">${esc(a.sub)}</p></div>
+    <div class="ea-av-stage" id="ea-av-stage">
+${slides}
+    </div>
+    <div class="ea-av-controls"><button class="ea-av-nav" id="ea-av-prev" type="button" aria-label="Avis précédent">${ARROW_L}</button><div class="ea-av-dots" id="ea-av-dots">${P ? a.items.map((x, i) => `<span class="ea-av-dot${i ? '' : ' ea-active'}"></span>`).join('') : ''}</div><button class="ea-av-nav" id="ea-av-next" type="button" aria-label="Avis suivant">${ARROW_R}</button></div>
+    <div class="ea-av-cta"><a href="${esc(href)}" class="ea-av-btn"><span class="ea-av-btn-main">${esc(a.ctaMain)}</span><span class="ea-av-btn-sub">${esc(a.ctaSub)}</span></a>${stars(a.rating, a.trustpilot, 'av')}</div>
+</div>`);
+  }
+  if (S.on.hist) {
+    const h = S.hist, paras = String(h.paras || '').split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
+    out.push(`<div id="ea-histoire" class="ea-histoire">
+    <div class="ea-histoire-inner">
+        <p class="ea-histoire-eyebrow">${esc(h.eyebrow)}</p>
+        <h2 class="ea-histoire-title">${esc(h.title)} <span>${esc(h.titleAccent)}</span></h2>
+        <div class="ea-histoire-grid">
+            <div class="ea-histoire-photo"><div class="ea-histoire-frame">${P ? ph('Photo') : `<img src="${esc(safeUrl(h.photo))}" alt="${esc(h.name)}">`}</div></div>
+            <div class="ea-histoire-text">
+                <h3 class="ea-histoire-name">Moi, c'est <span>${esc(h.name)}</span></h3>
+                <p class="ea-histoire-tagline">${esc(h.tagline)}</p>
+${paras.map((p) => `                <p>${rich(p)}</p>`).join('\n')}
+                <a href="${esc(href)}" class="ea-histoire-btn">${esc(h.btn)} <span>→</span></a>
+            </div>
+        </div>
+    </div>
+</div>`);
+  }
+  return out.join('\n\n');
+}
+function css() { return CSS.replace('__ACCENT__', S.accent).replace('__ACCENT_RGB__', hexRgb(S.accent)).replace('__ACCENT_LIGHT__', S.accentLight).replace('__BG__', S.bg); }
+function exportHtml() {
+  const vd = S.on.vsl ? vidalytics(S.vsl.embed) : null;
+  const scripts = [];
+  if (vd) scripts.push(`<script type="text/javascript">
+(function (v, i, d, a, l, y, t, c, s) {
+    y='_'+d.toLowerCase();c=d+'L';if(!v[d]){v[d]={};}if(!v[c]){v[c]={};}if(!v[y]){v[y]={};}var vl='Loader',vli=v[y][vl],vsl=v[c][vl + 'Script'],vlf=v[c][vl + 'Loaded'],ve='Embed';
+    if (!vsl){vsl=function(u,cb){
+        if(t){cb();return;}s=i.createElement("script");s.type="text/javascript";s.async=1;s.src=u;
+        if(s.readyState){s.onreadystatechange=function(){if(s.readyState==="loaded"||s.readyState=="complete"){s.onreadystatechange=null;vlf=1;cb();}};}else{s.onload=function(){vlf=1;cb();};}
+        i.getElementsByTagName("head")[0].appendChild(s);
+    };}
+    vsl(l+'loader.min.js',function(){if(!vli){var vlc=v[c][vl];vli=new vlc();}vli.loadScript(l+'player.min.js',function(){var vec=v[d][ve];t=new vec();t.run(a);});});
+})(window, document, 'Vidalytics', 'vidalytics_embed_${vd.id}', 'https://fast.vidalytics.com/embeds/${vd.acc}/${vd.id}/');
+${SC}`);
+  if (S.on.rdv) scripts.push(`<script type="text/javascript" src="https://assets.calendly.com/assets/external/widget.js" async>${SC}`);
+  const want = [S.on.vsl && 'TITLE', S.on.rdv && 'CAL', S.on.tm && 'TM', S.on.av && 'AV'].filter(Boolean);
+  want.forEach((k) => scripts.push(`<script type="text/javascript">\n${JS[k].trim()}\n${SC}`));
+  return `<!-- Page générée avec YouClose Pages -->\n<style>\n${css()}\n</style>\n\n${sections(false)}\n\n${scripts.join('\n\n')}\n`;
+}
+
+/* ---------- Aperçu ---------- */
+let shadow;
+function renderPreview() {
+  if (!CSS) return;
+  const frame = document.getElementById('frame');
+  if (!shadow) { frame.innerHTML = ''; const host = document.createElement('div'); frame.appendChild(host); shadow = host.attachShadow({ mode: 'open' }); }
+  const pc = css().replace(':root {', ':host {').replace(/@import url\([^)]*\);/, '');
+  shadow.innerHTML = `<style>${pc} :host{display:block;background:var(--ea-bg)} a{pointer-events:none}</style>${sections(true)}`;
+  const kb = Math.round(new Blob([exportHtml()]).size / 1024);
+  document.getElementById('size').innerHTML = `<b>Code prêt</b> · ${kb} Ko`;
+}
+let tmr; const changed = () => { save(); clearTimeout(tmr); tmr = setTimeout(renderPreview, 120); };
+
+/* ---------- Formulaire ---------- */
+const get = (p) => p.split('.').reduce((o, k) => o?.[k], S);
+const set = (p, v) => { const ks = p.split('.'); const last = ks.pop(); ks.reduce((o, k) => o[k], S)[last] = v; };
+const F = (p, label, type, help) => ({ p, label, type: type || 'text', help });
+const FORM = [
+  { id: 'style', title: 'Couleurs', fields: [{ type: 'colors' }, F('ctaUrl', 'Lien des boutons si la réservation est masquée', 'url', 'Sinon, les boutons descendent vers le calendrier.')] },
+  { id: 'vsl', title: '1. Vidéo de vente', on: 'vsl', fields: [F('vsl.l1', 'Titre, ligne 1'), F('vsl.l2', 'Titre, ligne 2 (en couleur)'), F('vsl.hint', 'Phrase sous le titre', 'area', '[[texte]] en couleur, __texte__ souligné, **texte** en gras.'), F('vsl.embed', 'Vidéo de vente', 'code', 'Lien MP4 : on mesure le temps de visionnage de chaque prospect. Lien Vidalytics : la vidéo marche, sans ce suivi.'), F('vsl.cta', 'Texte du bouton'), F('vsl.rating', 'Preuve sous le bouton'), F('vsl.trustpilot', 'Afficher Trustpilot', 'check')] },
+  { id: 'rdv', title: '2. Réservation', on: 'rdv', fields: [F('rdv.eyebrow', 'Étiquette'), F('rdv.title', 'Titre'), F('rdv.sub', 'Sous-titre (en couleur)'), F('rdv.hint', 'Phrase'), F('rdv.calendly', 'Lien Calendly', 'url'), F('rdv.rating', 'Preuve')] },
+  { id: 'tm', title: '3. Témoignages', on: 'tm', fields: [F('tm.eyebrow', 'Étiquette'), F('tm.title', 'Titre'), F('tm.sub', 'Sous-titre (en couleur)'), { type: 'tmlist' }, F('tm.ctaMain', 'Bouton, texte principal'), F('tm.ctaSub', 'Bouton, petite ligne'), F('tm.rating', 'Preuve'), F('tm.trustpilot', 'Afficher Trustpilot', 'check')] },
+  { id: 'av', title: '4. Avis vidéo', on: 'av', fields: [F('av.eyebrow', 'Étiquette'), F('av.title', 'Titre'), F('av.sub', 'Sous-titre (en couleur)'), { type: 'avlist' }, F('av.ctaMain', 'Bouton, texte principal'), F('av.ctaSub', 'Bouton, petite ligne'), F('av.rating', 'Preuve'), F('av.trustpilot', 'Afficher Trustpilot', 'check')] },
+  { id: 'hist', title: '5. Histoire du coach', on: 'hist', fields: [F('hist.eyebrow', 'Étiquette'), F('hist.title', 'Titre'), F('hist.titleAccent', 'Titre, suite en couleur'), F('hist.name', 'Prénom'), F('hist.tagline', 'Phrase de crédibilité'), F('hist.paras', 'Histoire (une ligne vide entre deux paragraphes)', 'area', '**texte** en gras.'), F('hist.photo', 'Lien de la photo', 'url'), F('hist.btn', 'Texte du bouton')] },
+];
+let openSec = 'vsl';
+function fieldHtml(f, sid) {
+  if (f.type === 'colors') return `<div class="colors">${[['accent', 'Principale'], ['accentLight', 'Mots en avant'], ['bg', 'Fond']].map(([k, l]) => `<label class="color" for="c_${k}">${l}<input type="color" id="c_${k}" data-p="${k}" value="${esc(S[k])}"></label>`).join('')}</div>`;
+  if (f.type === 'tmlist') return `<div class="f"><span class="lab">Vidéos (${S.tm.items.length})</span><div class="list">${S.tm.items.map((it, i) => `<div class="item"><div class="ins"><input type="text" aria-label="Prénom ${i + 1}" data-li="tm.${i}.name" value="${esc(it.name)}" placeholder="Prénom"><input type="text" aria-label="Résultat ${i + 1}" data-li="tm.${i}.result" value="${esc(it.result)}" placeholder="Résultat"><input class="full" type="url" aria-label="Lien vidéo ${i + 1}" data-li="tm.${i}.src" value="${esc(it.src)}" placeholder="Lien YouTube ou MP4"></div><button type="button" class="del" data-del="tm.${i}" aria-label="Supprimer">×</button></div>`).join('')}</div><button type="button" class="btn sm" data-add="tm">+ Ajouter un témoignage</button><span class="help">YouTube : la miniature s'affiche toute seule. MP4 : lien direct vers le fichier.</span></div>`;
+  if (f.type === 'avlist') return `<div class="f"><span class="lab">Vidéos verticales (${S.av.items.length})</span><div class="list">${S.av.items.map((src, i) => `<div class="item"><div class="ins"><input class="full" type="url" aria-label="Avis vidéo ${i + 1}" data-li="av.${i}" value="${esc(src)}" placeholder="Lien MP4 ou MOV"></div><button type="button" class="del" data-del="av.${i}" aria-label="Supprimer">×</button></div>`).join('')}</div><button type="button" class="btn sm" data-add="av">+ Ajouter un avis</button></div>`;
+  const id = 'f_' + f.p.replace(/\./g, '_'), v = get(f.p);
+  if (f.type === 'check') return `<label class="check" for="${id}"><input type="checkbox" id="${id}" data-p="${f.p}" ${v ? 'checked' : ''}>${f.label}</label>`;
+  const input = f.type === 'area' || f.type === 'code' ? `<textarea id="${id}" data-p="${f.p}" class="${f.type === 'code' ? 'code' : ''}" rows="${f.type === 'code' ? 2 : 4}">${esc(v)}</textarea>` : `<input type="${f.type === 'url' ? 'url' : 'text'}" id="${id}" data-p="${f.p}" value="${esc(v)}">`;
+  return `<div class="f"><label for="${id}">${f.label}</label>${input}${f.help ? `<span class="help">${f.help}</span>` : ''}</div>`;
+}
+function renderForm() {
+  const box = document.getElementById('form');
+  box.innerHTML = FORM.map((s) => `<details data-sec="${s.id}" ${openSec === s.id ? 'open' : ''}><summary>${s.on ? `<span class="sw" title="Afficher cette section"><input type="checkbox" aria-label="Afficher la section ${esc(s.title)}" data-on="${s.on}" ${S.on[s.on] ? 'checked' : ''}><span></span></span>` : ''}<span>${s.title}</span><span class="chev">›</span></summary><div class="fields">${s.fields.map((f) => fieldHtml(f, s.id)).join('')}</div></details>`).join('');
+  box.querySelectorAll('details').forEach((d) => d.addEventListener('toggle', () => { if (d.open) { openSec = d.dataset.sec; box.querySelectorAll('details').forEach((o) => { if (o !== d) o.open = false; }); } }));
+  box.querySelectorAll('[data-on]').forEach((c) => { c.addEventListener('click', (e) => e.stopPropagation()); c.addEventListener('change', () => { S.on[c.dataset.on] = c.checked; changed(); }); });
+  box.querySelectorAll('[data-p]').forEach((el) => el.addEventListener('input', () => { set(el.dataset.p, el.type === 'checkbox' ? el.checked : el.value); changed(); }));
+  box.querySelectorAll('[data-li]').forEach((el) => el.addEventListener('input', () => { const [l, i, k] = el.dataset.li.split('.'); if (k) S[l].items[+i][k] = el.value; else S[l].items[+i] = el.value; changed(); }));
+  box.querySelectorAll('[data-del]').forEach((b) => b.addEventListener('click', () => { const [l, i] = b.dataset.del.split('.'); S[l].items.splice(+i, 1); changed(); renderForm(); }));
+  box.querySelectorAll('[data-add]').forEach((b) => b.addEventListener('click', () => { const l = b.dataset.add; S[l].items.push(l === 'tm' ? { name: '', result: '', src: '' } : ''); changed(); renderForm(); }));
+}
+
+/* ---------- Actions ---------- */
+const toast = (m) => { const l = document.getElementById('layer'); l.querySelector('.toast')?.remove(); const t = document.createElement('div'); t.className = 'toast'; t.setAttribute('role', 'status'); t.textContent = m; l.appendChild(t); setTimeout(() => t.remove(), 2600); };
+document.getElementById('copy').onclick = async () => {
+  if (!CSS) return;
+  const code = exportHtml();
+  try { await navigator.clipboard.writeText(code); toast('Code copié : colle-le dans un bloc « code personnalisé » de ta page'); }
+  catch (e) {
+    const l = document.getElementById('layer');
+    l.innerHTML = `<div class="modal" role="dialog" aria-modal="true" aria-label="Code de la page"><div class="modal-in"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px"><b>Code de la page</b><button type="button" class="btn sm" id="mClose">Fermer</button></div><p class="help" style="margin:0">La copie automatique est bloquée ici : le code est sélectionné, fais Ctrl+C (ou Cmd+C).</p><textarea id="mCode" readonly aria-label="Code de la page"></textarea></div></div>`;
+    const ta = document.getElementById('mCode'); ta.value = code; ta.focus(); ta.select();
+    const close = () => { l.innerHTML = ''; };
+    document.getElementById('mClose').onclick = close;
+    l.querySelector('.modal').onclick = (ev) => { if (ev.target.classList.contains('modal')) close(); };
+    document.addEventListener('keydown', function k(ev) { if (ev.key === 'Escape') { close(); document.removeEventListener('keydown', k); } });
+  }
+};
+document.getElementById('reset').onclick = () => { S = clone(DEFAULTS); save(); renderForm(); renderPreview(); toast('Modèle Ecom Ascension rechargé'); };
+document.querySelectorAll('[data-dev]').forEach((b) => b.onclick = () => { document.querySelectorAll('[data-dev]').forEach((x) => x.classList.toggle('on', x === b)); document.getElementById('frame').classList.toggle('mobile', b.dataset.dev === 'mob'); });
+
+/* Téléchargement (si la page y a droit) */
+(async () => {
+  const dl = await window.claude?.use?.('downloads').catch?.(() => null) ?? null;
+  if (!dl) return;
+  const btn = document.getElementById('dl'); btn.hidden = false;
+  btn.onclick = async () => {
+    if (!CSS) return;
+    const doc = `<!doctype html>\n<html lang="fr">\n<head>\n<meta charset="utf-8">\n<meta name="viewport" content="width=device-width, initial-scale=1">\n<title>${esc(S.vsl.l1 + ' ' + S.vsl.l2)}</title>\n</head>\n<body>\n${exportHtml()}</body>\n</html>\n`;
+    try { await dl.save({ filename: 'page-vsl.html', data: doc }); toast('Fichier enregistré'); }
+    catch (e) { if (e && e.code !== 'declined') toast('Téléchargement impossible ici : utilise « Copier le code »'); }
+  };
+})();
+
+/* IA : réécrit les textes à partir du brief */
+(async () => {
+  const sample = await window.claude?.use?.('sample').catch?.(() => null) ?? null;
+  const go = document.getElementById('aiGo'), stop = document.getElementById('aiStop'), st = document.getElementById('aiStatus');
+  if (!sample) { document.getElementById('aiBox').hidden = true; return; }
+  let ctl = null, locked = false;
+  stop.onclick = () => ctl?.abort();
+  go.onclick = async () => {
+    const brief = document.getElementById('brief').value.trim();
+    if (!brief) { st.className = 'status err'; st.textContent = 'Décris ton offre en quelques lignes.'; return; }
+    ctl = new AbortController(); go.disabled = true; stop.hidden = false; st.className = 'status'; st.textContent = 'Écriture en cours… (souvent 20 à 40 secondes)';
+    const prompt = `Tu écris les textes d'une page de vente (VSL puis prise de rendez-vous) en français, au tutoiement, ton direct.
+Règles : aucun tiret long (—). N'invente aucun chiffre, résultat ou nom absent du brief. Pas de promesse de gain garantie. Phrases courtes.
+Brief de l'offre :
+"""${brief.slice(0, 4000)}"""
+Réponds uniquement avec un objet JSON de cette forme, toutes les valeurs en texte :
+{"vsl":{"l1":"titre ligne 1, 32 caractères max","l2":"titre ligne 2 percutante, 34 caractères max","hint":"phrase sous le titre qui pousse à regarder la vidéo ; entoure 2 à 4 mots clés de [[ ]] et un mot fort de ** **","cta":"texte du bouton, 5 mots max"},
+"rdv":{"eyebrow":"2 à 3 mots","title":"3 à 4 mots","sub":"2 à 3 mots","hint":"une phrase"},
+"tm":{"eyebrow":"2 à 3 mots","title":"5 mots max","sub":"6 mots max","ctaMain":"6 mots max","ctaSub":"une courte ligne"},
+"av":{"eyebrow":"2 à 3 mots","title":"6 mots max","sub":"4 mots max","ctaMain":"5 mots max","ctaSub":"une courte ligne"},
+"hist":{"eyebrow":"3 à 4 mots","title":"3 à 4 mots","titleAccent":"nom de la marque ou 2 à 3 mots","tagline":"phrase de crédibilité tirée du brief","paras":"3 ou 4 paragraphes séparés par une ligne vide, à la première personne, avec un passage clé entre ** **","btn":"4 mots max"}}`;
+    try {
+      const r = await sample.json(prompt, { signal: ctl.signal });
+      let n = 0;
+      for (const sec of ['vsl', 'rdv', 'tm', 'av', 'hist']) {
+        const src = r && typeof r === 'object' ? r[sec] : null; if (!src || typeof src !== 'object') continue;
+        for (const [k, v] of Object.entries(src)) { if (typeof v === 'string' && k in S[sec] && typeof S[sec][k] === 'string' && v.trim()) { S[sec][k] = v.replace(/—/g, ',').trim(); n++; } }
+      }
+      changed(); renderForm(); st.textContent = n ? `${n} textes réécrits. Relis-les et ajuste ce qui doit l'être.` : "L'IA n'a rien renvoyé d'utilisable : reformule le brief.";
+    } catch (e) {
+      st.className = 'status' + (e?.code === 'cancelled' ? '' : ' err');
+      st.textContent = ({ cancelled: 'Écriture arrêtée.', not_granted: "Tu n'as pas autorisé l'IA pour cette page.", rate_limited: "Trop de demandes d'un coup : réessaie dans un moment.", invalid_json: "Réponse illisible : clique à nouveau sur « Écrire les textes ».", refused: 'La demande a été refusée : reformule le brief.' })[e?.code] || "L'écriture a échoué : réessaie.";
+      if (e?.code === 'not_granted' || e?.code === 'sampling_disabled') locked = true;
+    } finally { go.disabled = locked; stop.hidden = true; ctl = null; }
+  };
+})();
+
+/* ---------- Publication ---------- */
+const token = () => { try { return localStorage.getItem('melo_token') || ''; } catch (e) { return ''; } };
+const api = async (method, url, body) => {
+  const r = await fetch(url, { method, headers: { 'Content-Type': 'application/json', 'x-app-token': token() }, body: body ? JSON.stringify(body) : undefined });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(d.error || ('Erreur ' + r.status));
+  return d;
+};
+const slugify = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);
+const pT = document.getElementById('pTitle'), pS = document.getElementById('pSlug'), pSt = document.getElementById('pubStatus');
+S.meta = S.meta || clone(DEFAULTS.meta);
+pT.value = S.meta.title; pS.value = S.meta.slug;
+pT.addEventListener('input', () => { S.meta.title = pT.value; save(); });
+pS.addEventListener('input', () => { S.meta.slug = pS.value; save(); });
+pS.addEventListener('blur', () => { pS.value = slugify(pS.value); S.meta.slug = pS.value; save(); });
+async function loadPages() {
+  const box = document.getElementById('pagesList');
+  if (!token()) { box.innerHTML = '<span class="help">Connecte-toi d\'abord en admin sur ang-industries.com, puis recharge cette page.</span>'; return; }
+  try {
+    const { pages } = await api('GET', '/api/pages');
+    if (!pages.length) { box.innerHTML = '<span class="help">Aucune page publiée pour l\'instant. Publie ta première page pour suivre ses visiteurs.</span>'; return; }
+    box.innerHTML = pages.map((p) => { const st = p.stats || {}; const u = st.uniq || 0; const pc = (n) => u ? Math.round((n || 0) / u * 100) + ' %' : '-';
+      return `<div class="prow"><b>${esc(p.title)}</b><a href="/p/${esc(p.slug)}" target="_blank" rel="noreferrer">ang-industries.com/p/${esc(p.slug)}</a>
+      <div class="pstats"><span><b>${u}</b> visiteurs</span><span><b>${pc(st.vsl50)}</b> VSL ≥ 50 %</span><span><b>${pc(st.cta)}</b> clics</span><span><b>${st.booked || 0}</b> RDV</span></div>
+      <div style="display:flex;gap:6px"><button type="button" class="btn sm" data-edit="${esc(p.slug)}">Modifier</button></div></div>`; }).join('');
+    box.querySelectorAll('[data-edit]').forEach((b) => b.onclick = async () => {
+      try { const { page } = await api('GET', '/api/pages?slug=' + encodeURIComponent(b.dataset.edit));
+        if (page.state) { S = Object.assign(clone(DEFAULTS), page.state); } S.meta = { title: page.title, slug: page.slug };
+        pT.value = S.meta.title; pS.value = S.meta.slug; save(); renderForm(); renderPreview(); toast('Page chargée : modifie puis publie'); }
+      catch (e) { toast(e.message); }
+    });
+  } catch (e) { box.innerHTML = `<span class="help">${esc(e.message)}</span>`; }
+}
+document.getElementById('publish').onclick = async () => {
+  if (!CSS) return;
+  const slug = slugify(pS.value); pS.value = slug; S.meta.slug = slug;
+  if (slug.length < 2) { pSt.className = 'status err'; pSt.textContent = 'Choisis une adresse pour ta page.'; pS.focus(); return; }
+  if (!token()) { pSt.className = 'status err'; pSt.textContent = "Connecte-toi d'abord en admin sur ang-industries.com."; return; }
+  const btn = document.getElementById('publish'); btn.disabled = true; btn.textContent = 'Publication…';
+  try {
+    await api('POST', '/api/pages', { slug, title: pT.value || slug, html: exportHtml(), state: S });
+    pSt.className = 'status'; pSt.innerHTML = `Page en ligne : <a href="/p/${esc(slug)}" target="_blank" rel="noreferrer">ang-industries.com/p/${esc(slug)}</a>`;
+    toast('Page publiée'); loadPages();
+  } catch (e) { pSt.className = 'status err'; pSt.textContent = e.message; }
+  finally { btn.disabled = false; btn.textContent = 'Publier la page'; }
+};
+loadPages();
+
+/* ---------- Démarrage ---------- */
+renderForm();
+Promise.all([fetch('template.css').then((r) => { if (!r.ok) throw 0; return r.text(); }), fetch('template-scripts.txt').then((r) => { if (!r.ok) throw 0; return r.text(); })])
+  .then(([c, j]) => { CSS = c; j.split(/^@@(\w+)@@$/m).forEach((part, i, arr) => { if (i % 2 === 1) JS[part] = arr[i + 1] || ''; }); renderPreview(); })
+  .catch(() => { document.getElementById('frame').innerHTML = '<div class="loading">Le modèle ne s\'est pas chargé. Recharge la page.</div>'; document.getElementById('size').textContent = 'Modèle indisponible'; });
+</script>
+
+</body>
+</html>
