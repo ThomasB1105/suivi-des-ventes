@@ -133,7 +133,7 @@ body{margin:0}
     <div id="form"></div>
   </aside>
   <main class="stage">
-    <div class="stage-h"><span>Aperçu en direct</span><span>·</span><span id="size">Chargement du modèle…</span><span>·</span><span>Les vidéos et le calendrier s'affichent une fois la page en ligne.</span></div>
+    <div class="stage-h"><span>Aperçu en direct</span><span>·</span><span id="size">Chargement du modèle…</span><span>·</span><span>Le calendrier et les vidéos hébergées s'affichent une fois la page publiée.</span></div>
     <div class="frame" id="frame"><div class="loading">Chargement du modèle…</div></div>
   </main>
 </div>
@@ -148,7 +148,10 @@ const DEFAULTS = {
   vsl: { l1: 'De 0 à 10 000€ grâce à', l2: "l'e-commerce sur Google Ads", hint: 'Regarde [[la masterclass]], __juste ici__, et découvre la compétence qui peut te rendre **libre financièrement**.',
     embed: 'https://fast.vidalytics.com/embeds/PNeFWKmR/nQ182gaB7LlVh8BA/', cta: 'Réserver mon appel stratégique', rating: '4,9/5 • +200 élèves accompagnés', trustpilot: true },
   rdv: { eyebrow: 'Dernière étape', title: 'Réserve ton appel', sub: 'Stratégique gratuit', hint: "Choisis le créneau qui t'arrange juste en dessous.",
-    calendly: 'https://calendly.com/d/d3hn-nwt-f77?hide_gdpr_banner=1&background_color=ffffff&primary_color=0066ff', rating: '4,9/5 • +200 élèves accompagnés' },
+    rating: '4,9/5 • +200 élèves accompagnés',
+    booking: { closers: '', days: 'lun mar mer jeu ven sam', from: '09:00', to: '19:00', duration: '45', buffer: '15', minHours: '3', maxDays: '7',
+      questions: "Quelle est ta situation aujourd'hui ? | Salarié | Indépendant | Étudiant | Sans emploi\nQuand veux-tu te lancer ? | Maintenant | Dans les prochains jours | Dans plusieurs mois*\nCombien peux-tu investir dans ton accompagnement ? | Moins de 1 000 €* | 1 000 à 2 500 € | 2 500 à 5 000 € | Plus de 5 000 €",
+      dqText: "Merci pour tes réponses. Notre accompagnement ne correspond pas à ta situation pour le moment. Regarde la vidéo jusqu'au bout pour avancer seul." } },
   tm: { eyebrow: "Résultats d'élèves", title: 'Ils étaient à ta place...', sub: "Regarde où ils en sont aujourd'hui", ctaMain: 'Oui, je veux les mêmes résultats', ctaSub: 'Rejoins les 200 élèves déjà accompagnés', rating: '4,9/5 de satisfaction client', trustpilot: true,
     items: [
       { name: 'Thomas', result: '0 → 80K€/mois', src: 'https://youtu.be/r1h-Fdavllw' },
@@ -177,6 +180,8 @@ const KEY = 'yc-pages-draft-v1';
 const clone = (o) => JSON.parse(JSON.stringify(o));
 let S = clone(DEFAULTS);
 try { const d = JSON.parse(localStorage.getItem(KEY) || 'null'); if (d && d.vsl) S = Object.assign(clone(DEFAULTS), d); } catch (e) {}
+const fixState = () => { S.rdv = Object.assign(clone(DEFAULTS.rdv), S.rdv || {}); S.rdv.booking = Object.assign(clone(DEFAULTS.rdv.booking), S.rdv.booking || {}); delete S.rdv.calendly; };
+fixState();
 const save = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} };
 
 /* ---------- Outils ---------- */
@@ -221,13 +226,13 @@ function sections(P) {
 </div>`);
   }
   if (S.on.rdv) {
-    const r = S.rdv, cal = safeUrl(r.calendly);
+    const r = S.rdv;
     out.push(`<div id="ea-rdv" class="ea-rdv">
     <div class="ea-rdv-eyebrow">${esc(r.eyebrow)}</div>
     <h2 class="ea-rdv-title">${esc(r.title)}</h2>
     <p class="ea-rdv-sub">${esc(r.sub)}</p>
     <p class="ea-rdv-hint">${esc(r.hint)}</p>
-    <div class="ea-rdv-cal">${P ? `<div style="position:relative;height:420px">${ph('Calendrier de réservation (Calendly)')}</div>` : `<div class="calendly-inline-widget" id="ea-rdv-widget" data-url="${esc(cal)}" data-resize="true" style="min-width:320px;height:700px;"></div>`}</div>
+    <div class="ea-rdv-cal">${P ? `<div style="position:relative;height:380px">${ph('Calendrier YouClose : questionnaire, créneaux des closers, réservation')}</div>` : `<div class="yc-book" id="yc-book"></div>`}</div>
     <div class="ea-rdv-proof"><div class="ea-rdv-stars">⭐⭐⭐⭐⭐ <span>${esc(r.rating)}</span></div></div>
 </div>`);
   }
@@ -314,8 +319,7 @@ function exportHtml() {
     vsl(l+'loader.min.js',function(){if(!vli){var vlc=v[c][vl];vli=new vlc();}vli.loadScript(l+'player.min.js',function(){var vec=v[d][ve];t=new vec();t.run(a);});});
 })(window, document, 'Vidalytics', 'vidalytics_embed_${vd.id}', 'https://fast.vidalytics.com/embeds/${vd.acc}/${vd.id}/');
 ${SC}`);
-  if (S.on.rdv) scripts.push(`<script type="text/javascript" src="https://assets.calendly.com/assets/external/widget.js" async>${SC}`);
-  const want = [S.on.vsl && 'TITLE', S.on.rdv && 'CAL', S.on.tm && 'TM', S.on.av && 'AV'].filter(Boolean);
+  const want = [S.on.vsl && 'TITLE', S.on.tm && 'TM', S.on.av && 'AV'].filter(Boolean);
   want.forEach((k) => scripts.push(`<script type="text/javascript">\n${JS[k].trim()}\n${SC}`));
   return `<!-- Page générée avec YouClose Pages -->\n<style>\n${css()}\n</style>\n\n${sections(false)}\n\n${scripts.join('\n\n')}\n`;
 }
@@ -340,7 +344,14 @@ const F = (p, label, type, help) => ({ p, label, type: type || 'text', help });
 const FORM = [
   { id: 'style', title: 'Couleurs', fields: [{ type: 'colors' }, F('ctaUrl', 'Lien des boutons si la réservation est masquée', 'url', 'Sinon, les boutons descendent vers le calendrier.')] },
   { id: 'vsl', title: '1. Vidéo de vente', on: 'vsl', fields: [F('vsl.l1', 'Titre, ligne 1'), F('vsl.l2', 'Titre, ligne 2 (en couleur)'), F('vsl.hint', 'Phrase sous le titre', 'area', '[[texte]] en couleur, __texte__ souligné, **texte** en gras.'), F('vsl.embed', 'Vidéo de vente', 'code', 'Lien MP4 : on mesure le temps de visionnage de chaque prospect. Lien Vidalytics : la vidéo marche, sans ce suivi.'), F('vsl.cta', 'Texte du bouton'), F('vsl.rating', 'Preuve sous le bouton'), F('vsl.trustpilot', 'Afficher Trustpilot', 'check')] },
-  { id: 'rdv', title: '2. Réservation', on: 'rdv', fields: [F('rdv.eyebrow', 'Étiquette'), F('rdv.title', 'Titre'), F('rdv.sub', 'Sous-titre (en couleur)'), F('rdv.hint', 'Phrase'), F('rdv.calendly', 'Lien Calendly', 'url'), F('rdv.rating', 'Preuve')] },
+  { id: 'rdv', title: '2. Réservation', on: 'rdv', fields: [F('rdv.eyebrow', 'Étiquette'), F('rdv.title', 'Titre'), F('rdv.sub', 'Sous-titre (en couleur)'), F('rdv.hint', 'Phrase'), F('rdv.rating', 'Preuve'),
+    F('rdv.booking.questions', 'Questions avant les créneaux', 'area', 'Une question par ligne : Question | réponse | réponse. Ajoute * après une réponse pour écarter le lead (pas de créneau proposé).'),
+    F('rdv.booking.dqText', 'Message pour un lead écarté', 'area'),
+    F('rdv.booking.closers', 'Closers qui reçoivent les RDV', 'text', 'Prénoms séparés par des virgules. Vide = tous les closers de l\'équipe. Le RDV va au closer libre le moins chargé du jour.'),
+    F('rdv.booking.days', 'Jours ouverts', 'text', 'ex. lun mar mer jeu ven sam'),
+    F('rdv.booking.from', 'Premier créneau (heure de Paris)'), F('rdv.booking.to', 'Fin de journée'),
+    F('rdv.booking.duration', 'Durée d\'un appel (min)'), F('rdv.booking.buffer', 'Pause entre deux appels (min)'),
+    F('rdv.booking.minHours', 'Délai minimum avant un appel (heures)'), F('rdv.booking.maxDays', 'Réservable sur combien de jours')] },
   { id: 'tm', title: '3. Témoignages', on: 'tm', fields: [F('tm.eyebrow', 'Étiquette'), F('tm.title', 'Titre'), F('tm.sub', 'Sous-titre (en couleur)'), { type: 'tmlist' }, F('tm.ctaMain', 'Bouton, texte principal'), F('tm.ctaSub', 'Bouton, petite ligne'), F('tm.rating', 'Preuve'), F('tm.trustpilot', 'Afficher Trustpilot', 'check')] },
   { id: 'av', title: '4. Avis vidéo', on: 'av', fields: [F('av.eyebrow', 'Étiquette'), F('av.title', 'Titre'), F('av.sub', 'Sous-titre (en couleur)'), { type: 'avlist' }, F('av.ctaMain', 'Bouton, texte principal'), F('av.ctaSub', 'Bouton, petite ligne'), F('av.rating', 'Preuve'), F('av.trustpilot', 'Afficher Trustpilot', 'check')] },
   { id: 'hist', title: '5. Histoire du coach', on: 'hist', fields: [F('hist.eyebrow', 'Étiquette'), F('hist.title', 'Titre'), F('hist.titleAccent', 'Titre, suite en couleur'), F('hist.name', 'Prénom'), F('hist.tagline', 'Phrase de crédibilité'), F('hist.paras', 'Histoire (une ligne vide entre deux paragraphes)', 'area', '**texte** en gras.'), F('hist.photo', 'Lien de la photo', 'url'), F('hist.btn', 'Texte du bouton')] },
@@ -382,7 +393,7 @@ document.getElementById('copy').onclick = async () => {
     document.addEventListener('keydown', function k(ev) { if (ev.key === 'Escape') { close(); document.removeEventListener('keydown', k); } });
   }
 };
-document.getElementById('reset').onclick = () => { S = clone(DEFAULTS); save(); renderForm(); renderPreview(); toast('Modèle Ecom Ascension rechargé'); };
+document.getElementById('reset').onclick = () => { S = clone(DEFAULTS); fixState(); save(); renderForm(); renderPreview(); toast('Modèle Ecom Ascension rechargé'); };
 document.querySelectorAll('[data-dev]').forEach((b) => b.onclick = () => { document.querySelectorAll('[data-dev]').forEach((x) => x.classList.toggle('on', x === b)); document.getElementById('frame').classList.toggle('mobile', b.dataset.dev === 'mob'); });
 
 /* Téléchargement (si la page y a droit) */
@@ -462,7 +473,7 @@ async function loadPages() {
       <div style="display:flex;gap:6px"><button type="button" class="btn sm" data-edit="${esc(p.slug)}">Modifier</button></div></div>`; }).join('');
     box.querySelectorAll('[data-edit]').forEach((b) => b.onclick = async () => {
       try { const { page } = await api('GET', '/api/pages?slug=' + encodeURIComponent(b.dataset.edit));
-        if (page.state) { S = Object.assign(clone(DEFAULTS), page.state); } S.meta = { title: page.title, slug: page.slug };
+        if (page.state) { S = Object.assign(clone(DEFAULTS), page.state); fixState(); } S.meta = { title: page.title, slug: page.slug };
         pT.value = S.meta.title; pS.value = S.meta.slug; save(); renderForm(); renderPreview(); toast('Page chargée : modifie puis publie'); }
       catch (e) { toast(e.message); }
     });
